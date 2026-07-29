@@ -1618,6 +1618,16 @@ const upsertAffiliateOrganizationForCandidate = async (
   const { organizations } = affiliatePrisma();
   const organizationId =
     publishedOrganizationIdFromCandidate(candidate) ?? affiliateOrganizationIdForCandidate(candidate, source);
+  const existingOrganization = await organizations.findUnique({
+    where: { id: organizationId },
+  });
+  if (
+    existingOrganization?.id === organizationId
+    && existingOrganization.ownershipStatus
+    && existingOrganization.ownershipStatus !== 'UNCLAIMED'
+  ) {
+    return existingOrganization;
+  }
   const data = await buildAffiliateOrganizationData(candidate, source, organizationId, options);
 
   return organizations.upsert({
@@ -1626,8 +1636,14 @@ const upsertAffiliateOrganizationForCandidate = async (
       id: organizationId,
       createdAt: new Date(),
       ...data,
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
     },
-    update: data,
+    update: {
+      ...data,
+      originType: 'AFFILIATE_IMPORTED',
+    },
   });
 };
 

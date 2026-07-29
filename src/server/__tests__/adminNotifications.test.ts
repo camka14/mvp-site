@@ -11,12 +11,14 @@ jest.mock('@/server/email', () => ({
 import {
   sendAdminAccountCreatedNotification,
   sendAdminEventCreatedNotification,
+  sendAdminOrganizationClaimNotification,
 } from '@/server/adminNotifications';
 
 describe('adminNotifications', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.ADMIN_NOTIFICATION_EMAIL_TO;
+    delete process.env.ORGANIZATION_CLAIM_ADMIN_EMAIL_TO;
     isEmailEnabledMock.mockReturnValue(true);
     sendEmailMock.mockResolvedValue(undefined);
   });
@@ -55,5 +57,49 @@ describe('adminNotifications', () => {
     });
 
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('sends dispute notifications to the default admin email', async () => {
+    await sendAdminOrganizationClaimNotification({
+      claim: {
+        claimId: 'claim_1',
+        organizationId: 'org_1',
+        organizationName: 'River City Sports Club',
+        claimantUserId: 'user_1',
+        claimantEmail: 'director@rivercitysports.org',
+        requestType: 'OWNERSHIP_DISPUTE',
+        method: 'MANUAL_REVIEW',
+        status: 'PENDING_MANUAL_REVIEW',
+        issueReason: 'OWNER_UNAVAILABLE',
+        requestedOutcome: 'OWNERSHIP_TRANSFER',
+      },
+      baseUrl: 'https://bracket-iq.com',
+    });
+
+    expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'samuel.r@razumly.com',
+      subject: '[BracketIQ] New organization dispute: River City Sports Club',
+      text: expect.stringContaining('Claim ID: claim_1'),
+    }));
+  });
+
+  it('allows a claim-specific admin recipient override', async () => {
+    process.env.ORGANIZATION_CLAIM_ADMIN_EMAIL_TO = 'claims@razumly.com';
+
+    await sendAdminOrganizationClaimNotification({
+      claim: {
+        claimId: 'claim_2',
+        organizationId: 'org_2',
+        organizationName: 'Summit United',
+        claimantUserId: 'user_2',
+        requestType: 'INITIAL_CLAIM',
+        method: 'DOMAIN_EMAIL',
+        status: 'PENDING_VERIFICATION',
+      },
+    });
+
+    expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'claims@razumly.com',
+    }));
   });
 });

@@ -105,6 +105,7 @@
     "affiliate:clubs:sync-live-copy": "tsx scripts/sync-live-clubs-to-local.ts",
     "affiliate:clubs:sync-local": "tsx scripts/sync-live-clubs-to-local.ts",
     "affiliate:org-readiness": "tsx scripts/audit-affiliate-org-readiness.ts",
+    "affiliate:org-claims:audit": "tsx scripts/audit-affiliate-organization-claims.ts",
     "affiliate:org-tags": "tsx scripts/sync-affiliate-organization-tags.ts",
     "affiliate:orgs:sync-live": "tsx scripts/sync-affiliate-organizations-to-live.ts",
     "affiliate:imports:sync-live": "tsx scripts/sync-affiliate-import-state-to-live.ts",

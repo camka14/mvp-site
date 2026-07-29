@@ -52,8 +52,28 @@ export type AdminEventCreatedNotification = {
   createdAt?: Date | string | null;
 };
 
+export type AdminOrganizationClaimNotification = {
+  claimId: string;
+  organizationId: string;
+  organizationName: string;
+  claimantUserId: string;
+  claimantEmail?: string | null;
+  requestType: string;
+  method: string;
+  status: string;
+  roleTitle?: string | null;
+  explanation?: string | null;
+  issueReason?: string | null;
+  requestedOutcome?: string | null;
+  createdAt?: Date | string | null;
+};
+
 const getAdminNotificationRecipient = (): string => (
   process.env.ADMIN_NOTIFICATION_EMAIL_TO?.trim() || DEFAULT_ADMIN_NOTIFICATION_RECIPIENT
+);
+
+const getOrganizationClaimAdminNotificationRecipient = (): string => (
+  process.env.ORGANIZATION_CLAIM_ADMIN_EMAIL_TO?.trim() || getAdminNotificationRecipient()
 );
 
 const escapeHtml = (value: string): string => (
@@ -140,17 +160,19 @@ const sendAdminNotification = async ({
   subject,
   title,
   rows,
+  recipient,
 }: {
   subject: string;
   title: string;
   rows: NotificationRow[];
+  recipient?: string;
 }): Promise<void> => {
   if (!isEmailEnabled()) {
     return;
   }
 
   await sendEmail({
-    to: getAdminNotificationRecipient(),
+    to: recipient ?? getAdminNotificationRecipient(),
     subject,
     text: buildText(title, rows),
     html: buildHtml(title, rows),
@@ -236,6 +258,41 @@ export const sendAdminEventCreatedNotification = async ({
       ['Price cents', event.price],
       ['Max participants', event.maxParticipants],
       ['Created at', event.createdAt],
+    ],
+  });
+};
+
+export const sendAdminOrganizationClaimNotification = async ({
+  claim,
+  baseUrl,
+}: {
+  claim: AdminOrganizationClaimNotification;
+  baseUrl?: string | null;
+}): Promise<void> => {
+  const isDispute = claim.requestType === 'OWNERSHIP_DISPUTE';
+  const claimUrl = buildUrl(
+    baseUrl,
+    `/admin?tab=claims&claimId=${encodeURIComponent(claim.claimId)}`,
+  );
+  await sendAdminNotification({
+    subject: `[BracketIQ] New organization ${isDispute ? 'dispute' : 'claim'}: ${claim.organizationName}`,
+    title: isDispute ? 'New organization ownership dispute' : 'New organization claim',
+    recipient: getOrganizationClaimAdminNotificationRecipient(),
+    rows: [
+      ['Claim ID', claim.claimId],
+      ['Admin review URL', claimUrl],
+      ['Organization ID', claim.organizationId],
+      ['Organization', claim.organizationName],
+      ['Claimant user ID', claim.claimantUserId],
+      ['Claimant email', claim.claimantEmail],
+      ['Request type', claim.requestType],
+      ['Verification method', claim.method],
+      ['Status', claim.status],
+      ['Role', claim.roleTitle],
+      ['Explanation', claim.explanation],
+      ['Issue reason', claim.issueReason],
+      ['Requested outcome', claim.requestedOutcome],
+      ['Created at', claim.createdAt],
     ],
   });
 };

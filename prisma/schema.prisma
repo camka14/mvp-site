@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 
@@ -392,6 +392,84 @@ enum OrganizationReviewStatusEnum {
   HIDDEN
 }
 
+enum OrganizationOriginTypeEnum {
+  FIRST_PARTY
+  AFFILIATE_IMPORTED
+}
+
+enum OrganizationOwnershipStatusEnum {
+  UNCLAIMED
+  CLAIM_PENDING
+  CLAIMED
+  REVIEW_REQUIRED
+  DISPUTED
+  SUSPENDED
+}
+
+enum OrganizationClaimStatusEnum {
+  PENDING_VERIFICATION
+  PENDING_MANUAL_REVIEW
+  APPROVED_PENDING_ACCEPTANCE
+  APPROVED
+  REJECTED
+  CANCELLED
+  DISPUTED
+  REVOKED
+  EXPIRED
+}
+
+enum OrganizationClaimMethodEnum {
+  DOMAIN_EMAIL
+  DNS_TXT
+  HTML_META
+  MANUAL_REVIEW
+  LEGACY_OWNER
+}
+
+enum OrganizationClaimRequestTypeEnum {
+  INITIAL_CLAIM
+  OWNERSHIP_TRANSFER
+  OWNERSHIP_DISPUTE
+  DUPLICATE_PROFILE_REVIEW
+}
+
+enum OrganizationOwnershipIssueReasonEnum {
+  FORMER_REPRESENTATIVE
+  OWNER_UNAVAILABLE
+  UNAUTHORIZED_OR_MISLEADING_CLAIM
+  DUPLICATE_OR_INCORRECT_PROFILE
+  OTHER
+}
+
+enum OrganizationOwnershipRequestedOutcomeEnum {
+  OWNERSHIP_TRANSFER
+  REVIEW_OR_REVOKE_CLAIM
+  MERGE_OR_CORRECT_PROFILE
+}
+
+enum OrganizationOwnershipResolutionEnum {
+  UPHOLD_CURRENT_OWNER
+  INITIATE_OWNERSHIP_TRANSFER
+  REVOKE_TO_UNCLAIMED
+  SUSPEND_OWNER_ACCESS
+  MERGE_OR_CORRECT_PROFILE
+}
+
+enum OrganizationClaimEvidenceStatusEnum {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+  REVOKED
+}
+
+enum OrganizationClaimVerificationLevelEnum {
+  NONE
+  AFFILIATION
+  SITE_CONTROL
+  MANUAL_REVIEW
+}
+
 enum ModerationReportStatusEnum {
   OPEN
   IN_REVIEW
@@ -410,6 +488,7 @@ enum AuthMfaChallengePurposeEnum {
   PROFILE_PHONE_SETUP
   PROFILE_TOTP_SETUP
   ACCOUNT_DELETION
+  ORGANIZATION_CLAIM
 }
 
 model AppReleases {
@@ -1238,9 +1317,9 @@ model TeamCheckIns {
 }
 
 model MatchRosterEntries {
-  id              String   @id
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              String    @id
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   eventId         String
   matchId         String
   eventTeamId     String
@@ -1255,7 +1334,7 @@ model MatchRosterEntries {
   createdByUserId String
   removedAt       DateTime?
   removedByUserId String?
-  metadata        Json     @default("{}")
+  metadata        Json      @default("{}")
 
   @@index([eventId])
   @@index([eventId, matchId])
@@ -1699,23 +1778,23 @@ model RentalBookingItems {
 }
 
 model AffiliateScrapeSources {
-  id              String    @id
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  name            String
-  sourceKey       String    @unique
-  organizationId  String?
-  baseUrl         String?
-  listUrl         String
-  targetKind      String    @default("EVENT")
-  status          String    @default("ACTIVE")
-  activeMappingId String?
-  lastScrapeRunId String?
-  lastScrapedAt   DateTime?
-  autoScrapeEnabled Boolean @default(false)
-  scrapeIntervalMinutes Int @default(1440)
-  notes           String?
-  metadata        Json?
+  id                    String    @id
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  name                  String
+  sourceKey             String    @unique
+  organizationId        String?
+  baseUrl               String?
+  listUrl               String
+  targetKind            String    @default("EVENT")
+  status                String    @default("ACTIVE")
+  activeMappingId       String?
+  lastScrapeRunId       String?
+  lastScrapedAt         DateTime?
+  autoScrapeEnabled     Boolean   @default(false)
+  scrapeIntervalMinutes Int       @default(1440)
+  notes                 String?
+  metadata              Json?
 
   @@index([status])
   @@index([autoScrapeEnabled, status])
@@ -1764,16 +1843,16 @@ model AffiliateScrapeRuns {
 }
 
 model AffiliateSourceIntakes {
-  id                         String   @id
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                         String    @id
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
   name                       String
-  sourceKey                  String   @unique
+  sourceKey                  String    @unique
   region                     String?
   baseUrl                    String?
-  status                     String   @default("DRAFT")
-  complianceStatus           String   @default("UNREVIEWED")
-  targetKindHints            String[] @default([])
+  status                     String    @default("DRAFT")
+  complianceStatus           String    @default("UNREVIEWED")
+  targetKindHints            String[]  @default([])
   notes                      String?
   suggestedClassification    Json?
   organizationId             String?
@@ -1794,18 +1873,18 @@ model AffiliateSourceIntakes {
 }
 
 model AffiliateSourceIntakePages {
-  id              String   @id
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id              String    @id
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   intakeId        String
   url             String
   canonicalUrl    String
-  urlKey          String   @unique
-  role            String   @default("LISTING")
-  targetKindHints String[] @default([])
-  status          String   @default("ACTIVE")
-  discoverySource String   @default("MANUAL")
-  robotsStatus    String   @default("UNCHECKED")
+  urlKey          String    @unique
+  role            String    @default("LISTING")
+  targetKindHints String[]  @default([])
+  status          String    @default("ACTIVE")
+  discoverySource String    @default("MANUAL")
+  robotsStatus    String    @default("UNCHECKED")
   robotsCheckedAt DateTime?
   robotsNotes     String?
   metadata        Json?
@@ -1816,25 +1895,25 @@ model AffiliateSourceIntakePages {
 }
 
 model AffiliateSourceIntakeRuns {
-  id                 String   @id
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                 String    @id
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   intakeId           String
-  requestedPageIds   String[] @default([])
+  requestedPageIds   String[]  @default([])
   requestedByUserId  String?
-  provider            String   @default("SCRAPINGDOG")
-  status              String   @default("QUEUED")
-  queuedAt            DateTime @default(now())
-  startedAt           DateTime?
-  finishedAt          DateTime?
-  claimedAt           DateTime?
-  workerId            String?
-  attemptCount        Int      @default(0)
-  providerJobIds      String[] @default([])
-  discoveredUrlCount Int      @default(0)
-  capturedPageCount  Int      @default(0)
-  errorMessage        String?
-  summary             Json?
+  provider           String    @default("SCRAPINGDOG")
+  status             String    @default("QUEUED")
+  queuedAt           DateTime  @default(now())
+  startedAt          DateTime?
+  finishedAt         DateTime?
+  claimedAt          DateTime?
+  workerId           String?
+  attemptCount       Int       @default(0)
+  providerJobIds     String[]  @default([])
+  discoveredUrlCount Int       @default(0)
+  capturedPageCount  Int       @default(0)
+  errorMessage       String?
+  summary            Json?
 
   @@index([intakeId, createdAt])
   @@index([status, queuedAt])
@@ -1842,25 +1921,25 @@ model AffiliateSourceIntakeRuns {
 }
 
 model AffiliateSourceIntakeArtifacts {
-  id           String   @id
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  intakeId     String
-  pageId       String?
-  runId        String
-  kind         String
-  sourceUrl    String?
-  finalUrl     String?
-  provider     String?
-  httpStatus   Int?
-  contentHash  String
-  dedupeKey    String   @unique
-  fileId       String
-  mimeType     String?
-  sizeBytes    Int?
-  retainUntil  DateTime?
-  isPinned     Boolean  @default(false)
-  metadata     Json?
+  id          String    @id
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  intakeId    String
+  pageId      String?
+  runId       String
+  kind        String
+  sourceUrl   String?
+  finalUrl    String?
+  provider    String?
+  httpStatus  Int?
+  contentHash String
+  dedupeKey   String    @unique
+  fileId      String
+  mimeType    String?
+  sizeBytes   Int?
+  retainUntil DateTime?
+  isPinned    Boolean   @default(false)
+  metadata    Json?
 
   @@index([intakeId, createdAt])
   @@index([runId, kind])
@@ -1871,22 +1950,22 @@ model AffiliateSourceIntakeArtifacts {
 }
 
 model AffiliateSourceDiscoveryCampaigns {
-  id                    String   @id
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  name                  String   @unique
+  id                    String    @id
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  name                  String    @unique
   region                String
   location              String?
-  sportIds              String[] @default([])
-  sourceTypeHints       String[] @default([])
-  status                String   @default("PAUSED")
-  autoCreateIntakes     Boolean  @default(true)
-  searchIntervalMinutes Int      @default(10080)
+  sportIds              String[]  @default([])
+  sourceTypeHints       String[]  @default([])
+  status                String    @default("PAUSED")
+  autoCreateIntakes     Boolean   @default(true)
+  searchIntervalMinutes Int       @default(10080)
   lastRunAt             DateTime?
   nextRunAt             DateTime?
-  maxQueriesPerRun      Int      @default(10)
-  maxResultsPerQuery    Int      @default(10)
-  queryCursor           Int      @default(0)
+  maxQueriesPerRun      Int       @default(10)
+  maxResultsPerQuery    Int       @default(10)
+  queryCursor           Int       @default(0)
   createdByUserId       String?
   metadata              Json?
 
@@ -1895,27 +1974,27 @@ model AffiliateSourceDiscoveryCampaigns {
 }
 
 model AffiliateSourceDiscoveryRuns {
-  id                 String   @id
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  campaignId         String
-  requestedByUserId  String?
-  status             String   @default("QUEUED")
-  queuedAt           DateTime @default(now())
-  startedAt          DateTime?
-  finishedAt         DateTime?
-  claimedAt          DateTime?
-  workerId           String?
-  attemptCount       Int      @default(0)
-  generatedQueryCount Int     @default(0)
-  returnedResultCount Int     @default(0)
-  newResultCount     Int      @default(0)
-  duplicateCount     Int      @default(0)
-  rejectedCount      Int      @default(0)
-  createdIntakeCount Int      @default(0)
-  providerJobIds     String[] @default([])
-  errorMessage       String?
-  summary            Json?
+  id                  String    @id
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  campaignId          String
+  requestedByUserId   String?
+  status              String    @default("QUEUED")
+  queuedAt            DateTime  @default(now())
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  claimedAt           DateTime?
+  workerId            String?
+  attemptCount        Int       @default(0)
+  generatedQueryCount Int       @default(0)
+  returnedResultCount Int       @default(0)
+  newResultCount      Int       @default(0)
+  duplicateCount      Int       @default(0)
+  rejectedCount       Int       @default(0)
+  createdIntakeCount  Int       @default(0)
+  providerJobIds      String[]  @default([])
+  errorMessage        String?
+  summary             Json?
 
   @@index([campaignId, createdAt])
   @@index([status, queuedAt])
@@ -1932,23 +2011,23 @@ model AffiliateSourceDiscoveryResults {
   canonicalUrl           String
   urlKey                 String
   policyKey              String
-  title                   String?
-  description             String?
-  latestQuery             String
-  latestRank              Int
-  firstSeenAt             DateTime @default(now())
-  lastSeenAt              DateTime @default(now())
-  seenCount               Int      @default(1)
-  score                   Int      @default(0)
-  sourceTypeHints         String[] @default([])
-  sportHints              String[] @default([])
-  status                  String   @default("NEW")
-  reasonCodes             String[] @default([])
-  reasonDetails           Json?
-  matchingIntakeId        String?
-  matchingSourceId        String?
-  matchingOrganizationId  String?
-  metadata                Json?
+  title                  String?
+  description            String?
+  latestQuery            String
+  latestRank             Int
+  firstSeenAt            DateTime @default(now())
+  lastSeenAt             DateTime @default(now())
+  seenCount              Int      @default(1)
+  score                  Int      @default(0)
+  sourceTypeHints        String[] @default([])
+  sportHints             String[] @default([])
+  status                 String   @default("NEW")
+  reasonCodes            String[] @default([])
+  reasonDetails          Json?
+  matchingIntakeId       String?
+  matchingSourceId       String?
+  matchingOrganizationId String?
+  metadata               Json?
 
   @@unique([campaignId, urlKey])
   @@index([campaignId, status, score])
@@ -1959,11 +2038,11 @@ model AffiliateSourceDiscoveryResults {
 }
 
 model AffiliateSourceDomainPolicies {
-  id               String   @id
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  policyKey        String   @unique
-  status           String   @default("NEEDS_REVIEW")
+  id               String    @id
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  policyKey        String    @unique
+  status           String    @default("NEEDS_REVIEW")
   reviewedByUserId String?
   reviewedAt       DateTime?
   expiresAt        DateTime?
@@ -1976,20 +2055,20 @@ model AffiliateSourceDomainPolicies {
 }
 
 model AffiliateSourceMappingJobs {
-  id            String   @id
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  intakeId      String
-  status        String   @default("QUEUED")
-  claimedAt     DateTime?
+  id             String    @id
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  intakeId       String
+  status         String    @default("QUEUED")
+  claimedAt      DateTime?
   leaseExpiresAt DateTime?
-  workerId      String?
-  attemptCount  Int      @default(0)
-  branch        String?
-  commit        String?
-  resultSummary Json?
-  errorMessage  String?
-  finishedAt    DateTime?
+  workerId       String?
+  attemptCount   Int       @default(0)
+  branch         String?
+  commit         String?
+  resultSummary  Json?
+  errorMessage   String?
+  finishedAt     DateTime?
 
   @@index([status, createdAt])
   @@index([intakeId, createdAt])
@@ -2084,11 +2163,11 @@ model OrganizationTags {
 }
 
 model OrganizationTagAssignments {
-  id                 String   @id
-  createdAt          DateTime @default(now())
-  organizationId     String
-  tagId              String
-  tagNameSnapshot    String
+  id              String   @id
+  createdAt       DateTime @default(now())
+  organizationId  String
+  tagId           String
+  tagNameSnapshot String
 
   @@unique([organizationId, tagId])
   @@index([organizationId])
@@ -2416,10 +2495,10 @@ model Events {
   officialSchedulingMode        EventsOfficialSchedulingModeEnum @default(SCHEDULE)
   doTeamsOfficiate              Boolean?
   teamOfficialsMaySwap          Boolean?
-  teamCheckInMode               String                            @default("OFF")
-  teamCheckInOpenMinutesBefore  Int                               @default(60)
-  allowMatchRosterEdits         Boolean                           @default(false)
-  allowTemporaryMatchPlayers    Boolean                           @default(false)
+  teamCheckInMode               String                           @default("OFF")
+  teamCheckInOpenMinutesBefore  Int                              @default(60)
+  allowMatchRosterEdits         Boolean                          @default(false)
+  allowTemporaryMatchPlayers    Boolean                          @default(false)
   officialPositions             Json?
   matchRulesOverride            Json?
   autoCreatePointMatchIncidents Boolean?                         @default(false)
@@ -2443,65 +2522,200 @@ model Events {
 }
 
 model Organizations {
-  id                                String                                    @id
-  createdAt                         DateTime?
-  updatedAt                         DateTime?
-  name                              String
-  location                          String?
-  address                           String?
-  description                       String?
-  logoId                            String?
-  ownerId                           String
-  website                           String?
-  sports                            String[]                                  @default([])
-  enabledFeatures                   OrganizationFeatureEnum[]                 @default([EVENT_MANAGEMENT])
-  status                            OrganizationsStatusEnum                   @default(LISTED)
-  hasStripeAccount                  Boolean?
-  verificationStatus                OrganizationsVerificationStatusEnum       @default(UNVERIFIED)
-  verifiedAt                        DateTime?
-  verificationReviewStatus          OrganizationsVerificationReviewStatusEnum @default(NONE)
-  verificationReviewNotes           String?
-  verificationReviewUpdatedAt       DateTime?
-  coordinates                       Json?
-  productIds                        String[]                                  @default([])
-  publicSlug                        String?                                   @unique
-  publicPageEnabled                 Boolean                                   @default(false)
-  publicWidgetsEnabled              Boolean                                   @default(false)
-  brandPrimaryColor                 String?
-  brandAccentColor                  String?
-  publicHeadline                    String?
-  publicIntroText                   String?
-  embedAllowedDomains               String[]                                  @default([])
-  publicCompletionRedirectUrl       String?
-  taxOrganizationType               String                                    @default("INDIVIDUAL_OR_CLUB")
-  operatesAthleticFacility          Boolean                                   @default(false)
-  defaultEventTaxHandling           String                                    @default("STRIPE_TAX")
-  defaultRentalTaxHandling          String                                    @default("STRIPE_TAX")
-  taxResponsibilityAcceptedAt       DateTime?
-  taxResponsibilityAcceptedByUserId String?
-  taxResponsibilityAgreementVersion String?
+  id                                 String                                    @id
+  createdAt                          DateTime?
+  updatedAt                          DateTime?
+  name                               String
+  location                           String?
+  address                            String?
+  description                        String?
+  logoId                             String?
+  ownerId                            String
+  website                            String?
+  sports                             String[]                                  @default([])
+  enabledFeatures                    OrganizationFeatureEnum[]                 @default([EVENT_MANAGEMENT])
+  status                             OrganizationsStatusEnum                   @default(LISTED)
+  hasStripeAccount                   Boolean?
+  verificationStatus                 OrganizationsVerificationStatusEnum       @default(UNVERIFIED)
+  verifiedAt                         DateTime?
+  verificationReviewStatus           OrganizationsVerificationReviewStatusEnum @default(NONE)
+  verificationReviewNotes            String?
+  verificationReviewUpdatedAt        DateTime?
+  originType                         OrganizationOriginTypeEnum                @default(FIRST_PARTY)
+  ownershipStatus                    OrganizationOwnershipStatusEnum           @default(CLAIMED)
+  claimedAt                          DateTime?
+  claimedByUserId                    String?
+  claimVerificationLevel             OrganizationClaimVerificationLevelEnum    @default(NONE)
+  ownershipVerifiedAt                DateTime?
+  ownershipVerificationLastCheckedAt DateTime?
+  coordinates                        Json?
+  productIds                         String[]                                  @default([])
+  publicSlug                         String?                                   @unique
+  publicPageEnabled                  Boolean                                   @default(false)
+  publicWidgetsEnabled               Boolean                                   @default(false)
+  brandPrimaryColor                  String?
+  brandAccentColor                   String?
+  publicHeadline                     String?
+  publicIntroText                    String?
+  embedAllowedDomains                String[]                                  @default([])
+  publicCompletionRedirectUrl        String?
+  taxOrganizationType                String                                    @default("INDIVIDUAL_OR_CLUB")
+  operatesAthleticFacility           Boolean                                   @default(false)
+  defaultEventTaxHandling            String                                    @default("STRIPE_TAX")
+  defaultRentalTaxHandling           String                                    @default("STRIPE_TAX")
+  taxResponsibilityAcceptedAt        DateTime?
+  taxResponsibilityAcceptedByUserId  String?
+  taxResponsibilityAgreementVersion  String?
 
   @@index([verificationStatus])
   @@index([verificationReviewStatus])
   @@index([status])
+  @@index([originType])
+  @@index([ownershipStatus])
+  @@index([originType, ownershipStatus])
 }
 
 model OrganizationReviews {
-  id              String                       @id
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  organizationId  String
-  reviewerUserId  String
-  rating          Int
-  body            String?
-  status          OrganizationReviewStatusEnum @default(PUBLISHED)
-  hiddenAt        DateTime?
-  hiddenByUserId  String?
+  id             String                       @id
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+  organizationId String
+  reviewerUserId String
+  rating         Int
+  body           String?
+  status         OrganizationReviewStatusEnum @default(PUBLISHED)
+  hiddenAt       DateTime?
+  hiddenByUserId String?
+  hiddenReason   String?
 
   @@unique([organizationId, reviewerUserId])
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, status, createdAt(sort: Desc), id(sort: Desc)], map: "OrganizationReviews_org_status_created_id_idx")
   @@index([reviewerUserId])
+}
+
+model OrganizationDomains {
+  id                String    @id
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  organizationId    String
+  url               String
+  host              String
+  registrableDomain String
+  source            String
+  isPrimary         Boolean   @default(false)
+  isSharedPlatform  Boolean   @default(false)
+  verifiedAt        DateTime?
+  lastCheckedAt     DateTime?
+
+  @@unique([organizationId, host])
+  @@index([organizationId, isPrimary])
+  @@index([registrableDomain])
+}
+
+model OrganizationClaims {
+  id                               String                                     @id
+  createdAt                        DateTime                                   @default(now())
+  updatedAt                        DateTime                                   @updatedAt
+  organizationId                   String
+  claimantUserId                   String
+  requestType                      OrganizationClaimRequestTypeEnum
+  status                           OrganizationClaimStatusEnum                @default(PENDING_VERIFICATION)
+  method                           OrganizationClaimMethodEnum
+  verificationLevel                OrganizationClaimVerificationLevelEnum     @default(NONE)
+  organizationDomainId             String?
+  verificationEmail                String?
+  verificationEmailDomain          String?
+  roleTitle                        String?
+  explanation                      String?
+  publicEvidenceUrl                String?
+  officialContactName              String?
+  officialContactEmail             String?
+  officialContactPhone             String?
+  officialContactUrl               String?
+  submittedAt                      DateTime?
+  expiresAt                        DateTime?
+  decidedAt                        DateTime?
+  decidedByUserId                  String?
+  internalDecisionNotes            String?
+  userDecisionMessage              String?
+  acceptedAt                       DateTime?
+  revokedAt                        DateTime?
+  revokedByUserId                  String?
+  revocationReason                 String?
+  issueReason                      OrganizationOwnershipIssueReasonEnum?
+  requestedOutcome                 OrganizationOwnershipRequestedOutcomeEnum?
+  resolution                       OrganizationOwnershipResolutionEnum?
+  parentRequestId                  String?
+  currentOwnerNotifiedAt           DateTime?
+  currentOwnerResponseDueAt        DateTime?
+  currentOwnerRespondedAt          DateTime?
+  currentOwnerResponse             String?
+  currentOwnerPublicEvidenceUrl    String?
+  credibilityDecidedAt             DateTime?
+  credibilityDecidedByUserId       String?
+  responseExtensionUntil           DateTime?
+  responseExtensionGrantedByUserId String?
+  certifiedAt                      DateTime?
+  currentOwnerApprovedAt           DateTime?
+  currentOwnerApprovedByUserId     String?
+
+  @@index([organizationId, status])
+  @@index([organizationId, requestType, status])
+  @@index([claimantUserId, status])
+  @@index([organizationDomainId])
+  @@index([parentRequestId])
+  @@index([expiresAt])
+}
+
+model OrganizationClaimEvidence {
+  id             String                              @id
+  createdAt      DateTime                            @default(now())
+  updatedAt      DateTime                            @updatedAt
+  claimId        String
+  method         OrganizationClaimMethodEnum
+  status         OrganizationClaimEvidenceStatusEnum @default(PENDING)
+  secretHash     String?
+  challengeValue String?
+  expiresAt      DateTime?
+  verifiedAt     DateTime?
+  lastCheckedAt  DateTime?
+  failureReason  String?
+  metadata       Json?
+
+  @@index([claimId, status])
+  @@index([expiresAt])
+}
+
+model OrganizationClaimEvents {
+  id             String   @id
+  createdAt      DateTime @default(now())
+  organizationId String
+  claimId        String?
+  actorUserId    String?
+  eventType      String
+  metadata       Json?
+
+  @@index([organizationId, createdAt])
+  @@index([claimId, createdAt])
+  @@index([actorUserId])
+}
+
+model OrganizationReviewResponses {
+  id                   String                       @id
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  organizationReviewId String                       @unique
+  organizationId       String
+  responderUserId      String
+  body                 String
+  status               OrganizationReviewStatusEnum @default(PUBLISHED)
+  hiddenAt             DateTime?
+  hiddenByUserId       String?
+  hiddenReason         String?
+
+  @@index([organizationId, status, updatedAt])
+  @@index([responderUserId])
 }
 
 model Products {

@@ -132,6 +132,11 @@ export const ModelName = {
   Events: 'Events',
   Organizations: 'Organizations',
   OrganizationReviews: 'OrganizationReviews',
+  OrganizationDomains: 'OrganizationDomains',
+  OrganizationClaims: 'OrganizationClaims',
+  OrganizationClaimEvidence: 'OrganizationClaimEvidence',
+  OrganizationClaimEvents: 'OrganizationClaimEvents',
+  OrganizationReviewResponses: 'OrganizationReviewResponses',
   Products: 'Products',
   Subscriptions: 'Subscriptions',
   TimeSlots: 'TimeSlots',
@@ -2024,6 +2029,13 @@ export const OrganizationsScalarFieldEnum = {
   verificationReviewStatus: 'verificationReviewStatus',
   verificationReviewNotes: 'verificationReviewNotes',
   verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
+  originType: 'originType',
+  ownershipStatus: 'ownershipStatus',
+  claimedAt: 'claimedAt',
+  claimedByUserId: 'claimedByUserId',
+  claimVerificationLevel: 'claimVerificationLevel',
+  ownershipVerifiedAt: 'ownershipVerifiedAt',
+  ownershipVerificationLastCheckedAt: 'ownershipVerificationLastCheckedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
   publicSlug: 'publicSlug',
@@ -2057,10 +2069,129 @@ export const OrganizationReviewsScalarFieldEnum = {
   body: 'body',
   status: 'status',
   hiddenAt: 'hiddenAt',
-  hiddenByUserId: 'hiddenByUserId'
+  hiddenByUserId: 'hiddenByUserId',
+  hiddenReason: 'hiddenReason'
 } as const
 
 export type OrganizationReviewsScalarFieldEnum = (typeof OrganizationReviewsScalarFieldEnum)[keyof typeof OrganizationReviewsScalarFieldEnum]
+
+
+export const OrganizationDomainsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  url: 'url',
+  host: 'host',
+  registrableDomain: 'registrableDomain',
+  source: 'source',
+  isPrimary: 'isPrimary',
+  isSharedPlatform: 'isSharedPlatform',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt'
+} as const
+
+export type OrganizationDomainsScalarFieldEnum = (typeof OrganizationDomainsScalarFieldEnum)[keyof typeof OrganizationDomainsScalarFieldEnum]
+
+
+export const OrganizationClaimsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  claimantUserId: 'claimantUserId',
+  requestType: 'requestType',
+  status: 'status',
+  method: 'method',
+  verificationLevel: 'verificationLevel',
+  organizationDomainId: 'organizationDomainId',
+  verificationEmail: 'verificationEmail',
+  verificationEmailDomain: 'verificationEmailDomain',
+  roleTitle: 'roleTitle',
+  explanation: 'explanation',
+  publicEvidenceUrl: 'publicEvidenceUrl',
+  officialContactName: 'officialContactName',
+  officialContactEmail: 'officialContactEmail',
+  officialContactPhone: 'officialContactPhone',
+  officialContactUrl: 'officialContactUrl',
+  submittedAt: 'submittedAt',
+  expiresAt: 'expiresAt',
+  decidedAt: 'decidedAt',
+  decidedByUserId: 'decidedByUserId',
+  internalDecisionNotes: 'internalDecisionNotes',
+  userDecisionMessage: 'userDecisionMessage',
+  acceptedAt: 'acceptedAt',
+  revokedAt: 'revokedAt',
+  revokedByUserId: 'revokedByUserId',
+  revocationReason: 'revocationReason',
+  issueReason: 'issueReason',
+  requestedOutcome: 'requestedOutcome',
+  resolution: 'resolution',
+  parentRequestId: 'parentRequestId',
+  currentOwnerNotifiedAt: 'currentOwnerNotifiedAt',
+  currentOwnerResponseDueAt: 'currentOwnerResponseDueAt',
+  currentOwnerRespondedAt: 'currentOwnerRespondedAt',
+  currentOwnerResponse: 'currentOwnerResponse',
+  currentOwnerPublicEvidenceUrl: 'currentOwnerPublicEvidenceUrl',
+  credibilityDecidedAt: 'credibilityDecidedAt',
+  credibilityDecidedByUserId: 'credibilityDecidedByUserId',
+  responseExtensionUntil: 'responseExtensionUntil',
+  responseExtensionGrantedByUserId: 'responseExtensionGrantedByUserId',
+  certifiedAt: 'certifiedAt',
+  currentOwnerApprovedAt: 'currentOwnerApprovedAt',
+  currentOwnerApprovedByUserId: 'currentOwnerApprovedByUserId'
+} as const
+
+export type OrganizationClaimsScalarFieldEnum = (typeof OrganizationClaimsScalarFieldEnum)[keyof typeof OrganizationClaimsScalarFieldEnum]
+
+
+export const OrganizationClaimEvidenceScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  claimId: 'claimId',
+  method: 'method',
+  status: 'status',
+  secretHash: 'secretHash',
+  challengeValue: 'challengeValue',
+  expiresAt: 'expiresAt',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt',
+  failureReason: 'failureReason',
+  metadata: 'metadata'
+} as const
+
+export type OrganizationClaimEvidenceScalarFieldEnum = (typeof OrganizationClaimEvidenceScalarFieldEnum)[keyof typeof OrganizationClaimEvidenceScalarFieldEnum]
+
+
+export const OrganizationClaimEventsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  organizationId: 'organizationId',
+  claimId: 'claimId',
+  actorUserId: 'actorUserId',
+  eventType: 'eventType',
+  metadata: 'metadata'
+} as const
+
+export type OrganizationClaimEventsScalarFieldEnum = (typeof OrganizationClaimEventsScalarFieldEnum)[keyof typeof OrganizationClaimEventsScalarFieldEnum]
+
+
+export const OrganizationReviewResponsesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationReviewId: 'organizationReviewId',
+  organizationId: 'organizationId',
+  responderUserId: 'responderUserId',
+  body: 'body',
+  status: 'status',
+  hiddenAt: 'hiddenAt',
+  hiddenByUserId: 'hiddenByUserId',
+  hiddenReason: 'hiddenReason'
+} as const
+
+export type OrganizationReviewResponsesScalarFieldEnum = (typeof OrganizationReviewResponsesScalarFieldEnum)[keyof typeof OrganizationReviewResponsesScalarFieldEnum]
 
 
 export const ProductsScalarFieldEnum = {

@@ -7,6 +7,7 @@ import { decryptSecret, encryptSecret } from '@/server/integrations/secretCrypto
 import {
   confirmTotpMfaChallenge,
   createAccountDeletionMfaChallenge,
+  createOrganizationClaimMfaChallenge,
   createTotpCodeForTest,
   createWebLoginMfaChallenge,
   encodeBase32,
@@ -116,6 +117,44 @@ describe('authTotpMfa', () => {
         sessionVersion: 2,
         verificationIpHash: 'ip_hash',
         verificationUserAgent: 'jest',
+      }),
+    });
+  });
+
+  it('creates a purpose-scoped organization-claim challenge', async () => {
+    const expiresAt = new Date(systemTime.getTime() + 10 * 60 * 1000);
+    const client = {
+      sensitiveUserData: {
+        findUnique: jest.fn().mockResolvedValue({
+          totpSecretEncrypted: 'encrypted-secret',
+          totpEnabledAt: new Date(systemTime.getTime() - 60_000),
+        }),
+      },
+      authMfaChallenges: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({
+          id: 'mfa_claim_1',
+          expiresAt,
+        }),
+      },
+    };
+
+    await expect(createOrganizationClaimMfaChallenge({
+      userId: 'user_1',
+      sessionVersion: 4,
+      metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
+      client,
+    })).resolves.toEqual({
+      challengeId: 'mfa_claim_1',
+      expiresAt: expiresAt.toISOString(),
+      method: 'totp',
+    });
+
+    expect(client.authMfaChallenges.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user_1',
+        purpose: AuthMfaChallengePurpose.ORGANIZATION_CLAIM,
+        sessionVersion: 4,
       }),
     });
   });

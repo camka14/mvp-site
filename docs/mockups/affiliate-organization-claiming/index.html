@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>BracketIQ — Affiliate organization ownership flows</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@500;600&family=Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700;8..144,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="prototype-shell">
+    <header class="prototype-header">
+      <div class="prototype-brand">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </span>
+        <div>
+          <strong>BracketIQ</strong>
+          <span>Product flow study · July 2026</span>
+        </div>
+      </div>
+      <div class="prototype-title">
+        <p class="kicker">Affiliate ownership system</p>
+        <h1>From public listing to trusted organization</h1>
+      </div>
+      <div class="prototype-summary" aria-label="Prototype summary">
+        <span><strong id="screenCount">0</strong> screens</span>
+        <span><strong>5</strong> flows</span>
+        <span><strong id="edgeCount">0</strong> edge cases</span>
+      </div>
+    </header>
+
+    <section class="flow-board" aria-labelledby="flow-heading">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">Clickable flow chart</p>
+          <h2 id="flow-heading">Every node opens its matching mockup</h2>
+        </div>
+        <div class="flow-legend" aria-label="Flow chart legend">
+          <span><i class="legend-dot entry"></i>Entry</span>
+          <span><i class="legend-dot decision"></i>Decision</span>
+          <span><i class="legend-dot action"></i>User action</span>
+          <span><i class="legend-dot system"></i>System/admin</span>
+          <span><i class="legend-dot complete"></i>Complete</span>
+        </div>
+      </div>
+
+      <div class="flow-lanes">
+        <article class="flow-lane">
+          <div class="flow-lane-title">
+            <span>01</span>
+            <div><strong>Public event</strong><small>What visitors see</small></div>
+          </div>
+          <div class="flow-track">
+            <button class="flow-node entry" data-screen="EV-01"><b>EV-01</b> Unclaimed host</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="CL-00"><b>CL-00</b> Sign-in gate</button>
+          </div>
+          <div class="flow-branches">
+            <button class="flow-node" data-screen="EV-02"><b>EV-02</b> Claimed</button>
+            <button class="flow-node" data-screen="EV-03"><b>EV-03</b> Website verified</button>
+            <button class="flow-node system" data-screen="EV-04"><b>EV-04</b> Under review</button>
+            <button class="flow-node" data-screen="EV-05"><b>EV-05</b> First-party</button>
+          </div>
+        </article>
+
+        <article class="flow-lane">
+          <div class="flow-lane-title">
+            <span>02</span>
+            <div><strong>Create organization</strong><small>Match before form completion</small></div>
+          </div>
+          <div class="flow-track">
+            <button class="flow-node entry" data-screen="CR-01"><b>CR-01</b> Find or create</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node decision" data-screen="CR-02"><b>CR-02</b> Match decision</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="CR-06"><b>CR-06</b> Profile details</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="CR-07"><b>CR-07</b> Review</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node complete" data-screen="CR-09"><b>CR-09</b> Created</button>
+          </div>
+          <div class="flow-branches">
+            <button class="flow-node action" data-screen="CR-02"><b>CR-02</b> Exact unclaimed → claim</button>
+            <button class="flow-node action" data-screen="CR-03"><b>CR-03</b> Exact claimed → ownership</button>
+            <button class="flow-node decision" data-screen="CR-04"><b>CR-04</b> Related → acknowledge</button>
+            <button class="flow-node system" data-screen="CR-05"><b>CR-05</b> Domain conflict → review</button>
+            <button class="flow-node system" data-screen="CR-08"><b>CR-08</b> Server catches race</button>
+          </div>
+        </article>
+
+        <article class="flow-lane">
+          <div class="flow-lane-title">
+            <span>03</span>
+            <div><strong>Initial claim</strong><small>Unclaimed affiliate profile</small></div>
+          </div>
+          <div class="flow-track">
+            <button class="flow-node entry" data-screen="CL-00"><b>CL-00</b> Account gate</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node decision" data-screen="CL-01"><b>CL-01</b> Choose proof</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node system" data-screen="CL-07"><b>CL-07</b> Verification state</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="CL-08"><b>CL-08</b> MFA accept</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node complete" data-screen="CL-09"><b>CL-09</b> Claimed</button>
+          </div>
+          <div class="flow-branches">
+            <button class="flow-node action" data-screen="CL-02"><b>CL-02</b> Work email</button>
+            <button class="flow-node system" data-screen="CL-03"><b>CL-03</b> Email sent</button>
+            <button class="flow-node action" data-screen="CL-04"><b>CL-04</b> DNS proof</button>
+            <button class="flow-node action" data-screen="CL-05"><b>CL-05</b> HTML proof</button>
+            <button class="flow-node action" data-screen="CL-06"><b>CL-06</b> Manual review</button>
+            <button class="flow-node system" data-screen="CL-10"><b>CL-10</b> Expired / rejected</button>
+          </div>
+        </article>
+
+        <article class="flow-lane">
+          <div class="flow-lane-title">
+            <span>04</span>
+            <div><strong>Already claimed</strong><small>Owner-managed staff or ownership change</small></div>
+          </div>
+          <div class="flow-track">
+            <button class="flow-node entry" data-screen="AC-01"><b>AC-01</b> Ownership options</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="TR-01"><b>TR-01</b> Transfer request</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="TR-02"><b>TR-02</b> Owner + MFA</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="TR-03"><b>TR-03</b> Incoming + MFA</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node complete" data-screen="TR-04"><b>TR-04</b> Transferred</button>
+          </div>
+          <div class="flow-track secondary-track">
+            <button class="flow-node entry" data-screen="OW-01"><b>OW-01</b> Owner staff list</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="OW-02"><b>OW-02</b> Add staff member</button>
+            <span class="branch-note">No public staff-access request. The organization owner initiates the invitation.</span>
+          </div>
+        </article>
+
+        <article class="flow-lane dispute-lane">
+          <div class="flow-lane-title">
+            <span>05</span>
+            <div><strong>Ownership dispute</strong><small>No automatic takeover</small></div>
+          </div>
+          <div class="flow-track">
+            <button class="flow-node entry" data-screen="DS-01"><b>DS-01</b> Issue + outcome</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="DS-02"><b>DS-02</b> Proof + evidence</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node action" data-screen="DS-03"><b>DS-03</b> Review + submit</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node system" data-screen="DS-04"><b>DS-04</b> Owner response</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node system" data-screen="DS-05"><b>DS-05</b> Admin review</button>
+            <span class="flow-arrow">→</span>
+            <button class="flow-node complete" data-screen="DS-07"><b>DS-07</b> Resolution</button>
+          </div>
+          <div class="flow-branches">
+            <button class="flow-node system" data-screen="DS-06"><b>DS-06</b> Credible dispute public state</button>
+            <span class="branch-note">Entered from a claimed profile, an exact claimed match, or an expired/denied transfer.</span>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <aside class="screen-index" aria-label="Mockup screen index">
+        <div class="screen-index-header">
+          <p class="kicker">Mockup index</p>
+          <h2>Screen states</h2>
+          <label class="search-box">
+            <span class="sr-only">Search mockups</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.3-4.3m2.3-5.2A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
+            <input id="screenSearch" type="search" placeholder="Search screens">
+          </label>
+          <div class="filter-row" id="flowFilters" aria-label="Filter mockups">
+            <button class="filter-chip active" data-flow="all">All</button>
+            <button class="filter-chip" data-flow="event">Event</button>
+            <button class="filter-chip" data-flow="create">Create</button>
+            <button class="filter-chip" data-flow="claim">Claim</button>
+            <button class="filter-chip" data-flow="access">Ownership</button>
+            <button class="filter-chip" data-flow="dispute">Dispute</button>
+          </div>
+        </div>
+        <nav id="screenList"></nav>
+      </aside>
+
+      <section class="preview-column">
+        <div class="preview-toolbar">
+          <div>
+            <span id="activeScreenId" class="screen-id">EV-01</span>
+            <span id="activeFlowName">Public event</span>
+          </div>
+          <div class="viewport-switch" role="group" aria-label="Preview width">
+            <button class="active" data-viewport="desktop" title="Desktop preview">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>
+              Desktop
+            </button>
+            <button data-viewport="mobile" title="Mobile preview">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+              Mobile
+            </button>
+          </div>
+        </div>
+
+        <div class="preview-stage">
+          <article id="mockupViewport" class="mockup-viewport desktop">
+            <div id="mockupScreen" class="mockup-screen"></div>
+          </article>
+        </div>
+
+        <article class="screen-notes">
+          <div>
+            <p class="kicker">Why this screen exists</p>
+            <h2 id="noteTitle">Public event — unclaimed host</h2>
+          </div>
+          <p id="noteBody"></p>
+          <div id="noteTags" class="note-tags"></div>
+        </article>
+      </section>
+    </main>
+
+    <section class="decision-board" aria-labelledby="dispute-decision-heading">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">Product decision</p>
+          <h2 id="dispute-decision-heading">How a profile dispute is created</h2>
+        </div>
+        <span class="decision-status">Proposed for implementation</span>
+      </div>
+      <div class="decision-grid">
+        <article>
+          <span class="decision-number">1</span>
+          <h3>Enter from context</h3>
+          <p>“Report an ownership issue” appears on a claimed profile, an exact claimed match in organization creation, and an expired or denied transfer request.</p>
+        </article>
+        <article>
+          <span class="decision-number">2</span>
+          <h3>Name the issue and desired outcome</h3>
+          <p>The requester chooses former administrator, unavailable owner, unauthorized claim, duplicate profile, or other—then asks for transfer, correction, or claim review.</p>
+        </article>
+        <article>
+          <span class="decision-number">3</span>
+          <h3>Prove affiliation or control</h3>
+          <p>Use work email, DNS, HTML, or manual evidence. Domain proof strengthens the case but never silently replaces the existing owner.</p>
+        </article>
+        <article>
+          <span class="decision-number">4</span>
+          <h3>Notify and review fairly</h3>
+          <p>The current owner gets a bounded response window. Administrators compare independent evidence and may request information before calling the dispute credible.</p>
+        </article>
+        <article>
+          <span class="decision-number">5</span>
+          <h3>Change public trust only when credible</h3>
+          <p>Filing alone changes nothing. A credible dispute shows “Ownership under review” and removes the ranking boost while the existing owner keeps access unless separately suspended.</p>
+        </article>
+        <article>
+          <span class="decision-number">6</span>
+          <h3>Resolve with an audited action</h3>
+          <p>Uphold the current owner, initiate MFA transfer, revoke to unclaimed, suspend for credible fraud, or merge/correct a duplicate. Both parties receive the outcome.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="coverage-board" aria-labelledby="coverage-heading">
+      <div class="section-heading">
+        <div>
+          <p class="kicker">Post-build audit</p>
+          <h2 id="coverage-heading">Edge-case coverage</h2>
+        </div>
+        <span class="coverage-count" id="coverageCount"></span>
+      </div>
+      <div id="coverageGrid" class="coverage-grid"></div>
+    </section>
+
+    <footer class="prototype-footer">
+      <span>Local product mockup — no production APIs or state changes</span>
+      <a href="../../affiliate-organization-claiming-execplan.md">Open the implementation ExecPlan</a>
+    </footer>
+  </div>
+
+  <script src="./mockups.js"></script>
+</body>
+</html>

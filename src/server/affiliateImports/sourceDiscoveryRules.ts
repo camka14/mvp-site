@@ -7,6 +7,13 @@ import {
   type AffiliateSourceDiscoveryQuery,
 } from './sourceDiscoveryTypes';
 import { canonicalizeAffiliateIntakeUrl } from './sourceIntakeUrlSafety';
+import {
+  INTERMEDIARY_HOSTS,
+  NON_SOURCE_HOSTS,
+  SEARCH_HOSTS,
+  SHARED_TENANT_HOSTS,
+  SOCIAL_HOSTS,
+} from '../organizationClaims/domainPolicy';
 
 export const AFFILIATE_DISCOVERY_AUTO_INTAKE_SCORE = 75;
 export const AFFILIATE_DISCOVERY_REVIEW_SCORE = 45;
@@ -68,58 +75,6 @@ const discoverySportTerm = (sportName: string): string => (
   US_DISCOVERY_SPORT_TERMS[sportName] ?? sportName
 );
 
-const SHARED_TENANT_HOSTS = new Set([
-  'leagueapps.com',
-  'sportsengine.com',
-  'sportsengineprelive.com',
-  'teamsnapsites.com',
-  'bluesombrero.com',
-  'quickscores.com',
-  'facilitron.com',
-]);
-
-const SOCIAL_HOSTS = new Set([
-  'facebook.com', 'instagram.com', 'linkedin.com', 'tiktok.com', 'x.com',
-  'twitter.com', 'youtube.com', 'youtu.be', 'pinterest.com',
-]);
-
-const INTERMEDIARY_HOSTS = new Set([
-  'active.com',
-  'baseballconnected.com',
-  'causeiq.com',
-  'eventbrite.com',
-  'exposureevents.com',
-  'fieldlevel.com',
-  'giggster.com',
-  'goodrun.app',
-  'gotsoccer.com',
-  'imleagues.com',
-  'meetup.com',
-  'mytennislessons.com',
-  'myguidechicago.com',
-  'peerspace.com',
-  'pickleballtournaments.com',
-  'playpass.com',
-  'playnsports.com',
-  'reddit.com',
-  'softballconnected.com',
-  'teachme.to',
-  'teamgenius.com',
-  'tenniscircuits.com',
-  'ticketmaster.com',
-  'tapatalk.com',
-  'ussportscamps.com',
-  'usetopscore.com',
-  'utrsports.net',
-  'wikipedia.org',
-  'yelp.com',
-]);
-
-const SEARCH_HOSTS = new Set(['google.com', 'bing.com', 'duckduckgo.com', 'search.yahoo.com']);
-const NON_SOURCE_HOSTS = new Set([
-  'github.com', 'gitlab.com', 'bitbucket.org',
-  'edgar-online.com', 'sec.gov',
-]);
 const UNSUPPORTED_EXTENSIONS = /\.(?:pdf|docx?|xlsx?|pptx?|zip|rar|7z|dmg|exe)(?:$|\?)/i;
 const CLOSED_OR_ENDED_PATTERN = /\b(?:registration\s+(?:is\s+)?closed|registration\s+ended|event\s+is\s+over|event\s+over|sold\s+out|no\s+longer\s+accepting)\b/i;
 const EDITORIAL_PATTERN = /\b(?:news|press[\s-]+releases?|blog|article|recap|guide|local resources?|top 10|best of)\b/i;
@@ -171,7 +126,7 @@ const containsTerm = (haystack: string, needle: string): boolean => (
   new RegExp(`(?:^|[^a-z0-9])${escapedPattern(needle.toLowerCase())}(?:$|[^a-z0-9])`, 'i').test(haystack)
 );
 
-const hostMatches = (host: string, candidates: Set<string>): boolean => (
+const hostMatches = (host: string, candidates: ReadonlySet<string>): boolean => (
   candidates.has(host) || Array.from(candidates).some((domain) => host.endsWith(`.${domain}`))
 );
 

@@ -43,6 +43,7 @@ export type BoundedPublicResourceOptions = {
   maxRedirects?: number;
   headers?: Record<string, string>;
   resolver?: PublicUrlResolver;
+  validateRedirect?: (from: URL, to: URL) => void;
 };
 
 const parseIpv4 = (value: string): number[] | null => {
@@ -262,7 +263,9 @@ export const fetchBoundedPublicResource = async (
     if (redirectCount === maxRedirects) {
       throw new Error('Source request exceeded the redirect limit.');
     }
-    current = new URL(location, url).toString();
+    const redirectedUrl = new URL(location, url);
+    options.validateRedirect?.(url, redirectedUrl);
+    current = redirectedUrl.toString();
   }
 
   throw new Error('Source request exceeded the redirect limit.');

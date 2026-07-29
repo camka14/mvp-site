@@ -2224,6 +2224,54 @@ describe('affiliate import service', () => {
     }));
   });
 
+  it('does not overwrite an organization profile after it leaves the unclaimed state', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_claimed_club',
+      sourceId: 'source_clubs',
+      listingKind: 'CLUB',
+      title: 'Imported name that must not replace the profile',
+      sportName: 'Volleyball',
+      city: 'Portland, OR',
+      description: 'Imported description that must remain source-only.',
+      officialActionUrl: 'https://registration.example/claimed-club',
+      sourceUrl: 'https://directory.example/clubs',
+      publishedOrganizationId: 'affiliate_org_claimed',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_clubs',
+      name: 'Portland Juniors Clubs',
+      sourceKey: 'portland-juniors-clubs',
+      organizationId: 'source_org',
+    });
+    const claimedOrganization = {
+      id: 'affiliate_org_claimed',
+      name: 'Owner-managed organization name',
+      ownerId: 'claimed_owner',
+      ownershipStatus: 'CLAIMED',
+      originType: 'AFFILIATE_IMPORTED',
+      description: 'Owner-managed description',
+      website: 'https://claimed-club.example',
+      status: 'LISTED',
+      publicPageEnabled: true,
+    };
+    prismaMock.organizations.findUnique.mockResolvedValueOnce(claimedOrganization);
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_claimed_club' });
+
+    const organization = await publishAffiliateCandidate('candidate_claimed_club', {
+      publishedByUserId: 'admin_1',
+    });
+
+    expect(prismaMock.organizations.upsert).not.toHaveBeenCalled();
+    expect(organization).toEqual(claimedOrganization);
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: 'candidate_claimed_club' },
+      data: {
+        status: 'PUBLISHED',
+        publishedOrganizationId: 'affiliate_org_claimed',
+      },
+    });
+  });
+
   it('creates affiliate facilities for org-linked rental scrape candidates', async () => {
     prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
       id: 'source_rentals',

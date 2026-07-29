@@ -124,6 +124,18 @@ export const RATE_LIMIT_POLICIES = {
     windowSeconds: 5 * 60,
     message: 'This outbound redirect was requested too many times. Please wait before trying again.',
   },
+  organizationClaimCreate: {
+    name: 'organization-claim:create',
+    limit: 5,
+    windowSeconds: 60 * 60,
+    message: 'Too many organization ownership requests. Please wait before trying again.',
+  },
+  organizationClaimVerify: {
+    name: 'organization-claim:verify',
+    limit: 20,
+    windowSeconds: 60 * 60,
+    message: 'Too many organization verification attempts. Please wait before trying again.',
+  },
 } satisfies Record<string, RateLimitPolicy>;
 
 const normalizeLimit = (limit: number): number => (

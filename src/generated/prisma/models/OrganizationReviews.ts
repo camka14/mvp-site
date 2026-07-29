@@ -45,6 +45,7 @@ export type OrganizationReviewsMinAggregateOutputType = {
   status: $Enums.OrganizationReviewStatusEnum | null
   hiddenAt: Date | null
   hiddenByUserId: string | null
+  hiddenReason: string | null
 }
 
 export type OrganizationReviewsMaxAggregateOutputType = {
@@ -58,6 +59,7 @@ export type OrganizationReviewsMaxAggregateOutputType = {
   status: $Enums.OrganizationReviewStatusEnum | null
   hiddenAt: Date | null
   hiddenByUserId: string | null
+  hiddenReason: string | null
 }
 
 export type OrganizationReviewsCountAggregateOutputType = {
@@ -71,6 +73,7 @@ export type OrganizationReviewsCountAggregateOutputType = {
   status: number
   hiddenAt: number
   hiddenByUserId: number
+  hiddenReason: number
   _all: number
 }
 
@@ -94,6 +97,7 @@ export type OrganizationReviewsMinAggregateInputType = {
   status?: true
   hiddenAt?: true
   hiddenByUserId?: true
+  hiddenReason?: true
 }
 
 export type OrganizationReviewsMaxAggregateInputType = {
@@ -107,6 +111,7 @@ export type OrganizationReviewsMaxAggregateInputType = {
   status?: true
   hiddenAt?: true
   hiddenByUserId?: true
+  hiddenReason?: true
 }
 
 export type OrganizationReviewsCountAggregateInputType = {
@@ -120,6 +125,7 @@ export type OrganizationReviewsCountAggregateInputType = {
   status?: true
   hiddenAt?: true
   hiddenByUserId?: true
+  hiddenReason?: true
   _all?: true
 }
 
@@ -220,6 +226,7 @@ export type OrganizationReviewsGroupByOutputType = {
   status: $Enums.OrganizationReviewStatusEnum
   hiddenAt: Date | null
   hiddenByUserId: string | null
+  hiddenReason: string | null
   _count: OrganizationReviewsCountAggregateOutputType | null
   _avg: OrganizationReviewsAvgAggregateOutputType | null
   _sum: OrganizationReviewsSumAggregateOutputType | null
@@ -256,6 +263,7 @@ export type OrganizationReviewsWhereInput = {
   status?: Prisma.EnumOrganizationReviewStatusEnumFilter<"OrganizationReviews"> | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.DateTimeNullableFilter<"OrganizationReviews"> | Date | string | null
   hiddenByUserId?: Prisma.StringNullableFilter<"OrganizationReviews"> | string | null
+  hiddenReason?: Prisma.StringNullableFilter<"OrganizationReviews"> | string | null
 }
 
 export type OrganizationReviewsOrderByWithRelationInput = {
@@ -269,6 +277,7 @@ export type OrganizationReviewsOrderByWithRelationInput = {
   status?: Prisma.SortOrder
   hiddenAt?: Prisma.SortOrderInput | Prisma.SortOrder
   hiddenByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  hiddenReason?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type OrganizationReviewsWhereUniqueInput = Prisma.AtLeast<{
@@ -286,6 +295,7 @@ export type OrganizationReviewsWhereUniqueInput = Prisma.AtLeast<{
   status?: Prisma.EnumOrganizationReviewStatusEnumFilter<"OrganizationReviews"> | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.DateTimeNullableFilter<"OrganizationReviews"> | Date | string | null
   hiddenByUserId?: Prisma.StringNullableFilter<"OrganizationReviews"> | string | null
+  hiddenReason?: Prisma.StringNullableFilter<"OrganizationReviews"> | string | null
 }, "id" | "organizationId_reviewerUserId">
 
 export type OrganizationReviewsOrderByWithAggregationInput = {
@@ -299,6 +309,7 @@ export type OrganizationReviewsOrderByWithAggregationInput = {
   status?: Prisma.SortOrder
   hiddenAt?: Prisma.SortOrderInput | Prisma.SortOrder
   hiddenByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  hiddenReason?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.OrganizationReviewsCountOrderByAggregateInput
   _avg?: Prisma.OrganizationReviewsAvgOrderByAggregateInput
   _max?: Prisma.OrganizationReviewsMaxOrderByAggregateInput
@@ -320,6 +331,7 @@ export type OrganizationReviewsScalarWhereWithAggregatesInput = {
   status?: Prisma.EnumOrganizationReviewStatusEnumWithAggregatesFilter<"OrganizationReviews"> | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.DateTimeNullableWithAggregatesFilter<"OrganizationReviews"> | Date | string | null
   hiddenByUserId?: Prisma.StringNullableWithAggregatesFilter<"OrganizationReviews"> | string | null
+  hiddenReason?: Prisma.StringNullableWithAggregatesFilter<"OrganizationReviews"> | string | null
 }
 
 export type OrganizationReviewsCreateInput = {
@@ -333,6 +345,7 @@ export type OrganizationReviewsCreateInput = {
   status?: $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Date | string | null
   hiddenByUserId?: string | null
+  hiddenReason?: string | null
 }
 
 export type OrganizationReviewsUncheckedCreateInput = {
@@ -346,6 +359,7 @@ export type OrganizationReviewsUncheckedCreateInput = {
   status?: $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Date | string | null
   hiddenByUserId?: string | null
+  hiddenReason?: string | null
 }
 
 export type OrganizationReviewsUpdateInput = {
@@ -359,6 +373,7 @@ export type OrganizationReviewsUpdateInput = {
   status?: Prisma.EnumOrganizationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   hiddenByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  hiddenReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationReviewsUncheckedUpdateInput = {
@@ -372,6 +387,7 @@ export type OrganizationReviewsUncheckedUpdateInput = {
   status?: Prisma.EnumOrganizationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   hiddenByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  hiddenReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationReviewsCreateManyInput = {
@@ -385,6 +401,7 @@ export type OrganizationReviewsCreateManyInput = {
   status?: $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Date | string | null
   hiddenByUserId?: string | null
+  hiddenReason?: string | null
 }
 
 export type OrganizationReviewsUpdateManyMutationInput = {
@@ -398,6 +415,7 @@ export type OrganizationReviewsUpdateManyMutationInput = {
   status?: Prisma.EnumOrganizationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   hiddenByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  hiddenReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationReviewsUncheckedUpdateManyInput = {
@@ -411,6 +429,7 @@ export type OrganizationReviewsUncheckedUpdateManyInput = {
   status?: Prisma.EnumOrganizationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationReviewStatusEnum
   hiddenAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   hiddenByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  hiddenReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationReviewsOrganizationIdReviewerUserIdCompoundUniqueInput = {
@@ -429,6 +448,7 @@ export type OrganizationReviewsCountOrderByAggregateInput = {
   status?: Prisma.SortOrder
   hiddenAt?: Prisma.SortOrder
   hiddenByUserId?: Prisma.SortOrder
+  hiddenReason?: Prisma.SortOrder
 }
 
 export type OrganizationReviewsAvgOrderByAggregateInput = {
@@ -446,6 +466,7 @@ export type OrganizationReviewsMaxOrderByAggregateInput = {
   status?: Prisma.SortOrder
   hiddenAt?: Prisma.SortOrder
   hiddenByUserId?: Prisma.SortOrder
+  hiddenReason?: Prisma.SortOrder
 }
 
 export type OrganizationReviewsMinOrderByAggregateInput = {
@@ -459,6 +480,7 @@ export type OrganizationReviewsMinOrderByAggregateInput = {
   status?: Prisma.SortOrder
   hiddenAt?: Prisma.SortOrder
   hiddenByUserId?: Prisma.SortOrder
+  hiddenReason?: Prisma.SortOrder
 }
 
 export type OrganizationReviewsSumOrderByAggregateInput = {
@@ -482,6 +504,7 @@ export type OrganizationReviewsSelect<ExtArgs extends runtime.Types.Extensions.I
   status?: boolean
   hiddenAt?: boolean
   hiddenByUserId?: boolean
+  hiddenReason?: boolean
 }, ExtArgs["result"]["organizationReviews"]>
 
 export type OrganizationReviewsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -495,6 +518,7 @@ export type OrganizationReviewsSelectCreateManyAndReturn<ExtArgs extends runtime
   status?: boolean
   hiddenAt?: boolean
   hiddenByUserId?: boolean
+  hiddenReason?: boolean
 }, ExtArgs["result"]["organizationReviews"]>
 
 export type OrganizationReviewsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -508,6 +532,7 @@ export type OrganizationReviewsSelectUpdateManyAndReturn<ExtArgs extends runtime
   status?: boolean
   hiddenAt?: boolean
   hiddenByUserId?: boolean
+  hiddenReason?: boolean
 }, ExtArgs["result"]["organizationReviews"]>
 
 export type OrganizationReviewsSelectScalar = {
@@ -521,9 +546,10 @@ export type OrganizationReviewsSelectScalar = {
   status?: boolean
   hiddenAt?: boolean
   hiddenByUserId?: boolean
+  hiddenReason?: boolean
 }
 
-export type OrganizationReviewsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "organizationId" | "reviewerUserId" | "rating" | "body" | "status" | "hiddenAt" | "hiddenByUserId", ExtArgs["result"]["organizationReviews"]>
+export type OrganizationReviewsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "organizationId" | "reviewerUserId" | "rating" | "body" | "status" | "hiddenAt" | "hiddenByUserId" | "hiddenReason", ExtArgs["result"]["organizationReviews"]>
 
 export type $OrganizationReviewsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "OrganizationReviews"
@@ -539,6 +565,7 @@ export type $OrganizationReviewsPayload<ExtArgs extends runtime.Types.Extensions
     status: $Enums.OrganizationReviewStatusEnum
     hiddenAt: Date | null
     hiddenByUserId: string | null
+    hiddenReason: string | null
   }, ExtArgs["result"]["organizationReviews"]>
   composites: {}
 }
@@ -972,6 +999,7 @@ export interface OrganizationReviewsFieldRefs {
   readonly status: Prisma.FieldRef<"OrganizationReviews", 'OrganizationReviewStatusEnum'>
   readonly hiddenAt: Prisma.FieldRef<"OrganizationReviews", 'DateTime'>
   readonly hiddenByUserId: Prisma.FieldRef<"OrganizationReviews", 'String'>
+  readonly hiddenReason: Prisma.FieldRef<"OrganizationReviews", 'String'>
 }
 
 

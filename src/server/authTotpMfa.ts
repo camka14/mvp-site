@@ -424,6 +424,44 @@ export const createAccountDeletionMfaChallenge = async ({
   };
 };
 
+/**
+ * Organization ownership changes use a dedicated challenge purpose so a TOTP
+ * check started for login, account deletion, or payments cannot be replayed
+ * to accept a claim.
+ */
+export const createOrganizationClaimMfaChallenge = async ({
+  userId,
+  sessionVersion,
+  metadata,
+  client = prisma,
+}: {
+  userId: string;
+  sessionVersion?: number | null;
+  metadata: RequestMetadata;
+  client?: TotpMfaClient;
+}): Promise<MfaChallengeResponse | null> => {
+  const now = new Date();
+  if (!(await isTotpMfaEnabledForUser(userId, client))) {
+    return null;
+  }
+
+  await consumeExistingChallenges(client, userId, [AuthMfaChallengePurpose.ORGANIZATION_CLAIM], now);
+  const challenge = await createChallenge({
+    client,
+    userId,
+    purpose: AuthMfaChallengePurpose.ORGANIZATION_CLAIM,
+    sessionVersion,
+    metadata,
+    now,
+  });
+
+  return {
+    challengeId: challenge.id,
+    expiresAt: challenge.expiresAt.toISOString(),
+    method: 'totp',
+  };
+};
+
 const loadActiveChallenge = async (
   client: TotpMfaClient,
   challengeId: string,

@@ -465,6 +465,11 @@ export const ModelName = {
   Events: 'Events',
   Organizations: 'Organizations',
   OrganizationReviews: 'OrganizationReviews',
+  OrganizationDomains: 'OrganizationDomains',
+  OrganizationClaims: 'OrganizationClaims',
+  OrganizationClaimEvidence: 'OrganizationClaimEvidence',
+  OrganizationClaimEvents: 'OrganizationClaimEvents',
+  OrganizationReviewResponses: 'OrganizationReviewResponses',
   Products: 'Products',
   Subscriptions: 'Subscriptions',
   TimeSlots: 'TimeSlots',
@@ -498,7 +503,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "organizationDomains" | "organizationClaims" | "organizationClaimEvidence" | "organizationClaimEvents" | "organizationReviewResponses" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -6496,6 +6501,376 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    OrganizationDomains: {
+      payload: Prisma.$OrganizationDomainsPayload<ExtArgs>
+      fields: Prisma.OrganizationDomainsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationDomainsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationDomainsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationDomainsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationDomainsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationDomainsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationDomainsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationDomainsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationDomainsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationDomainsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationDomainsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationDomainsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationDomainsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationDomainsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationDomainsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationDomainsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationDomainsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationDomains>
+        }
+        groupBy: {
+          args: Prisma.OrganizationDomainsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationDomainsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationDomainsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationDomainsCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationClaims: {
+      payload: Prisma.$OrganizationClaimsPayload<ExtArgs>
+      fields: Prisma.OrganizationClaimsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationClaimsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationClaimsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationClaimsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationClaimsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationClaimsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationClaimsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationClaimsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationClaimsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationClaimsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationClaimsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationClaimsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationClaimsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationClaimsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationClaimsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationClaimsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationClaims>
+        }
+        groupBy: {
+          args: Prisma.OrganizationClaimsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationClaimsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationClaimsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationClaimsCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationClaimEvidence: {
+      payload: Prisma.$OrganizationClaimEvidencePayload<ExtArgs>
+      fields: Prisma.OrganizationClaimEvidenceFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationClaimEvidenceFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationClaimEvidenceFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationClaimEvidenceFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationClaimEvidenceFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationClaimEvidenceFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationClaimEvidenceCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationClaimEvidenceCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationClaimEvidenceCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationClaimEvidenceDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>
+        }
+        update: {
+          args: Prisma.OrganizationClaimEvidenceUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationClaimEvidenceDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationClaimEvidenceUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationClaimEvidenceUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationClaimEvidenceUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEvidencePayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationClaimEvidenceAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationClaimEvidence>
+        }
+        groupBy: {
+          args: Prisma.OrganizationClaimEvidenceGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationClaimEvidenceGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationClaimEvidenceCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationClaimEvidenceCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationClaimEvents: {
+      payload: Prisma.$OrganizationClaimEventsPayload<ExtArgs>
+      fields: Prisma.OrganizationClaimEventsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationClaimEventsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationClaimEventsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationClaimEventsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationClaimEventsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationClaimEventsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationClaimEventsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationClaimEventsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationClaimEventsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationClaimEventsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationClaimEventsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationClaimEventsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationClaimEventsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationClaimEventsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationClaimEventsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationClaimEventsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationClaimEventsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationClaimEvents>
+        }
+        groupBy: {
+          args: Prisma.OrganizationClaimEventsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationClaimEventsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationClaimEventsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationClaimEventsCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationReviewResponses: {
+      payload: Prisma.$OrganizationReviewResponsesPayload<ExtArgs>
+      fields: Prisma.OrganizationReviewResponsesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationReviewResponsesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationReviewResponsesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationReviewResponsesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationReviewResponsesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationReviewResponsesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationReviewResponsesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationReviewResponsesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationReviewResponsesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationReviewResponsesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>
+        }
+        update: {
+          args: Prisma.OrganizationReviewResponsesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationReviewResponsesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationReviewResponsesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationReviewResponsesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationReviewResponsesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationReviewResponsesPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationReviewResponsesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationReviewResponses>
+        }
+        groupBy: {
+          args: Prisma.OrganizationReviewResponsesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationReviewResponsesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationReviewResponsesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationReviewResponsesCountAggregateOutputType> | number
+        }
+      }
+    }
     Products: {
       payload: Prisma.$ProductsPayload<ExtArgs>
       fields: Prisma.ProductsFieldRefs
@@ -9723,6 +10098,13 @@ export const OrganizationsScalarFieldEnum = {
   verificationReviewStatus: 'verificationReviewStatus',
   verificationReviewNotes: 'verificationReviewNotes',
   verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
+  originType: 'originType',
+  ownershipStatus: 'ownershipStatus',
+  claimedAt: 'claimedAt',
+  claimedByUserId: 'claimedByUserId',
+  claimVerificationLevel: 'claimVerificationLevel',
+  ownershipVerifiedAt: 'ownershipVerifiedAt',
+  ownershipVerificationLastCheckedAt: 'ownershipVerificationLastCheckedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
   publicSlug: 'publicSlug',
@@ -9756,10 +10138,129 @@ export const OrganizationReviewsScalarFieldEnum = {
   body: 'body',
   status: 'status',
   hiddenAt: 'hiddenAt',
-  hiddenByUserId: 'hiddenByUserId'
+  hiddenByUserId: 'hiddenByUserId',
+  hiddenReason: 'hiddenReason'
 } as const
 
 export type OrganizationReviewsScalarFieldEnum = (typeof OrganizationReviewsScalarFieldEnum)[keyof typeof OrganizationReviewsScalarFieldEnum]
+
+
+export const OrganizationDomainsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  url: 'url',
+  host: 'host',
+  registrableDomain: 'registrableDomain',
+  source: 'source',
+  isPrimary: 'isPrimary',
+  isSharedPlatform: 'isSharedPlatform',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt'
+} as const
+
+export type OrganizationDomainsScalarFieldEnum = (typeof OrganizationDomainsScalarFieldEnum)[keyof typeof OrganizationDomainsScalarFieldEnum]
+
+
+export const OrganizationClaimsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  claimantUserId: 'claimantUserId',
+  requestType: 'requestType',
+  status: 'status',
+  method: 'method',
+  verificationLevel: 'verificationLevel',
+  organizationDomainId: 'organizationDomainId',
+  verificationEmail: 'verificationEmail',
+  verificationEmailDomain: 'verificationEmailDomain',
+  roleTitle: 'roleTitle',
+  explanation: 'explanation',
+  publicEvidenceUrl: 'publicEvidenceUrl',
+  officialContactName: 'officialContactName',
+  officialContactEmail: 'officialContactEmail',
+  officialContactPhone: 'officialContactPhone',
+  officialContactUrl: 'officialContactUrl',
+  submittedAt: 'submittedAt',
+  expiresAt: 'expiresAt',
+  decidedAt: 'decidedAt',
+  decidedByUserId: 'decidedByUserId',
+  internalDecisionNotes: 'internalDecisionNotes',
+  userDecisionMessage: 'userDecisionMessage',
+  acceptedAt: 'acceptedAt',
+  revokedAt: 'revokedAt',
+  revokedByUserId: 'revokedByUserId',
+  revocationReason: 'revocationReason',
+  issueReason: 'issueReason',
+  requestedOutcome: 'requestedOutcome',
+  resolution: 'resolution',
+  parentRequestId: 'parentRequestId',
+  currentOwnerNotifiedAt: 'currentOwnerNotifiedAt',
+  currentOwnerResponseDueAt: 'currentOwnerResponseDueAt',
+  currentOwnerRespondedAt: 'currentOwnerRespondedAt',
+  currentOwnerResponse: 'currentOwnerResponse',
+  currentOwnerPublicEvidenceUrl: 'currentOwnerPublicEvidenceUrl',
+  credibilityDecidedAt: 'credibilityDecidedAt',
+  credibilityDecidedByUserId: 'credibilityDecidedByUserId',
+  responseExtensionUntil: 'responseExtensionUntil',
+  responseExtensionGrantedByUserId: 'responseExtensionGrantedByUserId',
+  certifiedAt: 'certifiedAt',
+  currentOwnerApprovedAt: 'currentOwnerApprovedAt',
+  currentOwnerApprovedByUserId: 'currentOwnerApprovedByUserId'
+} as const
+
+export type OrganizationClaimsScalarFieldEnum = (typeof OrganizationClaimsScalarFieldEnum)[keyof typeof OrganizationClaimsScalarFieldEnum]
+
+
+export const OrganizationClaimEvidenceScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  claimId: 'claimId',
+  method: 'method',
+  status: 'status',
+  secretHash: 'secretHash',
+  challengeValue: 'challengeValue',
+  expiresAt: 'expiresAt',
+  verifiedAt: 'verifiedAt',
+  lastCheckedAt: 'lastCheckedAt',
+  failureReason: 'failureReason',
+  metadata: 'metadata'
+} as const
+
+export type OrganizationClaimEvidenceScalarFieldEnum = (typeof OrganizationClaimEvidenceScalarFieldEnum)[keyof typeof OrganizationClaimEvidenceScalarFieldEnum]
+
+
+export const OrganizationClaimEventsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  organizationId: 'organizationId',
+  claimId: 'claimId',
+  actorUserId: 'actorUserId',
+  eventType: 'eventType',
+  metadata: 'metadata'
+} as const
+
+export type OrganizationClaimEventsScalarFieldEnum = (typeof OrganizationClaimEventsScalarFieldEnum)[keyof typeof OrganizationClaimEventsScalarFieldEnum]
+
+
+export const OrganizationReviewResponsesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationReviewId: 'organizationReviewId',
+  organizationId: 'organizationId',
+  responderUserId: 'responderUserId',
+  body: 'body',
+  status: 'status',
+  hiddenAt: 'hiddenAt',
+  hiddenByUserId: 'hiddenByUserId',
+  hiddenReason: 'hiddenReason'
+} as const
+
+export type OrganizationReviewResponsesScalarFieldEnum = (typeof OrganizationReviewResponsesScalarFieldEnum)[keyof typeof OrganizationReviewResponsesScalarFieldEnum]
 
 
 export const ProductsScalarFieldEnum = {
@@ -11114,6 +11615,48 @@ export type ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$Pris
 
 
 /**
+ * Reference to a field of type 'OrganizationOriginTypeEnum'
+ */
+export type EnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOriginTypeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOriginTypeEnum[]'
+ */
+export type ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOriginTypeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipStatusEnum'
+ */
+export type EnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipStatusEnum[]'
+ */
+export type ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipStatusEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimVerificationLevelEnum'
+ */
+export type EnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimVerificationLevelEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimVerificationLevelEnum[]'
+ */
+export type ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimVerificationLevelEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'OrganizationReviewStatusEnum'
  */
 export type EnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationReviewStatusEnum'>
@@ -11124,6 +11667,104 @@ export type EnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldR
  * Reference to a field of type 'OrganizationReviewStatusEnum[]'
  */
 export type ListEnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationReviewStatusEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimRequestTypeEnum'
+ */
+export type EnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimRequestTypeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimRequestTypeEnum[]'
+ */
+export type ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimRequestTypeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimStatusEnum'
+ */
+export type EnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimStatusEnum[]'
+ */
+export type ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimStatusEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimMethodEnum'
+ */
+export type EnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimMethodEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimMethodEnum[]'
+ */
+export type ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimMethodEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipIssueReasonEnum'
+ */
+export type EnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipIssueReasonEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipIssueReasonEnum[]'
+ */
+export type ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipIssueReasonEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipRequestedOutcomeEnum'
+ */
+export type EnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipRequestedOutcomeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipRequestedOutcomeEnum[]'
+ */
+export type ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipRequestedOutcomeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipResolutionEnum'
+ */
+export type EnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipResolutionEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationOwnershipResolutionEnum[]'
+ */
+export type ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationOwnershipResolutionEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimEvidenceStatusEnum'
+ */
+export type EnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimEvidenceStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationClaimEvidenceStatusEnum[]'
+ */
+export type ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationClaimEvidenceStatusEnum[]'>
 
 
 
@@ -11443,6 +12084,11 @@ export type GlobalOmitConfig = {
   events?: Prisma.EventsOmit
   organizations?: Prisma.OrganizationsOmit
   organizationReviews?: Prisma.OrganizationReviewsOmit
+  organizationDomains?: Prisma.OrganizationDomainsOmit
+  organizationClaims?: Prisma.OrganizationClaimsOmit
+  organizationClaimEvidence?: Prisma.OrganizationClaimEvidenceOmit
+  organizationClaimEvents?: Prisma.OrganizationClaimEventsOmit
+  organizationReviewResponses?: Prisma.OrganizationReviewResponsesOmit
   products?: Prisma.ProductsOmit
   subscriptions?: Prisma.SubscriptionsOmit
   timeSlots?: Prisma.TimeSlotsOmit

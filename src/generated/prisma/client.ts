@@ -445,6 +445,31 @@ export type Organizations = Prisma.OrganizationsModel
  */
 export type OrganizationReviews = Prisma.OrganizationReviewsModel
 /**
+ * Model OrganizationDomains
+ *
+ */
+export type OrganizationDomains = Prisma.OrganizationDomainsModel
+/**
+ * Model OrganizationClaims
+ *
+ */
+export type OrganizationClaims = Prisma.OrganizationClaimsModel
+/**
+ * Model OrganizationClaimEvidence
+ *
+ */
+export type OrganizationClaimEvidence = Prisma.OrganizationClaimEvidenceModel
+/**
+ * Model OrganizationClaimEvents
+ *
+ */
+export type OrganizationClaimEvents = Prisma.OrganizationClaimEventsModel
+/**
+ * Model OrganizationReviewResponses
+ *
+ */
+export type OrganizationReviewResponses = Prisma.OrganizationReviewResponsesModel
+/**
  * Model Products
  *
  */

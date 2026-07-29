@@ -1215,6 +1215,27 @@ export type EnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel = n
   not?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel> | $Enums.OrganizationsVerificationReviewStatusEnum
 }
 
+export type EnumOrganizationOriginTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOriginTypeEnum | Prisma.EnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel> | $Enums.OrganizationOriginTypeEnum
+}
+
+export type EnumOrganizationOwnershipStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipStatusEnum | Prisma.EnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel> | $Enums.OrganizationOwnershipStatusEnum
+}
+
+export type EnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimVerificationLevelEnum | Prisma.EnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel> | $Enums.OrganizationClaimVerificationLevelEnum
+}
+
 export type EnumOrganizationsStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
   equals?: $Enums.OrganizationsStatusEnum | Prisma.EnumOrganizationsStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.OrganizationsStatusEnum[] | Prisma.ListEnumOrganizationsStatusEnumFieldRefInput<$PrismaModel>
@@ -1245,6 +1266,36 @@ export type EnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<$P
   _max?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel>
 }
 
+export type EnumOrganizationOriginTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOriginTypeEnum | Prisma.EnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOriginTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOriginTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationOwnershipStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipStatusEnum | Prisma.EnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOwnershipStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationClaimVerificationLevelEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimVerificationLevelEnum | Prisma.EnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimVerificationLevelEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel>
+}
+
 export type EnumOrganizationReviewStatusEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.OrganizationReviewStatusEnum | Prisma.EnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.OrganizationReviewStatusEnum[] | Prisma.ListEnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel>
@@ -1260,6 +1311,125 @@ export type EnumOrganizationReviewStatusEnumWithAggregatesFilter<$PrismaModel = 
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumOrganizationReviewStatusEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumOrganizationReviewStatusEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimRequestTypeEnum | Prisma.EnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel> | $Enums.OrganizationClaimRequestTypeEnum
+}
+
+export type EnumOrganizationClaimStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimStatusEnum | Prisma.EnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel> | $Enums.OrganizationClaimStatusEnum
+}
+
+export type EnumOrganizationClaimMethodEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimMethodEnum | Prisma.EnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel> | $Enums.OrganizationClaimMethodEnum
+}
+
+export type EnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipIssueReasonEnum | Prisma.EnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel> | $Enums.OrganizationOwnershipIssueReasonEnum | null
+}
+
+export type EnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipRequestedOutcomeEnum | Prisma.EnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel> | $Enums.OrganizationOwnershipRequestedOutcomeEnum | null
+}
+
+export type EnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipResolutionEnum | Prisma.EnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel> | $Enums.OrganizationOwnershipResolutionEnum | null
+}
+
+export type EnumOrganizationClaimRequestTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimRequestTypeEnum | Prisma.EnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimRequestTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationClaimStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimStatusEnum | Prisma.EnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationClaimMethodEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimMethodEnum | Prisma.EnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimMethodEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimMethodEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationOwnershipIssueReasonEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipIssueReasonEnum | Prisma.EnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipIssueReasonEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel>
+}
+
+export type EnumOrganizationOwnershipRequestedOutcomeEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipRequestedOutcomeEnum | Prisma.EnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipRequestedOutcomeEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel>
+}
+
+export type EnumOrganizationOwnershipResolutionEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipResolutionEnum | Prisma.EnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipResolutionEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel>
+}
+
+export type EnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimEvidenceStatusEnum | Prisma.EnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel> | $Enums.OrganizationClaimEvidenceStatusEnum
+}
+
+export type EnumOrganizationClaimEvidenceStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimEvidenceStatusEnum | Prisma.EnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimEvidenceStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel>
 }
 
 export type EnumProductsPeriodEnumFilter<$PrismaModel = never> = {
@@ -2564,6 +2734,27 @@ export type NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaMod
   not?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel> | $Enums.OrganizationsVerificationReviewStatusEnum
 }
 
+export type NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOriginTypeEnum | Prisma.EnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel> | $Enums.OrganizationOriginTypeEnum
+}
+
+export type NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipStatusEnum | Prisma.EnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel> | $Enums.OrganizationOwnershipStatusEnum
+}
+
+export type NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimVerificationLevelEnum | Prisma.EnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel> | $Enums.OrganizationClaimVerificationLevelEnum
+}
+
 export type NestedEnumOrganizationsStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
   equals?: $Enums.OrganizationsStatusEnum | Prisma.EnumOrganizationsStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.OrganizationsStatusEnum[] | Prisma.ListEnumOrganizationsStatusEnumFieldRefInput<$PrismaModel>
@@ -2594,6 +2785,36 @@ export type NestedEnumOrganizationsVerificationReviewStatusEnumWithAggregatesFil
   _max?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel>
 }
 
+export type NestedEnumOrganizationOriginTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOriginTypeEnum | Prisma.EnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOriginTypeEnum[] | Prisma.ListEnumOrganizationOriginTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOriginTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOriginTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOriginTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationOwnershipStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipStatusEnum | Prisma.EnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationOwnershipStatusEnum[] | Prisma.ListEnumOrganizationOwnershipStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationOwnershipStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationClaimVerificationLevelEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimVerificationLevelEnum | Prisma.EnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimVerificationLevelEnum[] | Prisma.ListEnumOrganizationClaimVerificationLevelEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimVerificationLevelEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimVerificationLevelEnumFilter<$PrismaModel>
+}
+
 export type NestedEnumOrganizationReviewStatusEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.OrganizationReviewStatusEnum | Prisma.EnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.OrganizationReviewStatusEnum[] | Prisma.ListEnumOrganizationReviewStatusEnumFieldRefInput<$PrismaModel>
@@ -2609,6 +2830,125 @@ export type NestedEnumOrganizationReviewStatusEnumWithAggregatesFilter<$PrismaMo
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumOrganizationReviewStatusEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumOrganizationReviewStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimRequestTypeEnum | Prisma.EnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel> | $Enums.OrganizationClaimRequestTypeEnum
+}
+
+export type NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimStatusEnum | Prisma.EnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel> | $Enums.OrganizationClaimStatusEnum
+}
+
+export type NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimMethodEnum | Prisma.EnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel> | $Enums.OrganizationClaimMethodEnum
+}
+
+export type NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipIssueReasonEnum | Prisma.EnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel> | $Enums.OrganizationOwnershipIssueReasonEnum | null
+}
+
+export type NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipRequestedOutcomeEnum | Prisma.EnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel> | $Enums.OrganizationOwnershipRequestedOutcomeEnum | null
+}
+
+export type NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipResolutionEnum | Prisma.EnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel> | $Enums.OrganizationOwnershipResolutionEnum | null
+}
+
+export type NestedEnumOrganizationClaimRequestTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimRequestTypeEnum | Prisma.EnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimRequestTypeEnum[] | Prisma.ListEnumOrganizationClaimRequestTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimRequestTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimRequestTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationClaimStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimStatusEnum | Prisma.EnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimStatusEnum[] | Prisma.ListEnumOrganizationClaimStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationClaimMethodEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimMethodEnum | Prisma.EnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimMethodEnum[] | Prisma.ListEnumOrganizationClaimMethodEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimMethodEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimMethodEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimMethodEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationOwnershipIssueReasonEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipIssueReasonEnum | Prisma.EnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipIssueReasonEnum[] | Prisma.ListEnumOrganizationOwnershipIssueReasonEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipIssueReasonEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipIssueReasonEnumNullableFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipRequestedOutcomeEnum | Prisma.EnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipRequestedOutcomeEnum[] | Prisma.ListEnumOrganizationOwnershipRequestedOutcomeEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipRequestedOutcomeEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipRequestedOutcomeEnumNullableFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationOwnershipResolutionEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationOwnershipResolutionEnum | Prisma.EnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.OrganizationOwnershipResolutionEnum[] | Prisma.ListEnumOrganizationOwnershipResolutionEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationOwnershipResolutionEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationOwnershipResolutionEnumNullableFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimEvidenceStatusEnum | Prisma.EnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel> | $Enums.OrganizationClaimEvidenceStatusEnum
+}
+
+export type NestedEnumOrganizationClaimEvidenceStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationClaimEvidenceStatusEnum | Prisma.EnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationClaimEvidenceStatusEnum[] | Prisma.ListEnumOrganizationClaimEvidenceStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationClaimEvidenceStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationClaimEvidenceStatusEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumProductsPeriodEnumFilter<$PrismaModel = never> = {

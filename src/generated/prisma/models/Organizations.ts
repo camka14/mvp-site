@@ -42,6 +42,13 @@ export type OrganizationsMinAggregateOutputType = {
   verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum | null
   verificationReviewNotes: string | null
   verificationReviewUpdatedAt: Date | null
+  originType: $Enums.OrganizationOriginTypeEnum | null
+  ownershipStatus: $Enums.OrganizationOwnershipStatusEnum | null
+  claimedAt: Date | null
+  claimedByUserId: string | null
+  claimVerificationLevel: $Enums.OrganizationClaimVerificationLevelEnum | null
+  ownershipVerifiedAt: Date | null
+  ownershipVerificationLastCheckedAt: Date | null
   publicSlug: string | null
   publicPageEnabled: boolean | null
   publicWidgetsEnabled: boolean | null
@@ -77,6 +84,13 @@ export type OrganizationsMaxAggregateOutputType = {
   verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum | null
   verificationReviewNotes: string | null
   verificationReviewUpdatedAt: Date | null
+  originType: $Enums.OrganizationOriginTypeEnum | null
+  ownershipStatus: $Enums.OrganizationOwnershipStatusEnum | null
+  claimedAt: Date | null
+  claimedByUserId: string | null
+  claimVerificationLevel: $Enums.OrganizationClaimVerificationLevelEnum | null
+  ownershipVerifiedAt: Date | null
+  ownershipVerificationLastCheckedAt: Date | null
   publicSlug: string | null
   publicPageEnabled: boolean | null
   publicWidgetsEnabled: boolean | null
@@ -114,6 +128,13 @@ export type OrganizationsCountAggregateOutputType = {
   verificationReviewStatus: number
   verificationReviewNotes: number
   verificationReviewUpdatedAt: number
+  originType: number
+  ownershipStatus: number
+  claimedAt: number
+  claimedByUserId: number
+  claimVerificationLevel: number
+  ownershipVerifiedAt: number
+  ownershipVerificationLastCheckedAt: number
   coordinates: number
   productIds: number
   publicSlug: number
@@ -154,6 +175,13 @@ export type OrganizationsMinAggregateInputType = {
   verificationReviewStatus?: true
   verificationReviewNotes?: true
   verificationReviewUpdatedAt?: true
+  originType?: true
+  ownershipStatus?: true
+  claimedAt?: true
+  claimedByUserId?: true
+  claimVerificationLevel?: true
+  ownershipVerifiedAt?: true
+  ownershipVerificationLastCheckedAt?: true
   publicSlug?: true
   publicPageEnabled?: true
   publicWidgetsEnabled?: true
@@ -189,6 +217,13 @@ export type OrganizationsMaxAggregateInputType = {
   verificationReviewStatus?: true
   verificationReviewNotes?: true
   verificationReviewUpdatedAt?: true
+  originType?: true
+  ownershipStatus?: true
+  claimedAt?: true
+  claimedByUserId?: true
+  claimVerificationLevel?: true
+  ownershipVerifiedAt?: true
+  ownershipVerificationLastCheckedAt?: true
   publicSlug?: true
   publicPageEnabled?: true
   publicWidgetsEnabled?: true
@@ -226,6 +261,13 @@ export type OrganizationsCountAggregateInputType = {
   verificationReviewStatus?: true
   verificationReviewNotes?: true
   verificationReviewUpdatedAt?: true
+  originType?: true
+  ownershipStatus?: true
+  claimedAt?: true
+  claimedByUserId?: true
+  claimVerificationLevel?: true
+  ownershipVerifiedAt?: true
+  ownershipVerificationLastCheckedAt?: true
   coordinates?: true
   productIds?: true
   publicSlug?: true
@@ -339,6 +381,13 @@ export type OrganizationsGroupByOutputType = {
   verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes: string | null
   verificationReviewUpdatedAt: Date | null
+  originType: $Enums.OrganizationOriginTypeEnum
+  ownershipStatus: $Enums.OrganizationOwnershipStatusEnum
+  claimedAt: Date | null
+  claimedByUserId: string | null
+  claimVerificationLevel: $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt: Date | null
+  ownershipVerificationLastCheckedAt: Date | null
   coordinates: runtime.JsonValue | null
   productIds: string[]
   publicSlug: string | null
@@ -400,6 +449,13 @@ export type OrganizationsWhereInput = {
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.StringNullableFilter<"Organizations"> | string | null
   verificationReviewUpdatedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumFilter<"Organizations"> | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumFilter<"Organizations"> | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  claimedByUserId?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumFilter<"Organizations"> | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   publicSlug?: Prisma.StringNullableFilter<"Organizations"> | string | null
@@ -440,6 +496,13 @@ export type OrganizationsOrderByWithRelationInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrderInput | Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  originType?: Prisma.SortOrder
+  ownershipStatus?: Prisma.SortOrder
+  claimedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  claimedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  claimVerificationLevel?: Prisma.SortOrder
+  ownershipVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  ownershipVerificationLastCheckedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
   productIds?: Prisma.SortOrder
   publicSlug?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -484,6 +547,13 @@ export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.StringNullableFilter<"Organizations"> | string | null
   verificationReviewUpdatedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumFilter<"Organizations"> | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumFilter<"Organizations"> | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  claimedByUserId?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumFilter<"Organizations"> | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   publicPageEnabled?: Prisma.BoolFilter<"Organizations"> | boolean
@@ -523,6 +593,13 @@ export type OrganizationsOrderByWithAggregationInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrderInput | Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  originType?: Prisma.SortOrder
+  ownershipStatus?: Prisma.SortOrder
+  claimedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  claimedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  claimVerificationLevel?: Prisma.SortOrder
+  ownershipVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  ownershipVerificationLastCheckedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
   productIds?: Prisma.SortOrder
   publicSlug?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -569,6 +646,13 @@ export type OrganizationsScalarWhereWithAggregatesInput = {
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
   verificationReviewUpdatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
+  claimedByUserId?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
   coordinates?: Prisma.JsonNullableWithAggregatesFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   publicSlug?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
@@ -609,6 +693,13 @@ export type OrganizationsCreateInput = {
   verificationReviewStatus?: $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: string | null
   verificationReviewUpdatedAt?: Date | string | null
+  originType?: $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Date | string | null
+  claimedByUserId?: string | null
+  claimVerificationLevel?: $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Date | string | null
+  ownershipVerificationLastCheckedAt?: Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   publicSlug?: string | null
@@ -649,6 +740,13 @@ export type OrganizationsUncheckedCreateInput = {
   verificationReviewStatus?: $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: string | null
   verificationReviewUpdatedAt?: Date | string | null
+  originType?: $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Date | string | null
+  claimedByUserId?: string | null
+  claimVerificationLevel?: $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Date | string | null
+  ownershipVerificationLastCheckedAt?: Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   publicSlug?: string | null
@@ -689,6 +787,13 @@ export type OrganizationsUpdateInput = {
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumFieldUpdateOperationsInput | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  claimedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumFieldUpdateOperationsInput | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -729,6 +834,13 @@ export type OrganizationsUncheckedUpdateInput = {
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumFieldUpdateOperationsInput | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  claimedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumFieldUpdateOperationsInput | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -769,6 +881,13 @@ export type OrganizationsCreateManyInput = {
   verificationReviewStatus?: $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: string | null
   verificationReviewUpdatedAt?: Date | string | null
+  originType?: $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Date | string | null
+  claimedByUserId?: string | null
+  claimVerificationLevel?: $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Date | string | null
+  ownershipVerificationLastCheckedAt?: Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   publicSlug?: string | null
@@ -809,6 +928,13 @@ export type OrganizationsUpdateManyMutationInput = {
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumFieldUpdateOperationsInput | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  claimedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumFieldUpdateOperationsInput | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -849,6 +975,13 @@ export type OrganizationsUncheckedUpdateManyInput = {
   verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
   verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originType?: Prisma.EnumOrganizationOriginTypeEnumFieldUpdateOperationsInput | $Enums.OrganizationOriginTypeEnum
+  ownershipStatus?: Prisma.EnumOrganizationOwnershipStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationOwnershipStatusEnum
+  claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  claimedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  claimVerificationLevel?: Prisma.EnumOrganizationClaimVerificationLevelEnumFieldUpdateOperationsInput | $Enums.OrganizationClaimVerificationLevelEnum
+  ownershipVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  ownershipVerificationLastCheckedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -897,6 +1030,13 @@ export type OrganizationsCountOrderByAggregateInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrder
+  originType?: Prisma.SortOrder
+  ownershipStatus?: Prisma.SortOrder
+  claimedAt?: Prisma.SortOrder
+  claimedByUserId?: Prisma.SortOrder
+  claimVerificationLevel?: Prisma.SortOrder
+  ownershipVerifiedAt?: Prisma.SortOrder
+  ownershipVerificationLastCheckedAt?: Prisma.SortOrder
   coordinates?: Prisma.SortOrder
   productIds?: Prisma.SortOrder
   publicSlug?: Prisma.SortOrder
@@ -935,6 +1075,13 @@ export type OrganizationsMaxOrderByAggregateInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrder
+  originType?: Prisma.SortOrder
+  ownershipStatus?: Prisma.SortOrder
+  claimedAt?: Prisma.SortOrder
+  claimedByUserId?: Prisma.SortOrder
+  claimVerificationLevel?: Prisma.SortOrder
+  ownershipVerifiedAt?: Prisma.SortOrder
+  ownershipVerificationLastCheckedAt?: Prisma.SortOrder
   publicSlug?: Prisma.SortOrder
   publicPageEnabled?: Prisma.SortOrder
   publicWidgetsEnabled?: Prisma.SortOrder
@@ -970,6 +1117,13 @@ export type OrganizationsMinOrderByAggregateInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrder
+  originType?: Prisma.SortOrder
+  ownershipStatus?: Prisma.SortOrder
+  claimedAt?: Prisma.SortOrder
+  claimedByUserId?: Prisma.SortOrder
+  claimVerificationLevel?: Prisma.SortOrder
+  ownershipVerifiedAt?: Prisma.SortOrder
+  ownershipVerificationLastCheckedAt?: Prisma.SortOrder
   publicSlug?: Prisma.SortOrder
   publicPageEnabled?: Prisma.SortOrder
   publicWidgetsEnabled?: Prisma.SortOrder
@@ -1025,6 +1179,18 @@ export type EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsIn
   set?: $Enums.OrganizationsVerificationReviewStatusEnum
 }
 
+export type EnumOrganizationOriginTypeEnumFieldUpdateOperationsInput = {
+  set?: $Enums.OrganizationOriginTypeEnum
+}
+
+export type EnumOrganizationOwnershipStatusEnumFieldUpdateOperationsInput = {
+  set?: $Enums.OrganizationOwnershipStatusEnum
+}
+
+export type EnumOrganizationClaimVerificationLevelEnumFieldUpdateOperationsInput = {
+  set?: $Enums.OrganizationClaimVerificationLevelEnum
+}
+
 export type OrganizationsUpdateproductIdsInput = {
   set?: string[]
   push?: string | string[]
@@ -1057,6 +1223,13 @@ export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.Interna
   verificationReviewStatus?: boolean
   verificationReviewNotes?: boolean
   verificationReviewUpdatedAt?: boolean
+  originType?: boolean
+  ownershipStatus?: boolean
+  claimedAt?: boolean
+  claimedByUserId?: boolean
+  claimVerificationLevel?: boolean
+  ownershipVerifiedAt?: boolean
+  ownershipVerificationLastCheckedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   publicSlug?: boolean
@@ -1097,6 +1270,13 @@ export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   verificationReviewStatus?: boolean
   verificationReviewNotes?: boolean
   verificationReviewUpdatedAt?: boolean
+  originType?: boolean
+  ownershipStatus?: boolean
+  claimedAt?: boolean
+  claimedByUserId?: boolean
+  claimVerificationLevel?: boolean
+  ownershipVerifiedAt?: boolean
+  ownershipVerificationLastCheckedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   publicSlug?: boolean
@@ -1137,6 +1317,13 @@ export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   verificationReviewStatus?: boolean
   verificationReviewNotes?: boolean
   verificationReviewUpdatedAt?: boolean
+  originType?: boolean
+  ownershipStatus?: boolean
+  claimedAt?: boolean
+  claimedByUserId?: boolean
+  claimVerificationLevel?: boolean
+  ownershipVerifiedAt?: boolean
+  ownershipVerificationLastCheckedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   publicSlug?: boolean
@@ -1177,6 +1364,13 @@ export type OrganizationsSelectScalar = {
   verificationReviewStatus?: boolean
   verificationReviewNotes?: boolean
   verificationReviewUpdatedAt?: boolean
+  originType?: boolean
+  ownershipStatus?: boolean
+  claimedAt?: boolean
+  claimedByUserId?: boolean
+  claimVerificationLevel?: boolean
+  ownershipVerifiedAt?: boolean
+  ownershipVerificationLastCheckedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   publicSlug?: boolean
@@ -1197,7 +1391,7 @@ export type OrganizationsSelectScalar = {
   taxResponsibilityAgreementVersion?: boolean
 }
 
-export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "website" | "sports" | "enabledFeatures" | "status" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains" | "publicCompletionRedirectUrl" | "taxOrganizationType" | "operatesAthleticFacility" | "defaultEventTaxHandling" | "defaultRentalTaxHandling" | "taxResponsibilityAcceptedAt" | "taxResponsibilityAcceptedByUserId" | "taxResponsibilityAgreementVersion", ExtArgs["result"]["organizations"]>
+export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "website" | "sports" | "enabledFeatures" | "status" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "originType" | "ownershipStatus" | "claimedAt" | "claimedByUserId" | "claimVerificationLevel" | "ownershipVerifiedAt" | "ownershipVerificationLastCheckedAt" | "coordinates" | "productIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains" | "publicCompletionRedirectUrl" | "taxOrganizationType" | "operatesAthleticFacility" | "defaultEventTaxHandling" | "defaultRentalTaxHandling" | "taxResponsibilityAcceptedAt" | "taxResponsibilityAcceptedByUserId" | "taxResponsibilityAgreementVersion", ExtArgs["result"]["organizations"]>
 
 export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Organizations"
@@ -1222,6 +1416,13 @@ export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.Inter
     verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum
     verificationReviewNotes: string | null
     verificationReviewUpdatedAt: Date | null
+    originType: $Enums.OrganizationOriginTypeEnum
+    ownershipStatus: $Enums.OrganizationOwnershipStatusEnum
+    claimedAt: Date | null
+    claimedByUserId: string | null
+    claimVerificationLevel: $Enums.OrganizationClaimVerificationLevelEnum
+    ownershipVerifiedAt: Date | null
+    ownershipVerificationLastCheckedAt: Date | null
     coordinates: runtime.JsonValue | null
     productIds: string[]
     publicSlug: string | null
@@ -1682,6 +1883,13 @@ export interface OrganizationsFieldRefs {
   readonly verificationReviewStatus: Prisma.FieldRef<"Organizations", 'OrganizationsVerificationReviewStatusEnum'>
   readonly verificationReviewNotes: Prisma.FieldRef<"Organizations", 'String'>
   readonly verificationReviewUpdatedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
+  readonly originType: Prisma.FieldRef<"Organizations", 'OrganizationOriginTypeEnum'>
+  readonly ownershipStatus: Prisma.FieldRef<"Organizations", 'OrganizationOwnershipStatusEnum'>
+  readonly claimedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
+  readonly claimedByUserId: Prisma.FieldRef<"Organizations", 'String'>
+  readonly claimVerificationLevel: Prisma.FieldRef<"Organizations", 'OrganizationClaimVerificationLevelEnum'>
+  readonly ownershipVerifiedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
+  readonly ownershipVerificationLastCheckedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
   readonly coordinates: Prisma.FieldRef<"Organizations", 'Json'>
   readonly productIds: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly publicSlug: Prisma.FieldRef<"Organizations", 'String'>

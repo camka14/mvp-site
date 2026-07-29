@@ -4,6 +4,7 @@ export const AuthMfaChallengePurpose = {
   PROFILE_PHONE_SETUP: 'PROFILE_PHONE_SETUP',
   PROFILE_TOTP_SETUP: 'PROFILE_TOTP_SETUP',
   ACCOUNT_DELETION: 'ACCOUNT_DELETION',
+  ORGANIZATION_CLAIM: 'ORGANIZATION_CLAIM',
 } as const;
 
 export type AuthMfaChallengePurpose =

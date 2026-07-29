@@ -573,6 +573,114 @@ export const OrganizationReviewStatusEnum = {
 export type OrganizationReviewStatusEnum = (typeof OrganizationReviewStatusEnum)[keyof typeof OrganizationReviewStatusEnum]
 
 
+export const OrganizationOriginTypeEnum = {
+  FIRST_PARTY: 'FIRST_PARTY',
+  AFFILIATE_IMPORTED: 'AFFILIATE_IMPORTED'
+} as const
+
+export type OrganizationOriginTypeEnum = (typeof OrganizationOriginTypeEnum)[keyof typeof OrganizationOriginTypeEnum]
+
+
+export const OrganizationOwnershipStatusEnum = {
+  UNCLAIMED: 'UNCLAIMED',
+  CLAIM_PENDING: 'CLAIM_PENDING',
+  CLAIMED: 'CLAIMED',
+  REVIEW_REQUIRED: 'REVIEW_REQUIRED',
+  DISPUTED: 'DISPUTED',
+  SUSPENDED: 'SUSPENDED'
+} as const
+
+export type OrganizationOwnershipStatusEnum = (typeof OrganizationOwnershipStatusEnum)[keyof typeof OrganizationOwnershipStatusEnum]
+
+
+export const OrganizationClaimStatusEnum = {
+  PENDING_VERIFICATION: 'PENDING_VERIFICATION',
+  PENDING_MANUAL_REVIEW: 'PENDING_MANUAL_REVIEW',
+  APPROVED_PENDING_ACCEPTANCE: 'APPROVED_PENDING_ACCEPTANCE',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  CANCELLED: 'CANCELLED',
+  DISPUTED: 'DISPUTED',
+  REVOKED: 'REVOKED',
+  EXPIRED: 'EXPIRED'
+} as const
+
+export type OrganizationClaimStatusEnum = (typeof OrganizationClaimStatusEnum)[keyof typeof OrganizationClaimStatusEnum]
+
+
+export const OrganizationClaimMethodEnum = {
+  DOMAIN_EMAIL: 'DOMAIN_EMAIL',
+  DNS_TXT: 'DNS_TXT',
+  HTML_META: 'HTML_META',
+  MANUAL_REVIEW: 'MANUAL_REVIEW',
+  LEGACY_OWNER: 'LEGACY_OWNER'
+} as const
+
+export type OrganizationClaimMethodEnum = (typeof OrganizationClaimMethodEnum)[keyof typeof OrganizationClaimMethodEnum]
+
+
+export const OrganizationClaimRequestTypeEnum = {
+  INITIAL_CLAIM: 'INITIAL_CLAIM',
+  OWNERSHIP_TRANSFER: 'OWNERSHIP_TRANSFER',
+  OWNERSHIP_DISPUTE: 'OWNERSHIP_DISPUTE',
+  DUPLICATE_PROFILE_REVIEW: 'DUPLICATE_PROFILE_REVIEW'
+} as const
+
+export type OrganizationClaimRequestTypeEnum = (typeof OrganizationClaimRequestTypeEnum)[keyof typeof OrganizationClaimRequestTypeEnum]
+
+
+export const OrganizationOwnershipIssueReasonEnum = {
+  FORMER_REPRESENTATIVE: 'FORMER_REPRESENTATIVE',
+  OWNER_UNAVAILABLE: 'OWNER_UNAVAILABLE',
+  UNAUTHORIZED_OR_MISLEADING_CLAIM: 'UNAUTHORIZED_OR_MISLEADING_CLAIM',
+  DUPLICATE_OR_INCORRECT_PROFILE: 'DUPLICATE_OR_INCORRECT_PROFILE',
+  OTHER: 'OTHER'
+} as const
+
+export type OrganizationOwnershipIssueReasonEnum = (typeof OrganizationOwnershipIssueReasonEnum)[keyof typeof OrganizationOwnershipIssueReasonEnum]
+
+
+export const OrganizationOwnershipRequestedOutcomeEnum = {
+  OWNERSHIP_TRANSFER: 'OWNERSHIP_TRANSFER',
+  REVIEW_OR_REVOKE_CLAIM: 'REVIEW_OR_REVOKE_CLAIM',
+  MERGE_OR_CORRECT_PROFILE: 'MERGE_OR_CORRECT_PROFILE'
+} as const
+
+export type OrganizationOwnershipRequestedOutcomeEnum = (typeof OrganizationOwnershipRequestedOutcomeEnum)[keyof typeof OrganizationOwnershipRequestedOutcomeEnum]
+
+
+export const OrganizationOwnershipResolutionEnum = {
+  UPHOLD_CURRENT_OWNER: 'UPHOLD_CURRENT_OWNER',
+  INITIATE_OWNERSHIP_TRANSFER: 'INITIATE_OWNERSHIP_TRANSFER',
+  REVOKE_TO_UNCLAIMED: 'REVOKE_TO_UNCLAIMED',
+  SUSPEND_OWNER_ACCESS: 'SUSPEND_OWNER_ACCESS',
+  MERGE_OR_CORRECT_PROFILE: 'MERGE_OR_CORRECT_PROFILE'
+} as const
+
+export type OrganizationOwnershipResolutionEnum = (typeof OrganizationOwnershipResolutionEnum)[keyof typeof OrganizationOwnershipResolutionEnum]
+
+
+export const OrganizationClaimEvidenceStatusEnum = {
+  PENDING: 'PENDING',
+  VERIFIED: 'VERIFIED',
+  FAILED: 'FAILED',
+  EXPIRED: 'EXPIRED',
+  REVOKED: 'REVOKED'
+} as const
+
+export type OrganizationClaimEvidenceStatusEnum = (typeof OrganizationClaimEvidenceStatusEnum)[keyof typeof OrganizationClaimEvidenceStatusEnum]
+
+
+export const OrganizationClaimVerificationLevelEnum = {
+  NONE: 'NONE',
+  AFFILIATION: 'AFFILIATION',
+  SITE_CONTROL: 'SITE_CONTROL',
+  MANUAL_REVIEW: 'MANUAL_REVIEW'
+} as const
+
+export type OrganizationClaimVerificationLevelEnum = (typeof OrganizationClaimVerificationLevelEnum)[keyof typeof OrganizationClaimVerificationLevelEnum]
+
+
 export const ModerationReportStatusEnum = {
   OPEN: 'OPEN',
   IN_REVIEW: 'IN_REVIEW',
@@ -596,7 +704,8 @@ export const AuthMfaChallengePurposeEnum = {
   LOGIN_SETUP: 'LOGIN_SETUP',
   PROFILE_PHONE_SETUP: 'PROFILE_PHONE_SETUP',
   PROFILE_TOTP_SETUP: 'PROFILE_TOTP_SETUP',
-  ACCOUNT_DELETION: 'ACCOUNT_DELETION'
+  ACCOUNT_DELETION: 'ACCOUNT_DELETION',
+  ORGANIZATION_CLAIM: 'ORGANIZATION_CLAIM'
 } as const
 
 export type AuthMfaChallengePurposeEnum = (typeof AuthMfaChallengePurposeEnum)[keyof typeof AuthMfaChallengePurposeEnum]
