@@ -19,7 +19,7 @@ describe('affiliate organization ownership classification', () => {
     });
   });
 
-  it('makes an internally owned affiliate organization claimable when provenance is direct', () => {
+  it('makes an affiliate organization claimable when provenance is direct', () => {
     expect(classifyOrganizationClaimState({
       isAffiliate: true,
       ownerAccountExists: true,
@@ -31,11 +31,11 @@ describe('affiliate organization ownership classification', () => {
       ownershipStatus: 'UNCLAIMED',
       legacyClaimMethod: null,
       primaryDomain: 'rivercitysports.org',
-      reasons: ['INTERNAL_ADMIN_PLACEHOLDER_OWNER'],
+      reasons: ['AFFILIATE_PROFILE_DEFAULT_UNCLAIMED'],
     });
   });
 
-  it('preserves a non-admin affiliate owner as a legacy claim', () => {
+  it('does not infer ownership from a preexisting non-admin owner ID', () => {
     expect(classifyOrganizationClaimState({
       isAffiliate: true,
       ownerAccountExists: true,
@@ -44,13 +44,13 @@ describe('affiliate organization ownership classification', () => {
       directRegistrableDomains: ['club.example'],
     })).toEqual(expect.objectContaining({
       originType: 'AFFILIATE_IMPORTED',
-      ownershipStatus: 'CLAIMED',
-      legacyClaimMethod: 'LEGACY_OWNER',
-      reasons: ['LEGACY_EXTERNAL_OWNER'],
+      ownershipStatus: 'UNCLAIMED',
+      legacyClaimMethod: null,
+      reasons: ['AFFILIATE_PROFILE_DEFAULT_UNCLAIMED'],
     }));
   });
 
-  it('requires review when an internal placeholder organization has external managers', () => {
+  it('does not make existing management rows a substitute for claiming', () => {
     expect(classifyOrganizationClaimState({
       isAffiliate: true,
       ownerAccountExists: true,
@@ -58,15 +58,15 @@ describe('affiliate organization ownership classification', () => {
       externalManagementUserIds: ['user_2'],
       directRegistrableDomains: ['rivercitysports.org'],
     })).toEqual(expect.objectContaining({
-      ownershipStatus: 'REVIEW_REQUIRED',
-      reasons: ['INTERNAL_OWNER_WITH_EXTERNAL_MANAGEMENT'],
+      ownershipStatus: 'UNCLAIMED',
+      reasons: ['AFFILIATE_PROFILE_DEFAULT_UNCLAIMED'],
     }));
   });
 
   it.each([
-    [[], 'MISSING_DIRECT_DOMAIN_PROVENANCE'],
-    [['rivercitysports.org', 'different-club.org'], 'CONFLICTING_DIRECT_DOMAINS'],
-  ])('requires review for ambiguous domain provenance', (domains, reason) => {
+    [[]],
+    [['rivercitysports.org', 'different-club.org']],
+  ])('keeps ambiguous domain provenance unclaimed', (domains) => {
     expect(classifyOrganizationClaimState({
       isAffiliate: true,
       ownerAccountExists: true,
@@ -74,13 +74,13 @@ describe('affiliate organization ownership classification', () => {
       externalManagementUserIds: [],
       directRegistrableDomains: domains,
     })).toEqual(expect.objectContaining({
-      ownershipStatus: 'REVIEW_REQUIRED',
+      ownershipStatus: 'UNCLAIMED',
       primaryDomain: null,
-      reasons: [reason],
+      reasons: ['AFFILIATE_PROFILE_DEFAULT_UNCLAIMED'],
     }));
   });
 
-  it('requires review when the recorded owner account is unavailable', () => {
+  it('keeps the profile unclaimed when the recorded owner account is unavailable', () => {
     expect(classifyOrganizationClaimState({
       isAffiliate: true,
       ownerAccountExists: false,
@@ -88,9 +88,9 @@ describe('affiliate organization ownership classification', () => {
       externalManagementUserIds: [],
       directRegistrableDomains: ['rivercitysports.org'],
     })).toEqual(expect.objectContaining({
-      ownershipStatus: 'REVIEW_REQUIRED',
+      ownershipStatus: 'UNCLAIMED',
       primaryDomain: 'rivercitysports.org',
-      reasons: ['OWNER_ACCOUNT_MISSING'],
+      reasons: ['AFFILIATE_PROFILE_DEFAULT_UNCLAIMED'],
     }));
   });
 });

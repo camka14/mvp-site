@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation';
 import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
+import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
+import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 import { absoluteUrl } from '@/server/publicSearchSeo';
 import {
   createRegularPublicEventStructuredData,
@@ -102,6 +104,13 @@ export default async function RegularPublicEventPage({ params }: RegularPublicEv
 
   const primaryHref = data.registrationPath ?? regularOrganizationPath(data.organization.id);
   const primaryLabel = data.registrationPath ? 'Open registration' : 'View organization';
+  const organizationForOwnership = {
+    $id: data.organization.id,
+    name: data.organization.name,
+    originType: data.organization.originType,
+    ownershipStatus: data.organization.ownershipStatus,
+    claimVerificationLevel: data.organization.claimVerificationLevel,
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
@@ -154,11 +163,46 @@ export default async function RegularPublicEventPage({ params }: RegularPublicEv
               className="aspect-video w-full rounded-lg object-cover"
               unoptimized
             />
+            <div className="mt-5 space-y-3">
+              <Link
+                href={regularOrganizationPath(data.organization.id)}
+                className="group block rounded-lg border border-slate-200 bg-white p-3 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <div className="flex items-center gap-3">
+                  <Image
+                    src={data.organization.logoUrl}
+                    alt={`${data.organization.name} logo`}
+                    width={56}
+                    height={56}
+                    className="h-14 w-14 rounded-lg border border-slate-200 object-cover"
+                    unoptimized
+                  />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-500">Hosted by</p>
+                    <p className="truncate text-sm font-semibold text-slate-950">
+                      {data.organization.name}
+                    </p>
+                    <p className="text-xs text-slate-500 group-hover:text-slate-700">
+                      Open organization profile
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
+                  data-testid="public-event-host-ownership-badges"
+                >
+                  <OrganizationOwnershipBadges
+                    organization={organizationForOwnership}
+                    compact
+                  />
+                </div>
+              </Link>
+              <OrganizationClaimCallout
+                organization={organizationForOwnership}
+                compact
+              />
+            </div>
             <dl className="mt-5 space-y-4 text-sm">
-              <div>
-                <dt className="font-semibold text-slate-950">Host</dt>
-                <dd className="mt-1 text-slate-600">{data.organization.name}</dd>
-              </div>
               {data.event.sportName ? (
                 <div>
                   <dt className="font-semibold text-slate-950">Sport</dt>

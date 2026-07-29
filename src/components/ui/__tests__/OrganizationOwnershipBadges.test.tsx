@@ -3,7 +3,9 @@ import { screen } from '@testing-library/react';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 import type { Organization } from '@/types';
 
-import OrganizationClaimCallout from '../OrganizationClaimCallout';
+import OrganizationClaimCallout, {
+  OrganizationClaimButton,
+} from '../OrganizationClaimCallout';
 import OrganizationOwnershipBadges from '../OrganizationOwnershipBadges';
 
 const organization = {
@@ -34,7 +36,7 @@ describe('organization ownership presentation', () => {
     renderWithMantine(
       <>
         <OrganizationOwnershipBadges organization={unclaimed} />
-        <OrganizationClaimCallout organization={unclaimed} />
+        <OrganizationClaimButton organization={unclaimed} />
       </>,
     );
 
@@ -43,6 +45,12 @@ describe('organization ownership presentation', () => {
       'href',
       '/organizations/org-1/claim',
     );
+  });
+
+  it('does not show the profile-header claim action after the profile is claimed', () => {
+    renderWithMantine(<OrganizationClaimButton organization={organization} />);
+
+    expect(screen.queryByRole('link', { name: 'Claim this profile' })).not.toBeInTheDocument();
   });
 
   it('offers a dispute for a claimed profile without offering staff access', () => {

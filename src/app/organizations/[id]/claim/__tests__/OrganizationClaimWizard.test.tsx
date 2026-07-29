@@ -2,6 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { renderWithMantine } from '../../../../../../test/utils/renderWithMantine';
+import { ApiRequestError } from '@/lib/apiClient';
 
 import OrganizationClaimWizard from '../OrganizationClaimWizard';
 
@@ -165,5 +166,158 @@ describe('OrganizationClaimWizard', () => {
 
     expect(await screen.findByRole('heading', { name: 'Request submitted for review' })).toBeInTheDocument();
     expect(screen.getByText(/current owner's access and the public claimed status stay unchanged/i)).toBeInTheDocument();
+  });
+
+  it('does not show transfer or dispute warnings for an initial unclaimed claim', async () => {
+    const user = userEvent.setup();
+    renderWithMantine(<OrganizationClaimWizard />);
+
+    expect(await screen.findByRole('heading', { name: 'River City Sports Club' })).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /Manual review/ }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByRole('heading', { name: 'Manual review' })).toBeInTheDocument();
+    expect(screen.queryByText(/Submitting a transfer or dispute/i)).not.toBeInTheDocument();
+  });
+
+  it('uses transfer-specific verification copy for an already claimed profile', async () => {
+    const user = userEvent.setup();
+    getPresentationMock.mockResolvedValue({
+      ...unclaimedPresentation,
+      ownershipStatus: 'CLAIMED',
+      claimVerificationLevel: 'SITE_CONTROL',
+      claimable: false,
+      ownershipAction: 'REPORT_OWNERSHIP_ISSUE',
+    });
+    renderWithMantine(<OrganizationClaimWizard />);
+
+    await user.click(await screen.findByRole('button', { name: 'Request ownership transfer' }));
+
+    expect(screen.getByText(/Ownership transfers remain under review/i)).toBeInTheDocument();
+    expect(screen.queryByText(/fastest path for an unclaimed profile/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the administrator decision and routes MFA setup into profile security', async () => {
+    const user = userEvent.setup();
+    queryParams = new URLSearchParams('claimId=claim-3');
+    getPresentationMock.mockResolvedValue({
+      ...unclaimedPresentation,
+      ownershipStatus: 'CLAIM_PENDING',
+      claimable: false,
+      ownershipAction: 'VIEW_PENDING_CLAIM',
+      viewerClaimId: 'claim-3',
+    });
+    getClaimMock.mockResolvedValue({
+      ...pendingEmailClaim,
+      id: 'claim-3',
+      method: 'MANUAL_REVIEW',
+      status: 'APPROVED_PENDING_ACCEPTANCE',
+      verificationLevel: 'MANUAL_REVIEW',
+      userDecisionMessage: 'Your public evidence confirms your role. Complete MFA to accept ownership.',
+    });
+    startMfaMock.mockRejectedValue(new ApiRequestError(
+      'Set up an authenticator before accepting organization ownership.',
+      403,
+      {
+        code: 'MFA_SETUP_REQUIRED_FOR_ORGANIZATION_CLAIM',
+        setupUrl: '/profile?tab=security&mfa=organization-claim&returnTo=%2Forganizations%2Forg-1%2Fclaim%3FclaimId%3Dclaim-3',
+      },
+    ));
+    renderWithMantine(<OrganizationClaimWizard />);
+
+    expect(await screen.findByText(/Your public evidence confirms your role/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continue securely' }));
+
+    expect(await screen.findByRole('link', { name: 'Set up authenticator' })).toHaveAttribute(
+      'href',
+      '/profile?tab=security&mfa=organization-claim&returnTo=%2Forganizations%2Forg-1%2Fclaim%3FclaimId%3Dclaim-3',
+    );
+  });
+
+  it('gives nontechnical owners one complete website tag to copy and publish', async () => {
+    queryParams = new URLSearchParams('claimId=claim-html');
+    getPresentationMock.mockResolvedValue({
+      ...unclaimedPresentation,
+      ownershipStatus: 'CLAIM_PENDING',
+      claimable: false,
+      ownershipAction: 'VIEW_PENDING_CLAIM',
+      viewerClaimId: 'claim-html',
+    });
+    getClaimMock.mockResolvedValue({
+      ...pendingEmailClaim,
+      id: 'claim-html',
+      method: 'HTML_META',
+      evidence: [{
+        id: 'evidence-html',
+        method: 'HTML_META',
+        status: 'PENDING',
+        expiresAt: pendingEmailClaim.expiresAt,
+        verifiedAt: null,
+        lastCheckedAt: null,
+        failureReason: null,
+        instructions: {
+          htmlMetaName: 'bracketiq-site-verification',
+          htmlMetaValue: 'bracketiq_example-token',
+        },
+      }],
+    });
+    renderWithMantine(<OrganizationClaimWizard />);
+
+    expect(await screen.findByText(
+      '<meta name="bracketiq-site-verification" content="bracketiq_example-token" />',
+    )).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy complete tag' })).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Copy instructions for your website manager',
+    })).toBeInTheDocument();
+    expect(screen.getByText(/Find Custom code, Header code, or Site verification settings/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'I published the tag — check again',
+    })).toBeInTheDocument();
+    expect(screen.queryByText('Meta name')).not.toBeInTheDocument();
+    expect(screen.queryByText('Meta value')).not.toBeInTheDocument();
+  });
+
+  it('makes every DNS field independently copyable and explains where it goes', async () => {
+    queryParams = new URLSearchParams('claimId=claim-dns');
+    getPresentationMock.mockResolvedValue({
+      ...unclaimedPresentation,
+      ownershipStatus: 'CLAIM_PENDING',
+      claimable: false,
+      ownershipAction: 'VIEW_PENDING_CLAIM',
+      viewerClaimId: 'claim-dns',
+    });
+    getClaimMock.mockResolvedValue({
+      ...pendingEmailClaim,
+      id: 'claim-dns',
+      method: 'DNS_TXT',
+      evidence: [{
+        id: 'evidence-dns',
+        method: 'DNS_TXT',
+        status: 'PENDING',
+        expiresAt: pendingEmailClaim.expiresAt,
+        verifiedAt: null,
+        lastCheckedAt: null,
+        failureReason: null,
+        instructions: {
+          dnsHostname: '_bracketiq-verification.rivercitysports.org',
+          dnsValue: 'bracketiq_example-token',
+        },
+      }],
+    });
+    renderWithMantine(<OrganizationClaimWizard />);
+
+    expect(await screen.findByText('Add this DNS verification record')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy type' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy host' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy value' })).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Copy instructions for your domain manager',
+    })).toBeInTheDocument();
+    expect(screen.getByText('Someone else manages your domain?')).toBeInTheDocument();
+    expect(screen.getByText(/Open DNS settings and choose Add record/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'I added the DNS record — check again',
+    })).toBeInTheDocument();
   });
 });

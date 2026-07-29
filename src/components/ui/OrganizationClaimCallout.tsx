@@ -14,6 +14,30 @@ type OrganizationClaimCalloutProps = {
   compact?: boolean;
 };
 
+type OrganizationClaimButtonProps = Pick<OrganizationClaimCalloutProps, 'organization'>;
+
+export function OrganizationClaimButton({
+  organization,
+}: OrganizationClaimButtonProps) {
+  const presentation = getOrganizationOwnershipPresentation(organization);
+
+  if (presentation.ownershipStatus !== 'UNCLAIMED') {
+    return null;
+  }
+
+  return (
+    <Button
+      component={Link}
+      href={presentation.claimUrl}
+      size="sm"
+      variant="filled"
+      className="shrink-0"
+    >
+      Claim this profile
+    </Button>
+  );
+}
+
 export default function OrganizationClaimCallout({
   organization,
   compact = false,

@@ -231,6 +231,24 @@ type TotpMfaStatus = {
 const PROFILE_BILLING_VISIBLE_ITEM_COUNT = 5;
 const PROFILE_BILLING_LIST_GAP = 12;
 const STRIPE_CONNECT_MFA_REASON = "stripe-connect";
+const ORGANIZATION_CLAIM_MFA_REASON = "organization-claim";
+
+const normalizeProfileReturnPath = (value: string | null): string | null => {
+  const trimmed = value?.trim();
+  if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed, "https://bracket-iq.com");
+    if (parsed.origin !== "https://bracket-iq.com") {
+      return null;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+};
 
 const PROFILE_REFUND_REQUEST_TABS: Array<{
   description: string;
@@ -440,28 +458,42 @@ function ProfilePageContent() {
   >(null);
   const stripeConnectMfaNoticeRequested =
     searchParams.get("mfa") === STRIPE_CONNECT_MFA_REASON;
-  const stripeConnectMfaNotificationShownRef = useRef(false);
+  const organizationClaimMfaNoticeRequested =
+    searchParams.get("mfa") === ORGANIZATION_CLAIM_MFA_REASON;
+  const profileMfaReturnPath = useMemo(
+    () => normalizeProfileReturnPath(searchParams.get("returnTo")),
+    [searchParams],
+  );
+  const mfaSetupNoticeRequested =
+    stripeConnectMfaNoticeRequested || organizationClaimMfaNoticeRequested;
+  const mfaNotificationShownRef = useRef(false);
 
   useEffect(() => {
-    if (searchParams.get("tab") === "security") {
+    if (searchParams.get("tab") === "security" || mfaSetupNoticeRequested) {
       setIsEditing(true);
       setEditTab("security");
-      if (stripeConnectMfaNoticeRequested) {
+      if (mfaSetupNoticeRequested) {
         setShowTotpMfaSection(true);
       }
     }
 
     if (
-      stripeConnectMfaNoticeRequested &&
-      !stripeConnectMfaNotificationShownRef.current
+      mfaSetupNoticeRequested &&
+      !mfaNotificationShownRef.current
     ) {
-      stripeConnectMfaNotificationShownRef.current = true;
+      mfaNotificationShownRef.current = true;
       notifications.show({
         color: "yellow",
-        message: "Enable 2FA with an authenticator app before creating a Stripe account.",
+        message: organizationClaimMfaNoticeRequested
+          ? "Enable an authenticator app before accepting organization ownership."
+          : "Enable 2FA with an authenticator app before creating a Stripe account.",
       });
     }
-  }, [searchParams, stripeConnectMfaNoticeRequested]);
+  }, [
+    mfaSetupNoticeRequested,
+    organizationClaimMfaNoticeRequested,
+    searchParams,
+  ]);
 
   // Profile form data
   const [profileData, setProfileData] = useState({
@@ -1419,8 +1451,13 @@ function ProfilePageContent() {
       setShowTotpMfaSection(false);
       notifications.show({
         color: "green",
-        message: "Authenticator updated.",
+        message: organizationClaimMfaNoticeRequested
+          ? "Authenticator updated. Returning to your ownership request."
+          : "Authenticator updated.",
       });
+      if (organizationClaimMfaNoticeRequested && profileMfaReturnPath) {
+        router.push(profileMfaReturnPath);
+      }
     } catch (error: any) {
       const message = error?.message || "Failed to verify authenticator code.";
       setTotpMfaError(message);
@@ -5026,7 +5063,27 @@ function ProfilePageContent() {
             </Button>
           </Group>
 
-          {stripeConnectMfaNoticeRequested && !totpMfaStatus?.authenticatorEnabled ? (
+          {organizationClaimMfaNoticeRequested ? (
+            <Alert color="yellow" mb="sm" variant="light">
+              <Stack gap="sm">
+                <Text size="sm">
+                  {totpMfaStatus?.authenticatorEnabled
+                    ? "Your authenticator app is enabled. Return to the ownership request to complete its final security check."
+                    : "Enable an authenticator app before accepting organization ownership. After verification, BracketIQ will return you to the request."}
+                </Text>
+                {totpMfaStatus?.authenticatorEnabled && profileMfaReturnPath ? (
+                  <Button
+                    size="xs"
+                    variant="light"
+                    onClick={() => router.push(profileMfaReturnPath)}
+                    w="fit-content"
+                  >
+                    Return to ownership request
+                  </Button>
+                ) : null}
+              </Stack>
+            </Alert>
+          ) : stripeConnectMfaNoticeRequested && !totpMfaStatus?.authenticatorEnabled ? (
             <Alert color="yellow" mb="sm" variant="light">
               Enable 2FA with an authenticator app before creating a Stripe account. After verification, return to the organization and connect Stripe again.
             </Alert>

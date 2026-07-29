@@ -1,5 +1,7 @@
 /**
  * Classifies organization ownership without mutating by default.
+ * Existing affiliate-imported profiles initialize as unclaimed; historical
+ * owner and staff IDs are reported for context but are not treated as claims.
  *
  * Usage:
  *   npm run affiliate:org-claims:audit

@@ -10,7 +10,9 @@ import {
   Button,
   Checkbox,
   Container,
+  CopyButton,
   Group,
+  List,
   Loader,
   Paper,
   Radio,
@@ -25,6 +27,7 @@ import {
 import {
   CheckCircle2,
   ClipboardCheck,
+  Copy,
   FileCode2,
   Mail,
   RefreshCw,
@@ -100,6 +103,18 @@ const requestTypeTitle = (requestType: OrganizationClaimRequestType): string => 
   if (requestType === 'OWNERSHIP_DISPUTE') return 'Report an ownership issue';
   if (requestType === 'DUPLICATE_PROFILE_REVIEW') return 'Request a duplicate profile review';
   return 'Claim this organization';
+};
+
+const verificationMethodIntroduction = (
+  requestType: OrganizationClaimRequestType,
+): string => {
+  if (requestType === 'OWNERSHIP_TRANSFER') {
+    return 'Choose the strongest verification method available. Ownership transfers remain under review until the current ownership and your evidence are resolved.';
+  }
+  if (requestType === 'OWNERSHIP_DISPUTE') {
+    return 'Choose the strongest verification method available. Website or domain control can strengthen the ownership issue you submit for review.';
+  }
+  return 'Choose the strongest verification method you can complete. Website or domain control usually provides the fastest verification.';
 };
 
 const methodIcon = (method: OrganizationClaimMethod) => {
@@ -449,7 +464,7 @@ export default function OrganizationClaimWizard() {
                 <div>
                   <Title order={2} size="h3">{requestTypeTitle(requestType)}</Title>
                   <Text c="dimmed">
-                    Choose the strongest verification method you can complete. Website control is the fastest path for an unclaimed profile.
+                    {verificationMethodIntroduction(requestType)}
                   </Text>
                 </div>
                 <Radio.Group
@@ -587,9 +602,11 @@ export default function OrganizationClaimWizard() {
                   </>
                 ) : null}
 
-                <Alert color="gray">
-                  Submitting a transfer or dispute does not immediately change the current owner&apos;s access or the public claimed status.
-                </Alert>
+                {requestType !== 'INITIAL_CLAIM' ? (
+                  <Alert color="gray">
+                    Submitting a transfer or dispute does not immediately change the current owner&apos;s access or the public claimed status.
+                  </Alert>
+                ) : null}
                 <Group justify="space-between">
                   <Button variant="default" onClick={() => setMethod(null)}>Back</Button>
                   <Button type="submit" loading={saving}>
@@ -661,6 +678,11 @@ function ClaimStatusPanel({
           <Text c="dimmed">
             A final authenticator check protects the organization before ownership and management access change.
           </Text>
+          {claim.userDecisionMessage ? (
+            <Alert color="blue" title="Administrator decision">
+              {claim.userDecisionMessage}
+            </Alert>
+          ) : null}
           {mfaSetupUrl ? (
             <Button component={Link} href={mfaSetupUrl} w="fit-content">Set up authenticator</Button>
           ) : mfaChallengeId ? (
@@ -703,27 +725,23 @@ function ClaimStatusPanel({
             </Text>
           ) : null}
           {claim.method === 'DNS_TXT' ? (
-            <VerificationInstruction
-              title="Add this DNS TXT record"
-              rows={[
-                ['Host', instructions.dnsHostname],
-                ['Value', instructions.dnsValue],
-              ]}
+            <DnsVerificationInstruction
+              hostname={instructions.dnsHostname}
+              value={instructions.dnsValue}
             />
           ) : null}
           {claim.method === 'HTML_META' ? (
-            <VerificationInstruction
-              title="Add this tag to the homepage head"
-              rows={[
-                ['Meta name', instructions.htmlMetaName],
-                ['Meta value', instructions.htmlMetaValue],
-              ]}
+            <WebsiteMetaVerificationInstruction
+              metaName={instructions.htmlMetaName}
+              metaValue={instructions.htmlMetaValue}
             />
           ) : null}
           <Group>
             {claim.method === 'DNS_TXT' || claim.method === 'HTML_META' ? (
               <Button onClick={onVerify} loading={saving} leftSection={<ShieldCheck size={16} />}>
-                Recheck verification
+                {claim.method === 'DNS_TXT'
+                  ? 'I added the DNS record — check again'
+                  : 'I published the tag — check again'}
               </Button>
             ) : (
               <Button onClick={onRefresh} loading={saving} leftSection={<RefreshCw size={16} />}>
@@ -785,23 +803,189 @@ function ClaimStatusPanel({
   );
 }
 
-function VerificationInstruction({
-  title,
-  rows,
+function CopyVerificationValue({
+  label,
+  value,
+  copyLabel,
 }: {
-  title: string;
-  rows: Array<[string, string | undefined]>;
+  label: string;
+  value: string | undefined;
+  copyLabel: string;
+}) {
+  const resolvedValue = value || '';
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <Text size="xs" fw={700} c="dimmed">{label}</Text>
+      <Text
+        component="code"
+        ff="monospace"
+        className="mt-1 block break-all text-sm text-slate-950"
+      >
+        {resolvedValue || 'Loading verification value…'}
+      </Text>
+      <CopyButton value={resolvedValue} timeout={2000}>
+        {({ copied, copy }) => (
+          <Button
+            mt="sm"
+            size="xs"
+            variant="light"
+            onClick={copy}
+            disabled={!resolvedValue}
+            leftSection={copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+          >
+            {copied ? 'Copied' : copyLabel}
+          </Button>
+        )}
+      </CopyButton>
+    </div>
+  );
+}
+
+function CopyManagerInstructions({
+  value,
+  subject,
+  question,
+}: {
+  value: string;
+  subject: string;
+  question: string;
 }) {
   return (
+    <div className="rounded-md border border-blue-200 bg-blue-50 p-3">
+      <Text fw={700} size="sm">{question}</Text>
+      <Text size="sm" c="dimmed" mt={4}>
+        Copy a ready-to-send message with the exact technical instructions.
+      </Text>
+      <CopyButton value={value} timeout={2000}>
+        {({ copied, copy }) => (
+          <Button
+            mt="sm"
+            size="xs"
+            variant="light"
+            onClick={copy}
+            leftSection={copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+          >
+            {copied ? 'Instructions copied' : `Copy instructions for ${subject}`}
+          </Button>
+        )}
+      </CopyButton>
+    </div>
+  );
+}
+
+function WebsiteMetaVerificationInstruction({
+  metaName,
+  metaValue,
+}: {
+  metaName: string | undefined;
+  metaValue: string | undefined;
+}) {
+  const tag = metaName && metaValue
+    ? `<meta name="${metaName}" content="${metaValue}" />`
+    : undefined;
+  const managerMessage = [
+    'Please help me verify our website for BracketIQ.',
+    '',
+    'Add this exact tag inside the <head> section of the website homepage:',
+    tag || '[verification tag is still loading]',
+    '',
+    'Publish the website after adding it. The tag is not visible to visitors.',
+    'Please let me know when it is live so I can finish verification in BracketIQ.',
+  ].join('\n');
+
+  return (
     <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-      <Text fw={700} mb="sm">{title}</Text>
-      <Stack gap="xs">
-        {rows.map(([label, value]) => (
-          <div key={label}>
-            <Text size="xs" c="dimmed">{label}</Text>
-            <Text ff="monospace" className="break-all">{value || 'Loading verification value…'}</Text>
-          </div>
-        ))}
+      <Stack gap="md">
+        <div>
+          <Text fw={700}>Copy and publish this website tag</Text>
+          <Text size="sm" c="dimmed" mt={4}>
+            Paste the complete tag exactly as shown. You do not need to edit the name or value.
+          </Text>
+        </div>
+        <CopyVerificationValue
+          label="Complete tag"
+          value={tag}
+          copyLabel="Copy complete tag"
+        />
+        <div>
+          <Text fw={700} size="sm" mb="xs">What to do</Text>
+          <List type="ordered" size="sm" spacing="xs">
+            <List.Item>
+              Open your website builder or website administration area.
+            </List.Item>
+            <List.Item>
+              Find Custom code, Header code, or Site verification settings.
+            </List.Item>
+            <List.Item>
+              Paste the copied tag into the homepage <code>&lt;head&gt;</code> section.
+            </List.Item>
+            <List.Item>
+              Save and publish the website, then return here and check again.
+            </List.Item>
+          </List>
+          <Text size="xs" c="dimmed" mt="sm">
+            The tag is not visible to website visitors. Keep it in place until BracketIQ confirms verification.
+          </Text>
+        </div>
+        <CopyManagerInstructions
+          value={managerMessage}
+          subject="your website manager"
+          question="Someone else manages your website?"
+        />
+      </Stack>
+    </div>
+  );
+}
+
+function DnsVerificationInstruction({
+  hostname,
+  value,
+}: {
+  hostname: string | undefined;
+  value: string | undefined;
+}) {
+  const managerMessage = [
+    'Please help me verify our domain for BracketIQ.',
+    '',
+    'Add this DNS record without changing or deleting any existing records:',
+    'Type: TXT',
+    `Name/Host: ${hostname || '[hostname is still loading]'}`,
+    `Value/Content: ${value || '[verification value is still loading]'}`,
+    'TTL: Auto or the provider default',
+    '',
+    'Please let me know when the record is saved so I can finish verification in BracketIQ.',
+  ].join('\n');
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+      <Stack gap="md">
+        <div>
+          <Text fw={700}>Add this DNS verification record</Text>
+          <Text size="sm" c="dimmed" mt={4}>
+            Your domain provider will ask for a record type, name or host, and value or content.
+          </Text>
+        </div>
+        <CopyVerificationValue label="Record type" value="TXT" copyLabel="Copy type" />
+        <CopyVerificationValue label="Name / Host" value={hostname} copyLabel="Copy host" />
+        <CopyVerificationValue label="Value / Content" value={value} copyLabel="Copy value" />
+        <div>
+          <Text fw={700} size="sm" mb="xs">What to do</Text>
+          <List type="ordered" size="sm" spacing="xs">
+            <List.Item>Sign in to the company where your domain or DNS is managed.</List.Item>
+            <List.Item>Open DNS settings and choose Add record.</List.Item>
+            <List.Item>Choose TXT and paste the copied host and value into the matching fields.</List.Item>
+            <List.Item>Save the record, then return here and check again.</List.Item>
+          </List>
+          <Text size="xs" c="dimmed" mt="sm">
+            DNS changes can take a few minutes to appear. Leave TTL set to Auto or the provider default.
+          </Text>
+        </div>
+        <CopyManagerInstructions
+          value={managerMessage}
+          subject="your domain manager"
+          question="Someone else manages your domain?"
+        />
       </Stack>
     </div>
   );

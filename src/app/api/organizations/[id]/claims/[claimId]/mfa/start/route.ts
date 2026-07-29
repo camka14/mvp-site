@@ -33,7 +33,7 @@ export async function POST(
       return NextResponse.json({
         error: 'Set up an authenticator before accepting organization ownership.',
         code: 'MFA_SETUP_REQUIRED_FOR_ORGANIZATION_CLAIM',
-        setupUrl: `/profile?mfa=organization-claim&returnTo=${encodeURIComponent(returnTo)}`,
+        setupUrl: `/profile?tab=security&mfa=organization-claim&returnTo=${encodeURIComponent(returnTo)}`,
       }, { status: 403 });
     }
     return NextResponse.json({

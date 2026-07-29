@@ -407,7 +407,9 @@ export default function EventCard({
           </div>
           <span className="discover-details-pill">Details</span>
         </div>
-        {typeof event.organization === 'object' && event.organization ? (
+        {typeof event.organization === 'object'
+          && event.organization
+          && event.organization.ownershipStatus !== 'UNCLAIMED' ? (
           <div
             className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
             data-testid="event-card-ownership-badges"

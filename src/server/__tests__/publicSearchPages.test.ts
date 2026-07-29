@@ -429,6 +429,9 @@ describe('publicSearchPages', () => {
       publicSlug: null,
       publicPageEnabled: false,
       status: 'LISTED',
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
     });
     prismaMock.sports.findUnique.mockResolvedValue({ name: 'Pickleball' });
 
@@ -449,6 +452,11 @@ describe('publicSearchPages', () => {
     expect(seo?.event).toEqual(expect.objectContaining({
       sportName: 'Pickleball',
       imageUrl: '/api/avatars/initials?name=Northside%20Pickleball&size=240&format=png',
+    }));
+    expect(seo?.organization).toEqual(expect.objectContaining({
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimVerificationLevel: 'NONE',
     }));
   });
 

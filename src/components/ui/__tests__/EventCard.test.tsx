@@ -132,6 +132,29 @@ describe('EventCard affiliate schedule display', () => {
     expect(screen.getByText('External registration')).toBeInTheDocument();
   });
 
+  it('does not show the unclaimed-profile badge on event cards', () => {
+    renderWithMantine(
+      <EventCard
+        event={createEvent({
+          organizationId: 'org_unclaimed',
+          organization: {
+            $id: 'org_unclaimed',
+            name: 'Rose City Volleyball',
+            ownershipStatus: 'UNCLAIMED',
+            claimVerificationLevel: 'NONE',
+          } as any,
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Hosted by Rose City Volleyball' })).toHaveAttribute(
+      'href',
+      '/organizations/org_unclaimed',
+    );
+    expect(screen.queryByText('Unclaimed profile')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('event-card-ownership-badges')).not.toBeInTheDocument();
+  });
+
   it('links BracketIQ organization hosts to their organization profile', () => {
     renderWithMantine(
       <EventCard

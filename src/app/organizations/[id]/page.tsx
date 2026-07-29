@@ -7,7 +7,7 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
 import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
-import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
+import { OrganizationClaimButton } from '@/components/ui/OrganizationClaimCallout';
 import { Avatar, Badge, Checkbox, Chip, Container, Group, Title, Text, Button, Paper, ScrollArea, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
@@ -3559,8 +3559,8 @@ function OrganizationDetailContent() {
         ) : (
           <>
             {/* Header */}
-            <Group justify="space-between" align="center" mb="lg">
-              <Group gap="md">
+            <Group justify="space-between" align="flex-start" gap="md" mb="lg">
+              <Group gap="md" className="min-w-0">
                 {logoUrl && (
                   <Image
                     src={logoUrl}
@@ -3597,12 +3597,8 @@ function OrganizationDetailContent() {
                   </Group>
                 </div>
               </Group>
+              <OrganizationClaimButton organization={org} />
             </Group>
-            {org.ownershipStatus === 'UNCLAIMED' ? (
-              <div className="mb-4 max-w-2xl">
-                <OrganizationClaimCallout organization={org} />
-              </div>
-            ) : null}
 
             {/* Tabs */}
             <SegmentedControl

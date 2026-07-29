@@ -1,8 +1,18 @@
 import type { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
 import { buildDiscoverEventsHref, sportNameToSlug, sportSlugToLabel } from '@/lib/discoverFilters';
+import {
+  normalizeOrganizationClaimVerificationLevel,
+  normalizeOrganizationOriginType,
+  normalizeOrganizationOwnershipStatus,
+} from '@/lib/organizationOwnership';
 import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
 import { SITE_URL } from '@/lib/siteUrl';
+import type {
+  OrganizationClaimVerificationLevel,
+  OrganizationOriginType,
+  OrganizationOwnershipStatus,
+} from '@/types';
 import {
   absoluteUrl,
   publicEventPath,
@@ -97,6 +107,9 @@ export type RegularPublicEventSeoData = {
     logoUrl: string;
     publicSlug: string | null;
     publicPageEnabled: boolean;
+    originType: OrganizationOriginType;
+    ownershipStatus: OrganizationOwnershipStatus;
+    claimVerificationLevel: OrganizationClaimVerificationLevel;
   };
   canonicalPath: string;
   registrationPath: string | null;
@@ -1510,6 +1523,9 @@ export const getRegularPublicEventSeoData = async (eventId: string): Promise<Reg
       publicSlug: true,
       publicPageEnabled: true,
       status: true,
+      originType: true,
+      ownershipStatus: true,
+      claimVerificationLevel: true,
     },
   });
   if (!organization || organization.status !== DEFAULT_ORGANIZATION_STATUS) {
@@ -1568,6 +1584,11 @@ export const getRegularPublicEventSeoData = async (eventId: string): Promise<Reg
       logoUrl: organizationLogo,
       publicSlug,
       publicPageEnabled,
+      originType: normalizeOrganizationOriginType(organization.originType),
+      ownershipStatus: normalizeOrganizationOwnershipStatus(organization.ownershipStatus),
+      claimVerificationLevel: normalizeOrganizationClaimVerificationLevel(
+        organization.claimVerificationLevel,
+      ),
     },
     canonicalPath,
     registrationPath: publicSlug && publicPageEnabled ? publicEventPath(publicSlug, id) : null,
