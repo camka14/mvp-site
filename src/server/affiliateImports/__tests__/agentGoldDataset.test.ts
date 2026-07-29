@@ -9,6 +9,7 @@ import {
   renderAffiliateMappingGoldJsonLines,
 } from '../agentGoldDataset';
 import {
+  assertAffiliateGoldCohortProposalIntegrity,
   planAffiliateGoldTestCohort,
   type AffiliateGoldCohortCandidate,
 } from '../agentGoldCohort';
@@ -452,6 +453,29 @@ const cohortCandidate = (
 };
 
 describe('affiliate mapping gold cohort planning', () => {
+  it('verifies a saved proposal independently of the current repository commit', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'historical-commit',
+    });
+
+    expect(() => assertAffiliateGoldCohortProposalIntegrity(
+      JSON.parse(JSON.stringify(proposal)),
+    )).not.toThrow();
+  });
+
+  it('rejects a saved proposal whose selected examples changed after hashing', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'historical-commit',
+    });
+    const changedProposal = JSON.parse(JSON.stringify(proposal));
+    changedProposal.examples[0].sourceKey = 'changed-after-approval';
+
+    expect(() => assertAffiliateGoldCohortProposalIntegrity(changedProposal))
+      .toThrow('Cohort proposal hash mismatch');
+  });
+
   it('selects the same quota-complete 35-example test cohort regardless of input order', () => {
     const candidates = Array.from({ length: 45 }, (_, index) => cohortCandidate(index));
     const first = planAffiliateGoldTestCohort({

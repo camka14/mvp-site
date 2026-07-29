@@ -95,6 +95,73 @@ export type AffiliateGoldCohortProposal = {
   readyToLock: boolean;
 };
 
+const affiliateGoldCohortProposalBody = (
+  proposal: Pick<
+    AffiliateGoldCohortProposal,
+    | 'repositoryCommit'
+    | 'inventorySha256'
+    | 'examples'
+    | 'reservedForLater'
+    | 'lockedDomainAssignments'
+    | 'lockedPlatformFamilies'
+    | 'summary'
+    | 'deficits'
+  >,
+) => ({
+  repositoryCommit: proposal.repositoryCommit,
+  inventorySha256: proposal.inventorySha256,
+  examples: proposal.examples,
+  reservedForLater: proposal.reservedForLater,
+  lockedDomainAssignments: proposal.lockedDomainAssignments,
+  lockedPlatformFamilies: proposal.lockedPlatformFamilies,
+  summary: proposal.summary,
+  deficits: proposal.deficits,
+});
+
+export const assertAffiliateGoldCohortProposalIntegrity = (
+  value: unknown,
+): asserts value is AffiliateGoldCohortProposal => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Cohort proposal must be a JSON object.');
+  }
+  const proposal = value as Partial<AffiliateGoldCohortProposal>;
+  if (
+    proposal.schemaVersion !== 1
+    || typeof proposal.cohortId !== 'string'
+    || typeof proposal.repositoryCommit !== 'string'
+    || typeof proposal.inventorySha256 !== 'string'
+    || typeof proposal.proposalSha256 !== 'string'
+    || !Array.isArray(proposal.examples)
+    || !Array.isArray(proposal.reservedForLater)
+    || !Array.isArray(proposal.lockedDomainAssignments)
+    || !Array.isArray(proposal.lockedPlatformFamilies)
+    || !proposal.summary
+    || typeof proposal.summary !== 'object'
+    || !Array.isArray(proposal.deficits)
+    || typeof proposal.readyToLock !== 'boolean'
+  ) {
+    throw new Error('Cohort proposal is missing required fields.');
+  }
+
+  const expectedSha256 = stableAgentArtifactSha256(
+    affiliateGoldCohortProposalBody(proposal as AffiliateGoldCohortProposal),
+  );
+  if (proposal.proposalSha256 !== expectedSha256) {
+    throw new Error(
+      `Cohort proposal hash mismatch: expected ${expectedSha256}, received ${proposal.proposalSha256}.`,
+    );
+  }
+  const expectedCohortId = `affiliate-mapping-test-${expectedSha256.slice(0, 16)}`;
+  if (proposal.cohortId !== expectedCohortId) {
+    throw new Error(
+      `Cohort proposal id mismatch: expected ${expectedCohortId}, received ${proposal.cohortId}.`,
+    );
+  }
+  if (proposal.readyToLock !== (proposal.deficits.length === 0)) {
+    throw new Error('Cohort proposal readiness does not match its recorded deficits.');
+  }
+};
+
 const TARGET_EXAMPLE_COUNT = 35;
 const MINIMUM_DOMAIN_COUNT = 30;
 
@@ -582,7 +649,7 @@ export const planAffiliateGoldTestCohort = (input: {
   )).sort();
   const inventorySha256 = input.inventorySha256
     ?? stableAgentArtifactSha256(candidates);
-  const proposalBody = {
+  const proposalBody = affiliateGoldCohortProposalBody({
     repositoryCommit,
     inventorySha256,
     examples,
@@ -596,7 +663,7 @@ export const planAffiliateGoldTestCohort = (input: {
     lockedPlatformFamilies,
     summary,
     deficits,
-  };
+  });
   const proposalSha256 = stableAgentArtifactSha256(proposalBody);
   return {
     schemaVersion: 1,

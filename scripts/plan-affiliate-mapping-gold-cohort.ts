@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import type { AffiliateGoldCohortProposal } from '../src/server/affiliateImports/agentGoldCohort';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -13,13 +14,6 @@ const summaryOnly = process.argv.includes('--summary');
 if (lockProposal && !writeOutput) {
   throw new Error('--lock requires --write.');
 }
-if (useLive) {
-  if (!process.env.DATABASE_URL_LIVE?.trim()) {
-    throw new Error('DATABASE_URL_LIVE is required with --live.');
-  }
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
-}
 
 const readOption = (name: string): string | undefined => {
   const equals = process.argv.find((argument) => argument.startsWith(`${name}=`));
@@ -27,6 +21,18 @@ const readOption = (name: string): string | undefined => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1]?.trim() || undefined : undefined;
 };
+
+const savedProposalPath = readOption('--proposal');
+if (savedProposalPath && !lockProposal) {
+  throw new Error('--proposal is only supported with --lock.');
+}
+if (useLive && !savedProposalPath) {
+  if (!process.env.DATABASE_URL_LIVE?.trim()) {
+    throw new Error('DATABASE_URL_LIVE is required with --live.');
+  }
+  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+}
 
 const writeImmutableJson = async (
   filePath: string,
@@ -87,6 +93,49 @@ const writeCohortLock = async (input: {
 };
 
 const main = async () => {
+  if (savedProposalPath) {
+    const goldCohortModule = await import('../src/server/affiliateImports/agentGoldCohort');
+    const assertProposalIntegrity: (
+      value: unknown,
+    ) => asserts value is AffiliateGoldCohortProposal = (
+      goldCohortModule.assertAffiliateGoldCohortProposalIntegrity
+    );
+    const proposalPath = path.resolve(savedProposalPath);
+    const proposal = JSON.parse(await fs.readFile(proposalPath, 'utf8'));
+    assertProposalIntegrity(proposal);
+    if (!proposal.readyToLock) {
+      throw new Error(`Cannot lock a cohort with deficits: ${proposal.deficits.join(' ')}`);
+    }
+    const approvedByUserId = readOption('--approved-by');
+    if (!approvedByUserId) throw new Error('--approved-by is required with --lock.');
+    if (approvedByUserId.includes('@')) {
+      throw new Error('--approved-by must be a stable user id, not a direct email address.');
+    }
+    const lockPath = path.join(path.dirname(proposalPath), 'lock.json');
+    await writeCohortLock({
+      filePath: lockPath,
+      cohortId: proposal.cohortId,
+      proposalSha256: proposal.proposalSha256,
+      repositoryCommit: proposal.repositoryCommit,
+      approvedByUserId,
+      domainAssignments: proposal.lockedDomainAssignments,
+      platformFamilies: proposal.lockedPlatformFamilies,
+    });
+    console.log(JSON.stringify({
+      cohortId: proposal.cohortId,
+      proposalSha256: proposal.proposalSha256,
+      repositoryCommit: proposal.repositoryCommit,
+      environment: 'saved-proposal',
+      dryRun: false,
+      locked: true,
+      proposalPath,
+      lockPath,
+      databaseWrites: 0,
+      publicRequests: 0,
+    }, null, 2));
+    return;
+  }
+
   const environment = useLive ? 'live' : 'local';
   const repositoryCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
     cwd: process.cwd(),
