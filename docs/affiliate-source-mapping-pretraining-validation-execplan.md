@@ -20,7 +20,8 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 20:37Z) Confirmed that the deterministic River City control can generate a scraper, run it twice against digest-pinned disposable PostgreSQL, retain one deduplicated review candidate, publish nothing, and clean up its container and temporary worktrees.
 - [x] (2026-07-29 20:54Z) Recorded this pre-training validation plan with exact data-size targets, evaluation gates, safety boundaries, and handoff conditions.
 - [x] (2026-07-29 21:02Z) Defined and tested the immutable gold-example, gold-release, execution-result, and training-readiness contracts in `agentGoldDataset.ts`; the focused suite passes 5 tests and TypeScript passes.
-- [ ] Produce a deterministic, read-only cohort proposal that selects the 35-example test set before selecting training or validation examples.
+- [x] (2026-07-29 21:12Z) Implemented and tested the deterministic, read-only 35-example test-cohort planner. The actual local proposal covers 35 distinct domains, one TEAM, five CLUB, five RENTAL, 24 EVENT, 12 selector, 22 manual, four detail/JavaScript, five refusal/insufficiency, two custom-extractor review, five evergreen, and 15 scheduled cases with zero deficits, public requests, or database writes.
+- [ ] Review and explicitly lock the proposed test domains and platform families before any live intake capture; the planner intentionally did not self-approve or lock its output.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
@@ -50,6 +51,9 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 - Observation: the existing draft schema protects model output, but a gold release needs additional safeguards that are not properties of a draft alone.
   Evidence: `agentGoldDataset.ts` now rejects test rows marked for retrieval or training, source evidence outside the frozen context, missing list/detail fixtures, past approved scheduled dates, evergreen rows with invented starts, cross-split domains, duplicate ids, and forbidden data before it computes release hashes.
+
+- Observation: reserving a scarce TEAM source id is not enough to prevent test leakage when another source on the same organization domain is selected.
+  Evidence: the first local dry run reserved `rose-city-futsal-community-teams` but selected a different `rosecityfutsal.com` source. The planner now excludes the entire reserved TEAM registrable domain from test, and the regression test asserts that the reserved domain is absent from locked test assignments.
 
 ## Decision Log
 
@@ -89,11 +93,15 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: if an untouched base model passes the complete end-to-end gates with bounded retrieval and deterministic generation, keeping the base avoids adapter maintenance and data risk. Training is justified only when the selected safe base has systematic, learnable errors and the approved corpus is ready.
   Date/Author: 2026-07-29 / Codex
 
+- Decision: reserve scarce TEAM coverage by registrable domain, not merely by source row.
+  Rationale: multiple source rows can share one organization website. Allowing any row from the held-back TEAM domain into test would prevent that domain from supplying the non-test TEAM example later and would create split leakage.
+  Date/Author: 2026-07-29 / Codex
+
 ## Outcomes & Retrospective
 
-Milestone 1 is complete. The repository can now validate a private gold example and deterministically construct a release manifest with stable source-envelope hashes, row hashes, and counts by split, target, implementation mode, evidence origin, domain, and platform family. The readiness builder explicitly counts only `REAL_CAPTURE` rows toward the 80/15/30 minimum, so invented controls cannot make the corpus appear ready.
+Milestones 1 and the tooling/proposal portion of Milestone 2 are complete. The repository can now validate a private gold example, deterministically construct a release manifest, and propose a quota-complete held-out cohort from current historical inventory. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, records exact capture-page requirements, and performs no public request or database write.
 
-The current dataset state remains a read-only prioritization backlog: there are still zero approved real gold examples in a release. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts.
+The current dataset state remains a read-only prioritization backlog: the 35 proposed rows are explicitly `UNAPPROVED`, the cohort has not been locked, and there are still zero approved real gold examples in a release. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts or planner.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -260,7 +268,16 @@ Implement and test the gold contracts and deterministic cohort planner:
 
     npx jest --runInBand \
       src/server/affiliateImports/__tests__/agentGoldDataset.test.ts
-    npm run affiliate:mapping:gold-plan -- --dry-run
+    npm run affiliate:mapping:gold-plan -- --dry-run --summary
+
+To persist the redacted proposal after reviewing the full dry-run output:
+
+    npm run affiliate:mapping:gold-plan -- --write
+
+Only after a human accepts the exact domains and source rows, create the immutable lock with a stable internal user id rather than an email address:
+
+    npm run affiliate:mapping:gold-plan -- \
+      --write --lock --approved-by=<stable-user-id>
 
 The planner must report 35 proposed test examples, at least 30 domains, the required target-kind and mapping-mode coverage, `databaseWrites: 0`, and `publicRequests: 0`. If the available inventory cannot satisfy a quota, it must report the deficit and exit nonzero rather than silently weakening the cohort.
 
@@ -417,6 +434,23 @@ The Milestone 1 focused validation reported:
     Tests: 5 passed, 5 total
     npx tsc --noEmit: exited 0
 
+The Milestone 2 focused validation and actual local dry run reported:
+
+    Test Suites: 1 passed, 1 total
+    Tests: 8 passed, 8 total
+    examples = 35
+    registrableDomains = 35
+    targetKinds = CLUB:5, EVENT:24, RENTAL:5, TEAM:1
+    mappingModes = MANUAL_CANDIDATES:22, NONE:1, SELECTOR:12
+    detailOrJavascript = 4
+    refusalOrInsufficiency = 5
+    customExtractorReview = 2
+    evergreen = 5
+    scheduled = 15
+    deficits = 0
+    publicRequests = 0
+    databaseWrites = 0
+
 A readiness result should resemble:
 
     {
@@ -531,3 +565,5 @@ Continue using `AffiliateAgentReviewFixtureClient` for evaluation fetches and `A
 Created 2026-07-29 after the user asked how to test the affiliate mapping model before training and whether the existing mappings were sufficient. The read-only audit showed zero train-eligible examples despite 201 active mappings. This plan therefore freezes a real gold test suite first, extends evaluation to the actual scraper and persistence boundary, benchmarks untouched open-weight models, builds a separately approved training corpus, and makes training conditional on an explicit readiness result rather than on raw mapping count.
 
 Revised 2026-07-29 to record completion of Milestone 1. The revision adds the implemented contract guarantees, focused test evidence, and the continuing fact that no real approved gold examples or paid/live operations exist yet.
+
+Revised 2026-07-29 to record the completed deterministic cohort planner and its quota-complete local dry run. The revision also records why scarce TEAM coverage is reserved by whole registrable domain and separates proposal generation from explicit human locking.

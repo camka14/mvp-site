@@ -42,6 +42,7 @@
     "affiliate:mapping:baseline": "tsx scripts/audit-affiliate-mapping-agent-baseline.ts",
     "affiliate:mapping:dataset": "tsx scripts/export-affiliate-mapping-training-data.ts",
     "affiliate:mapping:backfill-plan": "tsx scripts/plan-affiliate-source-evidence-backfill.ts",
+    "affiliate:mapping:gold-plan": "tsx scripts/plan-affiliate-mapping-gold-cohort.ts",
     "affiliate:mapping:evaluate": "tsx scripts/evaluate-affiliate-mapping-agent.ts",
     "affiliate:mapping:bakeoff:record": "tsx scripts/record-affiliate-mapping-model-bakeoff.ts",
     "affiliate:mapping:bakeoff:select": "tsx scripts/select-affiliate-mapping-model.ts",

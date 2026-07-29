@@ -5,6 +5,10 @@ import {
   buildAffiliateMappingGoldRelease,
   buildAffiliateMappingTrainingReadinessReport,
 } from '../agentGoldDataset';
+import {
+  planAffiliateGoldTestCohort,
+  type AffiliateGoldCohortCandidate,
+} from '../agentGoldCohort';
 
 const HASH_HTML = 'a'.repeat(64);
 const HASH_ROBOTS = 'b'.repeat(64);
@@ -364,5 +368,120 @@ describe('affiliate mapping gold dataset contracts', () => {
     expect(report.decision).toBe('DO_NOT_TRAIN');
     expect(report.realApprovedCounts.train).toBe(0);
     expect(report.blockingReasons).toContain('Fewer than 80 real approved training examples.');
+  });
+});
+
+const cohortCandidate = (
+  index: number,
+  overrides: Partial<AffiliateGoldCohortCandidate> = {},
+): AffiliateGoldCohortCandidate => {
+  const targetKind = index < 2
+    ? 'TEAM'
+    : index < 8
+      ? 'CLUB'
+      : index < 15
+        ? 'RENTAL'
+        : 'EVENT';
+  return {
+    sourceId: `source_${index}`,
+    sourceKey: `source-${index}`,
+    sourceName: `Source ${index}`,
+    sourceUrl: `https://source-${index}.example/list`,
+    targetKind,
+    sourceStatus: 'ACTIVE',
+    registrableDomain: `source-${index}.example`,
+    platformFamily: index % 9 === 0 ? 'FIXTURE_PLATFORM' : null,
+    priorEvidenceLabel: index === 44 ? 'BLOCKED' : 'LEGACY_PARTIAL',
+    mappingId: index === 44 ? null : `mapping_${index}`,
+    mappingVersion: index === 44 ? null : 1,
+    mappingMode: index === 44
+      ? 'NONE'
+      : index % 2 === 0
+        ? 'SELECTOR'
+        : 'MANUAL_CANDIDATES',
+    mappingValidated: index !== 44,
+    hasSetupScript: index % 3 !== 0,
+    hasReviewedCandidateHistory: index % 4 !== 0,
+    hasDetailPage: index >= 2 && index < 5,
+    rendersJavascript: index >= 5 && index < 8,
+    dateCoverage: index === 15
+      ? 'EVERGREEN'
+      : index === 16
+        ? 'SCHEDULED'
+        : targetKind === 'EVENT'
+          ? 'UNKNOWN'
+          : 'NOT_APPLICABLE',
+    intakeMatchStatus: 'UNMATCHED',
+    intakePlanAction: index === 44 ? 'RECORD_BLOCKED' : 'PROPOSE_INTAKE',
+    requiredCapturePages: [{
+      url: `https://source-${index}.example/list`,
+      role: 'LISTING',
+    }],
+    ...overrides,
+  };
+};
+
+describe('affiliate mapping gold cohort planning', () => {
+  it('selects the same quota-complete 35-example test cohort regardless of input order', () => {
+    const candidates = Array.from({ length: 45 }, (_, index) => cohortCandidate(index));
+    const first = planAffiliateGoldTestCohort({
+      candidates,
+      repositoryCommit: 'abc123',
+    });
+    const second = planAffiliateGoldTestCohort({
+      candidates: [...candidates].reverse(),
+      repositoryCommit: 'abc123',
+    });
+
+    expect(first).toEqual(second);
+    expect(first.readyToLock).toBe(true);
+    expect(first.deficits).toEqual([]);
+    expect(first.summary).toEqual(expect.objectContaining({
+      exampleCount: 35,
+      registrableDomainCount: 35,
+      detailOrJavascriptCount: expect.any(Number),
+      refusalOrInsufficiencyCount: 5,
+      customExtractorReviewCount: 2,
+      databaseWrites: 0,
+      publicRequests: 0,
+    }));
+    expect(first.summary.targetKinds.CLUB).toBeGreaterThanOrEqual(5);
+    expect(first.summary.targetKinds.RENTAL).toBeGreaterThanOrEqual(5);
+    expect(first.summary.historicalMappingModes.SELECTOR).toBeGreaterThanOrEqual(12);
+    expect(first.summary.historicalMappingModes.MANUAL_CANDIDATES).toBeGreaterThanOrEqual(8);
+    expect(first.summary.detailOrJavascriptCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('uses one scarce TEAM domain for test and reserves the other outside the split', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'abc123',
+    });
+    const selectedTeams = proposal.examples.filter((example) => example.targetKind === 'TEAM');
+    expect(selectedTeams).toHaveLength(1);
+    expect(proposal.reservedForLater).toHaveLength(1);
+    expect(proposal.reservedForLater[0]).toEqual(expect.objectContaining({
+      reason: expect.stringContaining('TEAM coverage has only two known domains'),
+    }));
+    expect(proposal.lockedDomainAssignments).not.toContainEqual({
+      registrableDomain: proposal.reservedForLater[0].registrableDomain,
+      split: 'test',
+    });
+    expect(proposal.lockedDomainAssignments).toContainEqual({
+      registrableDomain: selectedTeams[0].registrableDomain,
+      split: 'test',
+    });
+  });
+
+  it('reports deficits instead of silently weakening a small inventory', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 12 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'abc123',
+    });
+    expect(proposal.readyToLock).toBe(false);
+    expect(proposal.deficits).toEqual(expect.arrayContaining([
+      expect.stringContaining('test examples: required 35'),
+      expect.stringContaining('registrable domains: required 30'),
+    ]));
   });
 });
