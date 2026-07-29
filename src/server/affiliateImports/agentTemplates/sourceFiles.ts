@@ -231,8 +231,15 @@ const main = async () => {
   await upsertSourceAndMapping();
   console.log(\`Affiliate source ready for local review: \${${symbolName}_SOURCE_KEY}\`);
   if (process.argv.includes('--scrape')) {
+    const fixtureDirectory = process.env.AFFILIATE_AGENT_REVIEW_FIXTURE_DIRECTORY?.trim();
+    const client = fixtureDirectory
+      ? new (
+          await import('../src/server/affiliateImports/agentReviewFixtureClient')
+        ).AffiliateAgentReviewFixtureClient(fixtureDirectory)
+      : undefined;
     const result = await runAffiliateSourceScrape(${symbolName}_SOURCE_ID, {
       importMode: 'REVIEW',
+      ...(client ? { client } : {}),
     });
     console.log(JSON.stringify({
       runId: result.run.id,
