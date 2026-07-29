@@ -24,7 +24,7 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 - [x] (2026-07-29 18:34Z) Recorded the initial dedicated-model direction, model bakeoff, historical evidence reconstruction, QLoRA training, Sol review loop, logo restrictions, security boundary, rollout gates, and recovery behavior in this ExecPlan.
 - [x] (2026-07-29 18:46Z) Revised the infrastructure direction to a persistent OVH VPS-4 near $23.37 per month, CPU-quantized inference, and short-lived OVH L40S training jobs, with a normal combined monthly infrastructure target near $50.
 - [x] (2026-07-29 18:58Z) Made downloadable and modifiable open weights a hard model-eligibility gate and required each promoted adapter to be merged into a versioned BracketIQ-controlled derivative checkpoint before production deployment.
-- [ ] Re-audit the current local and live source, mapping, intake, evidence, and mapping-job counts and save a redacted baseline report.
+- [ ] Re-audit the current local and live source, mapping, intake, evidence, and mapping-job counts and save redacted baseline reports. (2026-07-29 19:27Z: implemented and tested the read-only auditor and captured the local report; live execution remains pending explicit authorization.)
 - [x] (2026-07-29 19:24Z) Defined and tested the versioned `AffiliateSourceDraft`, worker-result, reviewer-result, training-example, and open-weight model-manifest contracts, including blocked-source, evidence-backed-date, official-URL, logo-provenance, licensing, and offline-start gates.
 - [ ] Build the read-only historical dataset inventory and dry-run evidence-matching/backfill tooling.
 - [ ] Build the deterministic mapping generator, isolated job worktree runner, and evaluation harness without connecting a model.
@@ -48,6 +48,9 @@ Success is observable when a reviewed intake moves from `READY_FOR_MAPPING` to a
 
 - Observation: most existing active mappings were validated, but validation alone does not prove that the original input evidence is recoverable or that the mapping remains correct.
   Evidence: the same local snapshot contained 194 active mappings with a non-null `validatedAt`. The historical reconstruction milestone therefore distinguishes review status from evidence quality and site freshness.
+
+- Observation: the implemented schema-based baseline classifies all 201 active local mappings as structurally valid, with 103 manual-candidate mappings and 98 selector mappings.
+  Evidence: `node_modules/.bin/tsx scripts/audit-affiliate-mapping-agent-baseline.ts` wrote the read-only local report at `output/affiliate-mapping-agent/baselines/2026-07-29T19-27-12-150Z/baseline.json`. It also reported 202 sources, 221 intakes, 45 stored intake artifacts across 2 intakes, 566 candidates, 1 mapping job, and 77 checked-in source setup scripts, with zero public requests and zero database writes.
 
 - Observation: organization image work is mostly an asset-discovery and normalization problem, not a generative-image problem.
   Evidence: the source-builder rules require an official logo, official rendered brand mark, or a manually reviewed absence. They prohibit invented logos and random placeholders. Image generation is appropriate only for BracketIQ-owned illustrations or generic product art.
@@ -647,3 +650,5 @@ Revised 2026-07-29 after the user set an approximately $50 monthly budget, prefe
 Revised 2026-07-29 after the user made open source and open weights an explicit requirement. The plan now treats downloadable, modifiable weights and derivative-deployment rights as a hard eligibility gate; records an `OpenWeightModelManifest`; excludes closed or API-only models from the worker role; verifies offline operation; and requires a promoted LoRA adapter to be merged into a hashed, licensed, BracketIQ-controlled derivative checkpoint. Full-parameter fine-tuning is deliberately deferred until the dataset and a separately approved multi-GPU budget justify it.
 
 Implementation update 2026-07-29: added the first contract layer in `src/server/affiliateImports/agentContracts.ts` and its focused tests. The executable draft schema now enforces the evidence, policy, official-link, scheduled-date, target-kind, and logo rules before any generator or model runner can write files. The same layer records open-weight eligibility and the immutable worker, reviewer, and training-example envelopes needed by later milestones.
+
+Implementation update 2026-07-29: added the read-only baseline collector and CLI in `src/server/affiliateImports/agentBaseline.ts` and `scripts/audit-affiliate-mapping-agent-baseline.ts`. The first local run replaced the earlier approximate mapping-mode breakdown with schema-validated counts and captured intake, artifact, candidate, job, and setup-script readiness without contacting public sites or mutating the database. The corresponding live report remains intentionally unexecuted until explicitly authorized.
