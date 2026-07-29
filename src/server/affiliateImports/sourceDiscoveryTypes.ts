@@ -48,6 +48,7 @@ export type AffiliateSourceDiscoveryCampaignForRules = {
   location?: string | null;
   sourceTypeHints: string[];
   maxQueriesPerRun: number;
+  metadata?: unknown;
 };
 
 export type AffiliateSourceDiscoveryQuery = {
@@ -55,7 +56,10 @@ export type AffiliateSourceDiscoveryQuery = {
   sportId: string | null;
   sportName: string | null;
   sourceType: string;
+  profileSourceTypes?: string[];
   templateKey: string;
+  targetCity?: string | null;
+  targetState?: string | null;
 };
 
 export type AffiliateSourceDiscoveryEvaluationInput = {
@@ -66,6 +70,7 @@ export type AffiliateSourceDiscoveryEvaluationInput = {
   campaignRegion: string;
   selectedSports: Array<{ id: string; name: string }>;
   currentYear?: number;
+  now?: Date;
 };
 
 export type AffiliateSourceDiscoveryEvaluation = {
@@ -73,6 +78,8 @@ export type AffiliateSourceDiscoveryEvaluation = {
   policyKey: string | null;
   score: number;
   status: 'NEW' | 'REVIEW_REQUIRED' | 'REJECTED';
+  classification: 'DIRECT_SOURCE' | 'INTERMEDIARY' | 'UNSUPPORTED';
+  autoPromotionEligible: boolean;
   sourceTypeHints: string[];
   sportHints: string[];
   reasonCodes: string[];

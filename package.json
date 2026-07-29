@@ -34,6 +34,7 @@
     "affiliate:intakes:bootstrap": "tsx scripts/bootstrap-affiliate-source-intakes.ts",
     "affiliate:intake:export": "tsx scripts/export-affiliate-source-intake.ts",
     "affiliate:discovery:run": "tsx scripts/run-affiliate-source-discovery.ts",
+    "affiliate:discovery:benchmark": "tsx scripts/benchmark-affiliate-source-discovery.ts",
     "affiliate:discovery:setup": "tsx scripts/setup-affiliate-source-discovery-campaigns.ts",
     "affiliate:discovery:sync-live": "tsx scripts/sync-affiliate-discovery-state-to-live.ts",
     "affiliate:intake:automation": "tsx scripts/run-affiliate-intake-automation.ts",

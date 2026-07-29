@@ -13,6 +13,13 @@ const TRACKING_QUERY_KEYS = new Set([
   'mc_cid',
   'mc_eid',
   'msclkid',
+  'srsltid',
+  'dclid',
+  'twclid',
+  'ttclid',
+  'igshid',
+  '_ga',
+  '_gl',
 ]);
 
 export type ResolvedAddress = {

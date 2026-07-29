@@ -228,18 +228,32 @@ const claimDiscoveryRun = async (runId: string | undefined, workerId: string, no
   return null;
 };
 
-const duplicateMatchForUrl = async (canonicalUrl: string, policyKey: string) => {
+const exactUrlVariants = (value: string): string[] => {
+  const parsed = new URL(value);
+  parsed.hash = '';
+  const canonical = parsed.toString();
+  const variants = new Set([
+    canonical,
+    canonical.replace(/\/$/, ''),
+  ]);
+  if ((parsed.pathname === '/' || !parsed.pathname) && !parsed.search) {
+    variants.add(parsed.origin);
+    variants.add(`${parsed.origin}/`);
+  }
+  return Array.from(variants);
+};
+
+const duplicateMatchForUrl = async (canonicalUrl: string) => {
   const urlKey = affiliateIntakeUrlKey(canonicalUrl);
   const page = await db().pages.findUnique({ where: { urlKey } });
   if (page) return { status: 'DUPLICATE', matchingIntakeId: page.intakeId, reason: 'EXISTING_INTAKE_PAGE' };
 
+  const urlVariants = exactUrlVariants(canonicalUrl);
   const source = await db().sources.findFirst({
     where: {
       OR: [
-        { listUrl: canonicalUrl },
-        { listUrl: canonicalUrl.replace(/\/$/, '') },
-        { baseUrl: canonicalUrl },
-        { baseUrl: canonicalUrl.replace(/\/$/, '') },
+        { listUrl: { in: urlVariants } },
+        { baseUrl: { in: urlVariants } },
       ],
     },
     select: { id: true },
@@ -247,13 +261,7 @@ const duplicateMatchForUrl = async (canonicalUrl: string, policyKey: string) => 
   if (source) return { status: 'DUPLICATE', matchingSourceId: source.id, reason: 'EXISTING_APPROVED_SOURCE' };
 
   const organization = await db().organizations.findFirst({
-    where: {
-      OR: [
-        { website: canonicalUrl },
-        { website: canonicalUrl.replace(/\/$/, '') },
-        { website: { contains: policyKey, mode: 'insensitive' } },
-      ],
-    },
+    where: { website: { in: urlVariants } },
     select: { id: true },
   });
   return organization
@@ -261,9 +269,14 @@ const duplicateMatchForUrl = async (canonicalUrl: string, policyKey: string) => 
     : null;
 };
 
-const findSiteIntake = async (policyKey: string, canonicalUrl: string) => {
+const findSiteIntake = async (
+  policyKey: string,
+  canonicalUrl: string,
+  campaignId: string,
+  campaignRegion: string,
+) => {
   const linked = await db().results.findFirst({
-    where: { policyKey, matchingIntakeId: { not: null } },
+    where: { campaignId, policyKey, matchingIntakeId: { not: null } },
     orderBy: { score: 'desc' },
     select: { matchingIntakeId: true },
   });
@@ -274,11 +287,8 @@ const findSiteIntake = async (policyKey: string, canonicalUrl: string) => {
   const origin = new URL(canonicalUrl).origin;
   return db().intakes.findFirst({
     where: {
-      OR: [
-        { baseUrl: origin },
-        { baseUrl: origin.replace(/\/$/, '') },
-        { baseUrl: { contains: policyKey, mode: 'insensitive' } },
-      ],
+      region: campaignRegion,
+      baseUrl: { in: exactUrlVariants(origin) },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -350,7 +360,12 @@ const promoteDiscoveryResult = async (
     ? await db().intakes.findUnique({ where: { id: requestedIntakeId } })
     : result.matchingIntakeId
       ? await db().intakes.findUnique({ where: { id: result.matchingIntakeId } })
-      : await findSiteIntake(result.policyKey, result.canonicalUrl);
+      : await findSiteIntake(
+        result.policyKey,
+        result.canonicalUrl,
+        campaign.id,
+        campaign.region,
+      );
   if (requestedIntakeId && !intake) {
     throw new Error('Requested affiliate source intake not found.');
   }
@@ -541,10 +556,15 @@ const persistDiscoveryResult = async (input: {
     ?? `https://invalid-source.invalid/${affiliateDiscoveryUrlKey(originalUrl)}`;
   const urlKey = affiliateDiscoveryUrlKey(fallbackCanonical);
   const duplicate = evaluation.canonicalUrl && evaluation.policyKey
-    ? await duplicateMatchForUrl(evaluation.canonicalUrl, evaluation.policyKey)
+    ? await duplicateMatchForUrl(evaluation.canonicalUrl)
     : null;
   const siteIntake = !duplicate && evaluation.canonicalUrl && evaluation.policyKey
-    ? await findSiteIntake(evaluation.policyKey, evaluation.canonicalUrl)
+    ? await findSiteIntake(
+      evaluation.policyKey,
+      evaluation.canonicalUrl,
+      campaign.id,
+      campaign.region,
+    )
     : null;
   const status = duplicate?.status ?? evaluation.status;
   const reasonCodes = duplicate
@@ -568,7 +588,13 @@ const persistDiscoveryResult = async (input: {
     sportHints: evaluation.sportHints,
     status,
     reasonCodes,
-    reasonDetails: { reasons: evaluation.reasons },
+    reasonDetails: {
+      reasons: evaluation.reasons,
+      classification: evaluation.classification,
+      autoPromotionEligible: evaluation.autoPromotionEligible,
+      queryProfile: query.templateKey ?? null,
+      queryTarget: query.targetCity ?? campaign.location ?? campaign.region,
+    },
     matchingIntakeId: duplicate?.matchingIntakeId ?? siteIntake?.id ?? existing?.matchingIntakeId ?? null,
     matchingSourceId: duplicate?.matchingSourceId ?? existing?.matchingSourceId ?? null,
     matchingOrganizationId: duplicate?.matchingOrganizationId ?? existing?.matchingOrganizationId ?? null,
@@ -576,6 +602,8 @@ const persistDiscoveryResult = async (input: {
       category: row.category ?? null,
       provider: stringValue(row.provider)?.toUpperCase() ?? null,
       estimatedCredits: typeof row.estimatedCredits === 'number' ? row.estimatedCredits : null,
+      classification: evaluation.classification,
+      autoPromotionEligible: evaluation.autoPromotionEligible,
     },
   };
   const saved = existing
@@ -593,7 +621,12 @@ const persistDiscoveryResult = async (input: {
         ...common,
       },
     });
-  return { saved, isNew: !existing, duplicate: Boolean(duplicate) };
+  return {
+    saved,
+    isNew: !existing,
+    duplicate: Boolean(duplicate),
+    autoPromotionEligible: evaluation.autoPromotionEligible,
+  };
 };
 
 export const processNextAffiliateSourceDiscoveryRun = async (
@@ -638,13 +671,23 @@ export const processNextAffiliateSourceDiscoveryRun = async (
   let duplicateCount = 0;
   let rejectedCount = 0;
   let createdIntakeCount = 0;
+  const outcomes = {
+    newEligible: 0,
+    newReview: 0,
+    newRejected: 0,
+    duplicate: 0,
+    existingUpdated: 0,
+    autoIntakeCreated: 0,
+  };
   const errors: string[] = [];
 
   for (const query of generated.queries) {
     try {
       const search = await client.searchSources(query.query, {
         limit: maxResultsPerQuery,
-        location: campaign.location ?? campaign.region,
+        location: [query.targetCity, query.targetState].filter(Boolean).join(', ')
+          || campaign.location
+          || campaign.region,
       });
       returnedResultCount += search.rows.length;
       if (search.providerJobId) providerJobIds.push(search.providerJobId);
@@ -662,6 +705,7 @@ export const processNextAffiliateSourceDiscoveryRun = async (
           campaignRegion: campaign.region,
           selectedSports: sports,
           currentYear: now.getFullYear(),
+          now,
         });
         const persisted = await persistDiscoveryResult({
           campaign,
@@ -676,20 +720,30 @@ export const processNextAffiliateSourceDiscoveryRun = async (
           evaluation,
           now,
         });
-        if (persisted.isNew) newResultCount += 1;
-        if (persisted.duplicate) duplicateCount += 1;
-        if (persisted.saved.status === 'REJECTED') rejectedCount += 1;
-        if (
+        const shouldAutoPromote = (
           campaign.autoCreateIntakes
           && persisted.saved.status === 'NEW'
           && persisted.saved.score >= AFFILIATE_DISCOVERY_AUTO_INTAKE_SCORE
-        ) {
+          && persisted.autoPromotionEligible
+        );
+        if (shouldAutoPromote) {
           await promoteDiscoveryResult(
             persisted.saved.id,
             run.requestedByUserId ?? 'affiliate-discovery',
             dependencies,
           );
           createdIntakeCount += 1;
+          outcomes.autoIntakeCreated += 1;
+        } else if (persisted.duplicate) {
+          outcomes.duplicate += 1;
+        } else if (!persisted.isNew) {
+          outcomes.existingUpdated += 1;
+        } else if (persisted.saved.status === 'REJECTED') {
+          outcomes.newRejected += 1;
+        } else if (persisted.saved.status === 'NEW') {
+          outcomes.newEligible += 1;
+        } else {
+          outcomes.newReview += 1;
         }
       }
     } catch (error) {
@@ -700,10 +754,17 @@ export const processNextAffiliateSourceDiscoveryRun = async (
   const status = errors.length === generated.queries.length
     ? 'FAILED'
     : errors.length ? 'PARTIAL' : 'SUCCEEDED';
+  newResultCount = outcomes.newEligible
+    + outcomes.newReview
+    + outcomes.newRejected
+    + outcomes.autoIntakeCreated;
+  duplicateCount = outcomes.duplicate;
+  rejectedCount = outcomes.newRejected;
   const summary = {
     queries: generated.queries,
     executionLimits: { maxQueries, maxResultsPerQuery },
     estimatedCredits,
+    outcomes,
     provider: requestSummaries.slice(0, 50),
     errors,
   };

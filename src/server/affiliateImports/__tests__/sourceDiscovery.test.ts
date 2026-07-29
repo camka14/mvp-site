@@ -18,6 +18,12 @@ const campaign = {
   maxQueriesPerRun: 1,
   maxResultsPerQuery: 5,
   queryCursor: 0,
+  metadata: {
+    coveredCities: [
+      { city: 'Portland', state: 'Oregon' },
+      { city: 'Gresham', state: 'Oregon' },
+    ],
+  },
 };
 
 const prismaMock = {
@@ -185,6 +191,58 @@ describe('affiliate source discovery orchestration', () => {
     expect(queueIntakeMock).not.toHaveBeenCalled();
     expect(processIntakeMock).not.toHaveBeenCalled();
     expect(firecrawlClient.scrapeSourcePage).not.toHaveBeenCalled();
+    expect(firecrawlClient.searchSources).toHaveBeenCalledWith(
+      expect.stringContaining('Portland, Oregon'),
+      expect.objectContaining({ location: 'Portland, Oregon' }),
+    );
+    expect(prismaMock.affiliateSourceDiscoveryResults.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        campaignId: campaign.id,
+        policyKey: 'example.test',
+      }),
+    }));
+    expect(prismaMock.affiliateSourceIntakes.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        region: campaign.region,
+        baseUrl: expect.objectContaining({ in: expect.any(Array) }),
+      }),
+    }));
+    expect(prismaMock.organizations.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        website: expect.objectContaining({ in: expect.any(Array) }),
+      },
+    }));
+  });
+
+  it('does not auto-create an intake for an intermediary even when its keyword score is high', async () => {
+    const searchClient = {
+      searchSources: jest.fn(async () => ({
+        request: {},
+        response: {},
+        rows: [{
+          url: 'https://www.yelp.com/search?find_desc=Soccer+League&find_loc=Portland%2C+OR',
+          title: 'Portland Oregon Soccer League Events Registration 2026',
+          description: 'Find sports clubs, schedules, registration, and events.',
+          category: 'web',
+        }],
+        providerJobId: null,
+      })),
+    };
+
+    await processNextAffiliateSourceDiscoveryRun({ runId: 'run_1' }, { searchClient });
+
+    expect(currentResult).toMatchObject({
+      status: 'REVIEW_REQUIRED',
+      matchingIntakeId: null,
+    });
+    expect(currentResult.reasonCodes).toContain('INTERMEDIARY_SOURCE');
+    expect(createIntakeMock).not.toHaveBeenCalled();
+    expect(queuedRuns[0].summary).toEqual(expect.objectContaining({
+      outcomes: expect.objectContaining({
+        newReview: 1,
+        autoIntakeCreated: 0,
+      }),
+    }));
   });
 
   it('blocks a new result before an intake exists', async () => {
@@ -254,7 +312,7 @@ describe('affiliate source discovery orchestration', () => {
     );
 
     expect(prismaMock.affiliateSourceDiscoveryCampaigns.update).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ queryCursor: 1, nextRunAt: now }),
+      data: expect.objectContaining({ queryCursor: 2, nextRunAt: now }),
     }));
   });
 });

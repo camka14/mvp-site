@@ -48,7 +48,7 @@ describe('affiliate source intake URL safety', () => {
 
   it('canonicalizes equivalent source URLs and removes tracking parameters', () => {
     const first = canonicalizeAffiliateIntakeUrl(
-      'HTTPS://Example.COM:443/events/?b=2&utm_source=newsletter&a=1#schedule',
+      'HTTPS://Example.COM:443/events/?b=2&utm_source=newsletter&srsltid=search-result&a=1#schedule',
     );
     const second = canonicalizeAffiliateIntakeUrl('https://example.com/events?a=1&b=2');
 
