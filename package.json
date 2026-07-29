@@ -45,6 +45,7 @@
     "affiliate:mapping:evaluate": "tsx scripts/evaluate-affiliate-mapping-agent.ts",
     "affiliate:mapping:bakeoff:record": "tsx scripts/record-affiliate-mapping-model-bakeoff.ts",
     "affiliate:mapping:bakeoff:select": "tsx scripts/select-affiliate-mapping-model.ts",
+    "affiliate:mapping:disposable-scrape": "tsx scripts/run-affiliate-agent-disposable-scrape-fixture.ts",
     "affiliate:mapping:agent": "tsx scripts/run-affiliate-mapping-agent.ts",
     "affiliate:mapping:review": "tsx scripts/review-affiliate-mapping-job.ts",
     "affiliate:mapping:sft-release": "tsx scripts/build-affiliate-mapping-sft-release.ts",
