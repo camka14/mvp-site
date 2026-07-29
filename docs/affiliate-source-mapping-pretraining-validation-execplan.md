@@ -19,7 +19,7 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 20:37Z) Confirmed that the current evidence labels are 197 `LEGACY_PARTIAL`, four `STALE`, and one `BLOCKED`, and that the backfill planner proposes 200 new intakes, one existing-intake reuse, and one blocked record.
 - [x] (2026-07-29 20:37Z) Confirmed that the deterministic River City control can generate a scraper, run it twice against digest-pinned disposable PostgreSQL, retain one deduplicated review candidate, publish nothing, and clean up its container and temporary worktrees.
 - [x] (2026-07-29 20:54Z) Recorded this pre-training validation plan with exact data-size targets, evaluation gates, safety boundaries, and handoff conditions.
-- [ ] Define and test the immutable gold-example, gold-release, execution-result, and training-readiness contracts.
+- [x] (2026-07-29 21:02Z) Defined and tested the immutable gold-example, gold-release, execution-result, and training-readiness contracts in `agentGoldDataset.ts`; the focused suite passes 5 tests and TypeScript passes.
 - [ ] Produce a deterministic, read-only cohort proposal that selects the 35-example test set before selecting training or validation examples.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
@@ -47,6 +47,9 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 - Observation: TEAM coverage is intrinsically scarce in the current source inventory.
   Evidence: the local source inventory contains 157 EVENT, 23 CLUB, 20 RENTAL, and only two TEAM sources. The split must reserve one TEAM domain for the locked test set and one for training or validation rather than letting both leak into one split.
+
+- Observation: the existing draft schema protects model output, but a gold release needs additional safeguards that are not properties of a draft alone.
+  Evidence: `agentGoldDataset.ts` now rejects test rows marked for retrieval or training, source evidence outside the frozen context, missing list/detail fixtures, past approved scheduled dates, evergreen rows with invented starts, cross-split domains, duplicate ids, and forbidden data before it computes release hashes.
 
 ## Decision Log
 
@@ -88,7 +91,9 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 ## Outcomes & Retrospective
 
-This plan has been recorded, and the current dataset state has been measured read-only. The repository has enough historical source work to form a strong intake-prioritization backlog, but it has zero examples that pass the implemented training gate today. No paid model training, live intake capture, live queue claim, or public scrape was performed while writing this plan.
+Milestone 1 is complete. The repository can now validate a private gold example and deterministically construct a release manifest with stable source-envelope hashes, row hashes, and counts by split, target, implementation mode, evidence origin, domain, and platform family. The readiness builder explicitly counts only `REAL_CAPTURE` rows toward the 80/15/30 minimum, so invented controls cannot make the corpus appear ready.
+
+The current dataset state remains a read-only prioritization backlog: there are still zero approved real gold examples in a release. No paid model training, live intake capture, live queue claim, or public scrape was performed while implementing the contracts.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -405,6 +410,13 @@ The current deterministic database control reports:
     liveDatabaseWrites = 0
     disposed = true
 
+The Milestone 1 focused validation reported:
+
+    PASS src/server/affiliateImports/__tests__/agentGoldDataset.test.ts
+    Test Suites: 1 passed, 1 total
+    Tests: 5 passed, 5 total
+    npx tsc --noEmit: exited 0
+
 A readiness result should resemble:
 
     {
@@ -517,3 +529,5 @@ Continue using `AffiliateAgentReviewFixtureClient` for evaluation fetches and `A
 ## Plan Revision Note
 
 Created 2026-07-29 after the user asked how to test the affiliate mapping model before training and whether the existing mappings were sufficient. The read-only audit showed zero train-eligible examples despite 201 active mappings. This plan therefore freezes a real gold test suite first, extends evaluation to the actual scraper and persistence boundary, benchmarks untouched open-weight models, builds a separately approved training corpus, and makes training conditional on an explicit readiness result rather than on raw mapping count.
+
+Revised 2026-07-29 to record completion of Milestone 1. The revision adds the implemented contract guarantees, focused test evidence, and the continuing fact that no real approved gold examples or paid/live operations exist yet.
