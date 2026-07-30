@@ -324,21 +324,29 @@ export const matchHistoricalSourceToIntake = (
   };
 };
 
+export const affiliatePlatformFamilyForUrl = (
+  value: string | null | undefined,
+): string | null => {
+  if (!value) return null;
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    if (hostname.includes('sportsengine')) return 'SPORTSENGINE';
+    if (hostname.includes('leagueapps')) return 'LEAGUEAPPS';
+    if (hostname.includes('teamlinkt')) return 'TEAMLINKT';
+    if (hostname.includes('teamsnap')) return 'TEAMSNAP';
+    if (hostname.includes('wixsite') || hostname.includes('wixstatic')) return 'WIX';
+    if (hostname.includes('bluesombrero')) return 'BLUESOMBRERO';
+  } catch {
+    // Invalid URLs are reported through an empty registrable domain later.
+  }
+  return null;
+};
+
 const platformFamilyFor = (source: HistoricalSourceRow): string | null => {
-  const urls = [source.listUrl, source.baseUrl, source.organizationWebsite]
-    .filter((value): value is string => Boolean(value));
+  const urls = [source.listUrl, source.baseUrl, source.organizationWebsite];
   for (const value of urls) {
-    try {
-      const hostname = new URL(value).hostname.toLowerCase();
-      if (hostname.includes('sportsengine')) return 'SPORTSENGINE';
-      if (hostname.includes('leagueapps')) return 'LEAGUEAPPS';
-      if (hostname.includes('teamlinkt')) return 'TEAMLINKT';
-      if (hostname.includes('teamsnap')) return 'TEAMSNAP';
-      if (hostname.includes('wixsite') || hostname.includes('wixstatic')) return 'WIX';
-      if (hostname.includes('bluesombrero')) return 'BLUESOMBRERO';
-    } catch {
-      // Invalid URLs are reported through an empty registrable domain later.
-    }
+    const family = affiliatePlatformFamilyForUrl(value);
+    if (family) return family;
   }
   const parser = stringValue(recordValue(source.metadata)?.parser);
   return parser?.toUpperCase() ?? null;

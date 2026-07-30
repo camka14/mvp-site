@@ -57,7 +57,7 @@ const heldOutProposal = () => planAffiliateGoldTestCohort({
             : 'EVENT',
       mappingMode: index % 2 ? 'MANUAL_CANDIDATES' : 'SELECTOR',
       hasDetailPage: index % 5 === 0,
-      platformFamily: index === 2 ? 'LOCKED_PLATFORM' : null,
+      platformFamily: index === 2 ? 'BLUESOMBRERO' : null,
       priorEvidenceLabel: index === 44 ? 'BLOCKED' : 'LEGACY_PARTIAL',
       dateCoverage: index % 3 === 0 ? 'EVERGREEN' : 'SCHEDULED',
     },
@@ -72,7 +72,19 @@ describe('affiliate evidence capture plan', () => {
       candidates: [
         candidate('held-domain', heldOut.lockedDomainAssignments[0].registrableDomain),
         candidate('held-platform', 'other.example', {
-          platformFamily: 'LOCKED_PLATFORM',
+          platformFamily: 'BLUESOMBRERO',
+        }),
+        candidate('held-evidence-domain', 'safe-primary.example', {
+          requiredCapturePages: [{
+            url: `https://${heldOut.lockedDomainAssignments[1].registrableDomain}/register`,
+            role: 'REGISTRATION',
+          }],
+        }),
+        candidate('held-evidence-platform', 'safe-platform-primary.example', {
+          requiredCapturePages: [{
+            url: 'https://other.bluesombrero.com/register',
+            role: 'REGISTRATION',
+          }],
         }),
         candidate('safe-team', 'safe-team.example', { targetKind: 'TEAM' }),
         candidate('safe-rental', 'safe-rental.example', { targetKind: 'RENTAL' }),
@@ -89,6 +101,14 @@ describe('affiliate evidence capture plan', () => {
     expect(plan.excluded).toEqual(expect.arrayContaining([
       expect.objectContaining({ sourceKey: 'held-domain', reason: 'HELD_OUT_DOMAIN' }),
       expect.objectContaining({ sourceKey: 'held-platform', reason: 'HELD_OUT_PLATFORM_FAMILY' }),
+      expect.objectContaining({
+        sourceKey: 'held-evidence-domain',
+        reason: 'HELD_OUT_EVIDENCE_DOMAIN',
+      }),
+      expect.objectContaining({
+        sourceKey: 'held-evidence-platform',
+        reason: 'HELD_OUT_EVIDENCE_PLATFORM_FAMILY',
+      }),
     ]));
     expect(plan.readyToCapture).toBe(true);
     expect(plan.readyForMinimumCorpus).toBe(false);

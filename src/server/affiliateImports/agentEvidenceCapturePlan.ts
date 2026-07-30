@@ -3,6 +3,10 @@ import {
   type GoldCaptureCohortExample,
 } from './agentGoldCaptureCohort';
 import {
+  affiliatePlatformFamilyForUrl,
+  registrableDomainForUrl,
+} from './agentDataset';
+import {
   assertAffiliateGoldCohortProposalIntegrity,
   type AffiliateGoldCohortCandidate,
   type AffiliateGoldCohortProposal,
@@ -29,7 +33,11 @@ export type AffiliateEvidenceCapturePlan = {
     sourceId: string;
     sourceKey: string;
     registrableDomain: string;
-    reason: 'HELD_OUT_DOMAIN' | 'HELD_OUT_PLATFORM_FAMILY';
+    reason:
+      | 'HELD_OUT_DOMAIN'
+      | 'HELD_OUT_PLATFORM_FAMILY'
+      | 'HELD_OUT_EVIDENCE_DOMAIN'
+      | 'HELD_OUT_EVIDENCE_PLATFORM_FAMILY';
   }>;
   summary: {
     exampleCount: number;
@@ -121,6 +129,32 @@ export const buildAffiliateEvidenceCapturePlan = (input: {
         sourceKey: candidate.sourceKey,
         registrableDomain: candidate.registrableDomain,
         reason: 'HELD_OUT_PLATFORM_FAMILY',
+      });
+      return [];
+    }
+    const heldOutEvidenceDomain = candidate.requiredCapturePages
+      .map((page) => registrableDomainForUrl(page.url))
+      .find((domain): domain is string => Boolean(domain && heldOutDomains.has(domain)));
+    if (heldOutEvidenceDomain) {
+      excluded.push({
+        sourceId: candidate.sourceId,
+        sourceKey: candidate.sourceKey,
+        registrableDomain: candidate.registrableDomain,
+        reason: 'HELD_OUT_EVIDENCE_DOMAIN',
+      });
+      return [];
+    }
+    const heldOutEvidencePlatformFamily = candidate.requiredCapturePages
+      .map((page) => affiliatePlatformFamilyForUrl(page.url))
+      .find((family): family is string => Boolean(
+        family && heldOutPlatformFamilies.has(family),
+      ));
+    if (heldOutEvidencePlatformFamily) {
+      excluded.push({
+        sourceId: candidate.sourceId,
+        sourceKey: candidate.sourceKey,
+        registrableDomain: candidate.registrableDomain,
+        reason: 'HELD_OUT_EVIDENCE_PLATFORM_FAMILY',
       });
       return [];
     }
