@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   buildAffiliateMappingJobContextFromExport,
+  buildAffiliateMappingJobContextFromExports,
 } from '../agentJobContext';
 
 describe('affiliate mapping job context builder', () => {
@@ -127,6 +128,109 @@ describe('affiliate mapping job context builder', () => {
         repositoryRoot,
         instructionsRevision: 'v1',
       })).rejects.toThrow('hash mismatch');
+    } finally {
+      await fs.rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('combines bounded evidence from multiple capture runs with exact provenance', async () => {
+    const temporaryDirectory = await fs.mkdtemp('/tmp/affiliate-agent-context-');
+    const repositoryRoot = path.join(temporaryDirectory, 'repo');
+    const firstEvidenceDirectory = path.join(temporaryDirectory, 'evidence-1');
+    const secondEvidenceDirectory = path.join(temporaryDirectory, 'evidence-2');
+    try {
+      await Promise.all([
+        fs.mkdir(firstEvidenceDirectory, { recursive: true }),
+        fs.mkdir(secondEvidenceDirectory, { recursive: true }),
+        fs.mkdir(path.join(repositoryRoot, 'src/server/affiliateImports'), { recursive: true }),
+        fs.mkdir(path.join(repositoryRoot, 'docs'), { recursive: true }),
+      ]);
+      await Promise.all([
+        fs.writeFile(
+          path.join(repositoryRoot, 'src/server/affiliateImports/types.ts'),
+          'export type Contract = true;\n',
+        ),
+        fs.writeFile(
+          path.join(repositoryRoot, 'docs/admin-affiliate-scraping-execplan.md'),
+          '# Import process\n',
+        ),
+        fs.writeFile(
+          path.join(repositoryRoot, 'docs/affiliate-source-mapping-slm-execplan.md'),
+          '# Agent plan\n',
+        ),
+      ]);
+      const artifacts = [
+        {
+          evidenceDirectory: firstEvidenceDirectory,
+          intakeId: 'intake_1',
+          sourceKey: 'river-city',
+          runId: 'run_1',
+          pageUrl: 'https://rivercity.example/events',
+          file: 'events.md',
+          content: '# Events',
+        },
+        {
+          evidenceDirectory: secondEvidenceDirectory,
+          intakeId: 'intake_2',
+          sourceKey: 'river-registration',
+          runId: 'run_2',
+          pageUrl: 'https://register.rivercity.example/form',
+          file: 'registration.md',
+          content: '# Registration',
+        },
+      ];
+      for (const artifact of artifacts) {
+        const data = Buffer.from(artifact.content);
+        const hash = createHash('sha256').update(data).digest('hex');
+        await fs.writeFile(path.join(artifact.evidenceDirectory, artifact.file), data);
+        await fs.writeFile(
+          path.join(artifact.evidenceDirectory, 'manifest.json'),
+          JSON.stringify({
+            sourceEvidence: {
+              intakeId: artifact.intakeId,
+              intakeSourceKey: artifact.sourceKey,
+              runId: artifact.runId,
+              complianceStatus: 'ALLOWED',
+            },
+            intake: {
+              id: artifact.intakeId,
+              sourceKey: artifact.sourceKey,
+              targetKindHints: ['EVENT'],
+            },
+            artifacts: [{
+              kind: 'PAGE_MARKDOWN',
+              contentHash: hash,
+              localPath: artifact.file,
+              sourceUrl: artifact.pageUrl,
+              mimeType: 'text/markdown',
+              sizeBytes: data.length,
+            }],
+          }),
+        );
+      }
+
+      const result = await buildAffiliateMappingJobContextFromExports({
+        jobId: 'job_1',
+        evidenceDirectories: [firstEvidenceDirectory, secondEvidenceDirectory],
+        repositoryRoot,
+        instructionsRevision: 'instructions-v1',
+      });
+
+      expect(result.context.runId).toBe('run_1');
+      expect(result.context.evidenceRunIds).toEqual(['run_1', 'run_2']);
+      expect(result.context.artifacts).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          pageUrl: 'https://rivercity.example/events',
+          intakeId: 'intake_1',
+          runId: 'run_1',
+        }),
+        expect.objectContaining({
+          pageUrl: 'https://register.rivercity.example/form',
+          intakeId: 'intake_2',
+          runId: 'run_2',
+        }),
+      ]));
+      expect(result.context.evidenceExcerpts).toHaveLength(2);
     } finally {
       await fs.rm(temporaryDirectory, { recursive: true, force: true });
     }

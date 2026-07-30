@@ -11,6 +11,8 @@ export type AffiliateMappingJobArtifact = {
   sha256: string;
   pageUrl: string;
   byteLength?: number;
+  intakeId?: string;
+  runId?: string;
 };
 
 export type AffiliateMappingJobContext = {
@@ -18,6 +20,7 @@ export type AffiliateMappingJobContext = {
   intakeId: string;
   sourceKey: string;
   runId: string;
+  evidenceRunIds?: string[];
   policyDisposition: 'ALLOWED' | 'BLOCKED' | 'NEEDS_REVIEW';
   targetKindHints: AffiliateAgentTargetKind[];
   artifacts: AffiliateMappingJobArtifact[];

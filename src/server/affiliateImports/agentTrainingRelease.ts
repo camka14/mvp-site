@@ -20,6 +20,7 @@ const mappingJobContextSchema = z.object({
   intakeId: nonEmptyStringSchema,
   sourceKey: nonEmptyStringSchema,
   runId: nonEmptyStringSchema,
+  evidenceRunIds: z.array(nonEmptyStringSchema).min(1).optional(),
   policyDisposition: z.enum(['ALLOWED', 'BLOCKED', 'NEEDS_REVIEW']),
   targetKindHints: z.array(affiliateAgentTargetKindSchema),
   artifacts: z.array(z.object({
@@ -27,6 +28,8 @@ const mappingJobContextSchema = z.object({
     sha256: sha256Schema,
     pageUrl: z.string().url(),
     byteLength: z.number().int().nonnegative().optional(),
+    intakeId: nonEmptyStringSchema.optional(),
+    runId: nonEmptyStringSchema.optional(),
   }).strict()).min(1),
   evidenceExcerpts: z.array(z.object({
     kind: nonEmptyStringSchema,
