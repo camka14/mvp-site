@@ -27,11 +27,21 @@ if (savedProposalPath && !lockProposal) {
   throw new Error('--proposal is only supported with --lock.');
 }
 if (useLive && !savedProposalPath) {
-  if (!process.env.DATABASE_URL_LIVE?.trim()) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) {
     throw new Error('DATABASE_URL_LIVE is required with --live.');
   }
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  try {
+    const sslMode = new URL(liveDatabaseUrl).searchParams.get('sslmode')?.toLowerCase();
+    if (sslMode === 'disable') {
+      delete process.env.PG_SSL_REJECT_UNAUTHORIZED;
+    } else {
+      process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+    }
+  } catch {
+    process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  }
 }
 
 const writeImmutableJson = async (
