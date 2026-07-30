@@ -17,7 +17,7 @@ describe('affiliate mapping job context builder', () => {
       await fs.mkdir(evidenceDirectory, { recursive: true });
       await fs.mkdir(path.join(repositoryRoot, 'src/server/affiliateImports'), { recursive: true });
       await fs.mkdir(path.join(repositoryRoot, 'docs'), { recursive: true });
-      const markdown = Buffer.from('# River City events');
+      const markdown = Buffer.from('# River City events\nContact coach@rivercity.example');
       const robots = Buffer.from('User-agent: *\\nAllow: /events');
       const markdownHash = createHash('sha256').update(markdown).digest('hex');
       const robotsHash = createHash('sha256').update(robots).digest('hex');
@@ -88,7 +88,11 @@ describe('affiliate mapping job context builder', () => {
         ]),
         evidenceExcerpts: expect.arrayContaining([
           expect.objectContaining({ kind: 'ROBOTS', content: robots.toString('utf8') }),
-          expect.objectContaining({ kind: 'PAGE_MARKDOWN', content: markdown.toString('utf8') }),
+          expect.objectContaining({
+            kind: 'PAGE_MARKDOWN',
+            content: '# River City events\nContact [redacted-email]',
+            truncated: true,
+          }),
         ]),
         repositoryExcerpts: expect.arrayContaining([
           expect.objectContaining({ path: 'src/server/affiliateImports/types.ts' }),

@@ -29,6 +29,20 @@ const reviewedPolicy = (
   return 'NEEDS_REVIEW';
 };
 
+const redactAffiliatePromptExcerpt = (content: string): {
+  content: string;
+  redacted: boolean;
+} => {
+  const redacted = content.replace(
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+    '[redacted-email]',
+  );
+  return {
+    content: redacted,
+    redacted: redacted !== content,
+  };
+};
+
 const readManifest = async (evidenceDirectory: string): Promise<ExportManifest> => (
   JSON.parse(
     await fs.readFile(path.join(path.resolve(evidenceDirectory), 'manifest.json'), 'utf8'),
@@ -159,12 +173,13 @@ export const buildAffiliateMappingJobContextFromExports = async (input: {
         artifactSha256: artifact.sha256,
         length: artifact.kind === 'PAGE_HTML' ? 3 * 1024 : 2 * 1024,
       });
+      const promptExcerpt = redactAffiliatePromptExcerpt(excerpt.content);
       evidenceExcerpts.push({
         kind: artifact.kind,
         sha256: artifact.sha256,
         pageUrl: artifact.sourceUrl ?? artifact.finalUrl ?? '',
-        content: excerpt.content,
-        truncated: excerpt.truncated,
+        content: promptExcerpt.content,
+        truncated: excerpt.truncated || promptExcerpt.redacted,
       });
     } catch (error) {
       if (!(error instanceof Error) || !error.message.includes('Binary evidence')) throw error;
