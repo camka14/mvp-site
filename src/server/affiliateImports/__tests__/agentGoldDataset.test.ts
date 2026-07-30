@@ -15,6 +15,8 @@ import {
 } from '../agentGoldCohort';
 import {
   assertLockedGoldCaptureCohort,
+  goldCapturePageNeedsRobotsReview,
+  pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
 } from '../agentGoldCaptureCohort';
 
@@ -488,6 +490,116 @@ describe('affiliate mapping gold cohort planning', () => {
 
     expect(planGoldCaptureBatches(pages).map((batch) => batch.length))
       .toEqual([10, 10, 3]);
+  });
+
+  it('requires non-empty ScrapingDog content from a successful or partial run', () => {
+    const page = {
+      id: 'page_1',
+      intakeId: 'intake_1',
+      role: 'LISTING',
+      robotsStatus: 'ALLOWED',
+      robotsNotes: null,
+    };
+    const successfulRunIds = new Set(['run_current']);
+
+    expect(pageHasCurrentGoldCaptureEvidence(page, [{
+      pageId: page.id,
+      runId: 'run_old',
+      kind: 'PAGE_HTML',
+      provider: 'FIRECRAWL',
+      sizeBytes: 10_000,
+      storageReady: true,
+    }], new Set(['run_old']))).toBe(false);
+    expect(pageHasCurrentGoldCaptureEvidence(page, [{
+      pageId: page.id,
+      runId: 'run_current',
+      kind: 'PAGE_HTML',
+      provider: 'SCRAPINGDOG',
+      sizeBytes: 0,
+      storageReady: true,
+    }], successfulRunIds)).toBe(false);
+    expect(pageHasCurrentGoldCaptureEvidence(page, [{
+      pageId: page.id,
+      runId: 'run_current',
+      kind: 'PAGE_MARKDOWN',
+      provider: 'SCRAPINGDOG',
+      sizeBytes: 1_024,
+      storageReady: true,
+    }], successfulRunIds)).toBe(true);
+  });
+
+  it('accepts stored robots evidence for a disallowed page', () => {
+    const page = {
+      id: 'page_blocked',
+      intakeId: 'intake_1',
+      role: 'LISTING',
+      robotsStatus: 'DISALLOWED',
+      robotsNotes: 'Disallow: /private',
+    };
+
+    expect(pageHasCurrentGoldCaptureEvidence(page, [{
+      pageId: page.id,
+      runId: 'run_failed_after_policy_check',
+      kind: 'ROBOTS',
+      provider: 'DIRECT',
+      sizeBytes: 24,
+      storageReady: true,
+    }], new Set())).toBe(true);
+  });
+
+  it('accepts explicit authentication evidence for a registration action', () => {
+    const page = {
+      id: 'page_registration',
+      intakeId: 'intake_1',
+      role: 'REGISTRATION',
+      robotsStatus: 'ALLOWED',
+      robotsNotes: null,
+    };
+
+    expect(pageHasCurrentGoldCaptureEvidence(page, [{
+      pageId: page.id,
+      runId: 'run_access',
+      kind: 'PAGE_ACCESS_STATUS',
+      provider: 'DIRECT',
+      sizeBytes: 72,
+      storageReady: true,
+    }], new Set(['run_access']))).toBe(true);
+  });
+
+  it('rejects content whose backing object is not in the active storage provider', () => {
+    const page = {
+      id: 'page_missing_object',
+      intakeId: 'intake_1',
+      role: 'DETAIL',
+      robotsStatus: 'ALLOWED',
+      robotsNotes: null,
+    };
+
+    expect(pageHasCurrentGoldCaptureEvidence(page, [{
+      pageId: page.id,
+      runId: 'run_current',
+      kind: 'PAGE_HTML',
+      provider: 'SCRAPINGDOG',
+      sizeBytes: 1_024,
+      storageReady: false,
+    }], new Set(['run_current']))).toBe(false);
+  });
+
+  it('flags certificate failures for policy review instead of repeated capture', () => {
+    expect(goldCapturePageNeedsRobotsReview({
+      id: 'page_tls',
+      intakeId: 'intake_1',
+      role: 'HOME',
+      robotsStatus: 'UNCLEAR',
+      robotsNotes: 'certificate has expired',
+    })).toBe(true);
+    expect(goldCapturePageNeedsRobotsReview({
+      id: 'page_timeout',
+      intakeId: 'intake_1',
+      role: 'HOME',
+      robotsStatus: 'UNCLEAR',
+      robotsNotes: 'Source request timed out.',
+    })).toBe(false);
   });
 
   it('verifies a saved proposal independently of the current repository commit', () => {

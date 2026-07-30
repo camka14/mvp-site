@@ -146,6 +146,10 @@ describe('affiliate source intake service', () => {
 
     expect(firecrawlClient.scrapeSourcePage).not.toHaveBeenCalled();
     expect(firecrawlClient.mapSourceUrls).not.toHaveBeenCalled();
+    expect(fetchResource).toHaveBeenCalledWith(
+      'https://example.com/robots.txt',
+      expect.objectContaining({ maxBytes: 4 * 1024 * 1024 }),
+    );
     expect(result).toEqual(expect.objectContaining({
       summary: expect.objectContaining({
         blockedPages: [expect.objectContaining({ pageId: 'page_1' })],
@@ -153,6 +157,78 @@ describe('affiliate source intake service', () => {
     }));
     expect(prismaMock.affiliateSourceIntakeRuns.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'BLOCKED' }),
+    }));
+  });
+
+  it('records an authentication-gated registration action without invoking a scraper', async () => {
+    const run = {
+      id: 'run_access',
+      intakeId: 'intake_1',
+      requestedPageIds: ['page_registration'],
+      provider: 'SCRAPINGDOG',
+      status: 'QUEUED',
+    };
+    const page = {
+      id: 'page_registration',
+      intakeId: 'intake_1',
+      url: 'https://example.com/events/register',
+      role: 'REGISTRATION',
+      status: 'ACTIVE',
+      createdAt: new Date(),
+    };
+    prismaMock.affiliateSourceIntakeRuns.findFirst.mockResolvedValue(run);
+    prismaMock.affiliateSourceIntakeRuns.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.affiliateSourceIntakeRuns.findUnique.mockResolvedValue({ ...run, status: 'RUNNING' });
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
+      id: 'intake_1',
+      complianceStatus: 'ALLOWED',
+      affiliateSourceId: 'source_1',
+    });
+    prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([page]);
+    const captureClient = {
+      provider: 'SCRAPINGDOG' as const,
+      captureSourcePage: jest.fn(),
+      captureScreenshot: jest.fn(),
+    };
+    const fetchResource = jest.fn()
+      .mockResolvedValueOnce({
+        finalUrl: 'https://example.com/robots.txt',
+        statusCode: 200,
+        contentType: 'text/plain',
+        body: Buffer.from('User-agent: *\nDisallow:\n'),
+      })
+      .mockResolvedValueOnce({
+        finalUrl: page.url,
+        statusCode: 401,
+        contentType: 'text/html',
+        body: Buffer.from('Sign in required'),
+      });
+
+    const result = await processNextAffiliateSourceIntakeRun(
+      { runId: run.id, workerId: 'worker_1' },
+      {
+        captureClient,
+        fallbackCaptureClient: null,
+        screenshotMode: 'none',
+        fetchResource,
+      },
+    );
+
+    expect(captureClient.captureSourcePage).not.toHaveBeenCalled();
+    expect(persistArtifactMock).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'PAGE_ACCESS_STATUS',
+      provider: 'DIRECT',
+      httpStatus: 401,
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      run: expect.objectContaining({ status: 'SUCCEEDED' }),
+      summary: expect.objectContaining({
+        restrictedPages: [expect.objectContaining({
+          pageId: page.id,
+          statusCode: 401,
+        })],
+        classification: expect.objectContaining({ type: 'AUTH_REQUIRED' }),
+      }),
     }));
   });
 

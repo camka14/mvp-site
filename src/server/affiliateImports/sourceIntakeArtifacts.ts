@@ -1,7 +1,11 @@
 import { createHash } from 'crypto';
 import { createId } from '@/lib/id';
 import { prisma } from '@/lib/prisma';
-import { getStorageProvider, type StorageGetResult } from '@/lib/storageProvider';
+import {
+  getStorageProvider,
+  getStorageProviderName,
+  type StorageGetResult,
+} from '@/lib/storageProvider';
 
 export const INTAKE_TEXT_ARTIFACT_LIMIT_BYTES = 5 * 1024 * 1024;
 export const INTAKE_IMAGE_ARTIFACT_LIMIT_BYTES = 3 * 1024 * 1024;
@@ -16,6 +20,7 @@ export type AffiliateSourceIntakeArtifactKind =
   | 'DISCOVERED_URLS'
   | 'PAGE_MARKDOWN'
   | 'PAGE_HTML'
+  | 'PAGE_ACCESS_STATUS'
   | 'PAGE_LINKS'
   | 'PAGE_SCREENSHOT'
   | 'PAGE_BRANDING'
@@ -73,7 +78,7 @@ const extensionFor = (kind: AffiliateSourceIntakeArtifactKind, mimeType?: string
   if (mimeType?.includes('svg')) return 'svg';
   if (mimeType?.includes('html')) return 'html';
   if (kind === 'PAGE_MARKDOWN') return 'md';
-  if (kind.endsWith('_JSON') || kind === 'DISCOVERED_URLS' || kind === 'PAGE_LINKS' || kind === 'PAGE_BRANDING' || kind === 'PAGE_IMAGES') {
+  if (kind.endsWith('_JSON') || kind === 'DISCOVERED_URLS' || kind === 'PAGE_ACCESS_STATUS' || kind === 'PAGE_LINKS' || kind === 'PAGE_BRANDING' || kind === 'PAGE_IMAGES') {
     return 'json';
   }
   return 'txt';
@@ -130,7 +135,18 @@ export const persistAffiliateSourceIntakeArtifact = async (
   let fileId = reusableArtifact?.fileId as string | undefined;
   if (fileId) {
     const file = await files.findUnique({ where: { id: fileId } });
-    if (!file) fileId = undefined;
+    const matchesStorageProvider = getStorageProviderName() === 'spaces'
+      ? Boolean(file?.bucket)
+      : Boolean(file && !file.bucket);
+    if (!file || !matchesStorageProvider) {
+      fileId = undefined;
+    } else {
+      const storedObject = await getStorageProvider().headObject({
+        key: file.path,
+        bucket: file.bucket,
+      });
+      if (!storedObject.exists) fileId = undefined;
+    }
   }
 
   const now = input.now ?? new Date();

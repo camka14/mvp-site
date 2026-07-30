@@ -5,6 +5,23 @@ type GoldCapturePage = {
   role: string;
 };
 
+export type GoldCaptureEvidencePage = {
+  id: string;
+  intakeId: string;
+  role: string;
+  robotsStatus: string;
+  robotsNotes?: string | null;
+};
+
+export type GoldCaptureEvidenceArtifact = {
+  pageId: string | null;
+  runId: string;
+  kind: string;
+  provider: string | null;
+  sizeBytes: number | null;
+  storageReady: boolean;
+};
+
 export type GoldCaptureCohortExample = {
   sourceKey: string;
   scenarioIntent: string;
@@ -159,3 +176,36 @@ export const planGoldCaptureBatches = (
   }
   return batches;
 };
+
+export const pageHasCurrentGoldCaptureEvidence = (
+  page: GoldCaptureEvidencePage,
+  artifacts: GoldCaptureEvidenceArtifact[],
+  successfulRunIds: Set<string>,
+  provider = 'SCRAPINGDOG',
+): boolean => {
+  const pageArtifacts = artifacts.filter((artifact) => (
+    artifact.pageId === page.id
+    && (artifact.sizeBytes ?? 0) > 0
+    && artifact.storageReady
+  ));
+  if (page.robotsStatus === 'DISALLOWED') {
+    return pageArtifacts.some((artifact) => artifact.kind === 'ROBOTS');
+  }
+  if (page.role === 'REGISTRATION' && pageArtifacts.some((artifact) => (
+    artifact.kind === 'PAGE_ACCESS_STATUS'
+    && artifact.provider === 'DIRECT'
+    && successfulRunIds.has(artifact.runId)
+  ))) {
+    return true;
+  }
+  return pageArtifacts.some((artifact) => (
+    (artifact.kind === 'PAGE_HTML' || artifact.kind === 'PAGE_MARKDOWN')
+    && artifact.provider === provider
+    && successfulRunIds.has(artifact.runId)
+  ));
+};
+
+export const goldCapturePageNeedsRobotsReview = (
+  page: GoldCaptureEvidencePage,
+): boolean => page.robotsStatus === 'UNCLEAR'
+  && /certificate|cert_|ssl|tls/i.test(page.robotsNotes ?? '');

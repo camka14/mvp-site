@@ -44,7 +44,7 @@ import {
 const MAX_CAPTURE_PAGES = 10;
 const MAX_DISCOVERED_URLS = 50;
 const MAX_LOGO_CANDIDATES_PER_PAGE = 5;
-const ROBOTS_MAX_BYTES = 512 * 1024;
+const ROBOTS_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_ROBOTS_TIMEOUT_MS = 30_000;
 
 const robotsTimeoutMs = (): number => {
@@ -128,6 +128,7 @@ export type AffiliateSourceIntakeProcessingDependencies = {
 type IntakeRunSummary = {
   warnings: string[];
   blockedPages: Array<{ pageId: string; url: string; rule: string | null }>;
+  restrictedPages: Array<{ pageId: string; url: string; statusCode: number }>;
   failedPages: Array<{ pageId: string; url: string; error: string }>;
   capturedPages: Array<{
     pageId: string;
@@ -837,6 +838,41 @@ const processCapturePage = async (
     return { capture: null, artifacts: null, robotsText, providerJobId: null };
   }
 
+  if (page.role === 'REGISTRATION') {
+    try {
+      const accessResponse = await fetchResource(page.url, {
+        maxBytes: 256 * 1024,
+        timeoutMs: robotsTimeoutMs(),
+      });
+      if (accessResponse.statusCode === 401 || accessResponse.statusCode === 403) {
+        await persistCaptureArtifact({
+          intakeId: intake.id,
+          pageId: page.id,
+          runId: run.id,
+          kind: 'PAGE_ACCESS_STATUS',
+          data: jsonBuffer({
+            statusCode: accessResponse.statusCode,
+            disposition: 'AUTHENTICATION_REQUIRED',
+          }),
+          sourceUrl: page.url,
+          finalUrl: accessResponse.finalUrl,
+          provider: 'DIRECT',
+          httpStatus: accessResponse.statusCode,
+          mimeType: 'application/json',
+        }, state);
+        state.restrictedPages.push({
+          pageId: page.id,
+          url: page.url,
+          statusCode: accessResponse.statusCode,
+        });
+        return { capture: null, artifacts: null, robotsText, providerJobId: null };
+      }
+    } catch {
+      // Continue to the configured provider when a bounded direct preflight
+      // cannot establish that the public registration action is gated.
+    }
+  }
+
   try {
     const captured = await captureWithFallback(primaryClient, fallbackClient, page.url, state);
     const { capture } = captured;
@@ -1072,6 +1108,7 @@ export const processNextAffiliateSourceIntakeRun = async (
   const summary: IntakeRunSummary = {
     warnings: [],
     blockedPages: [],
+    restrictedPages: [],
     failedPages: [],
     capturedPages: [],
     discoveredUrls: 0,
@@ -1161,10 +1198,17 @@ export const processNextAffiliateSourceIntakeRun = async (
 
     const evidence = captures.map((capture) => capture.providerArtifacts?.markdown ?? '').join('\n');
     const urls = captures.flatMap((capture) => capture.providerArtifacts?.links ?? []);
-    summary.classification = classifyAffiliateSourceEvidence(evidence, urls);
-    const status = summary.capturedPages.length === 0 && summary.blockedPages.length > 0 && summary.failedPages.length === 0
+    summary.classification = summary.capturedPages.length === 0 && summary.restrictedPages.length > 0
+      ? {
+        type: 'AUTH_REQUIRED',
+        confidence: 1,
+        reasons: ['Selected registration pages require authentication.'],
+      }
+      : classifyAffiliateSourceEvidence(evidence, urls);
+    const hasRecordedEvidence = summary.capturedPages.length > 0 || summary.restrictedPages.length > 0;
+    const status = !hasRecordedEvidence && summary.blockedPages.length > 0 && summary.failedPages.length === 0
       ? 'BLOCKED'
-      : summary.capturedPages.length === 0
+      : !hasRecordedEvidence
         ? 'FAILED'
         : summary.failedPages.length || summary.blockedPages.length || summary.warnings.length
           ? 'PARTIAL'

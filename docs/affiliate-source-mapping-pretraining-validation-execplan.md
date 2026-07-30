@@ -28,7 +28,11 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 23:31Z) Ran the complete locked 35-source cohort through the existing ScrapingDog intake path on OVH, one source at a time and in batches of at most 10 pages. The immutable run report records 31 terminal-complete source results, four failed source results, 51 processed runs, and no source left queued or running. Team Lillard was recorded as policy-blocked without a public fetch.
 - [x] (2026-07-30 00:02Z) Exported the available intake runs and verified 74 manifests containing 1,306 artifacts and 89,198,851 artifact bytes. Every local artifact exists and matches its recorded SHA-256; there are zero missing files and zero hash mismatches.
 - [x] (2026-07-30 00:02Z) Audited exact locked-URL coverage instead of trusting source-level terminal labels. The unchanged ScrapingDog pass resolved 108 required pages with ScrapingDog content and 15 with robots-block evidence, reused two required pages that only have older Firecrawl content, and left 12 pages unresolved, including the intentionally unfetched Team Lillard home page. Twenty-seven sources have complete current-provider evidence, two otherwise-complete sources rely on older Firecrawl evidence, one source is explicitly policy-blocked, and five sources have capture issues.
-- [ ] Resolve or formally waive the five source-level capture issues and the two older-provider evidence reuses before freezing the 35 real test examples. Do not retry, substitute URLs, alter provider settings, or change capture safeguards without a new explicit user direction.
+- [x] (2026-07-30 01:46Z) Paused all 44 live discovery campaigns and verified that no discovery or intake run remains queued or running. Indexing cannot restart through the scheduled campaign worker until an operator explicitly reactivates a campaign.
+- [x] (2026-07-30 01:46Z) Implemented bounded source-specific remediation: a 4 MiB robots limit for the Gresham-Barlow responses, a canonical `www` retry after a target 404, explicit 401/403 registration-access evidence instead of stealth scraping, cross-intake evidence ownership, current-provider evidence checks, and certificate-review stops. The focused suite passes 36 tests, TypeScript passes, and `git diff --check` passes.
+- [x] (2026-07-30 01:46Z) Replaced 29 accidentally local-backed live artifact rows from the first repair pass and recaptured the affected Lake Oswego and Portland Ultimate pages into DigitalOcean Spaces. The live database now has zero affiliate-intake artifacts backed by a null-bucket `File`.
+- [x] (2026-07-30 01:46Z) Refreshed Aspire NW Volleyball and Union County Youth Soccer with ScrapingDog evidence, confirmed current ScrapingDog evidence on the reused Soccer Chance Academy page, and reran the complete locked cohort. The final report has 34 complete sources, one Sherwood certificate review, and zero failed sources.
+- [ ] Formally approve or replace the Sherwood Soccer certificate-review disposition before freezing all 35 real test examples. The other reported capture failures and older-provider reuses are resolved; Team Lillard remains the approved blocked-source refusal.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
@@ -83,6 +87,15 @@ The first locked test release contains 35 reviewed examples representing at leas
 - Observation: artifact export integrity is stronger than run success labels.
   Evidence: 74 exported manifests include successful, partial, blocked, and failed attempts. Across 1,306 referenced artifacts, every local file exists and every SHA-256 matches, even though some source URLs remain unresolved.
 
+- Observation: a valid artifact database row is not sufficient evidence that its object is durable.
+  Evidence: the first tunnel-based repair pass inherited `STORAGE_PROVIDER=local`, creating 29 live artifact rows whose `File.bucket` was null. The corrected coordinator now rejects backing files from the wrong active provider, artifact reuse checks storage-provider compatibility and object existence, and all 29 rows and 26 orphaned files were removed before Spaces-backed recapture.
+
+- Observation: the five Portland Ultimate registration actions are public links but require authentication before their content can be read.
+  Evidence: bounded direct requests consistently return 401. The intake now records a small `PAGE_ACCESS_STATUS` artifact with `AUTHENTICATION_REQUIRED` and does not spend ScrapingDog credits or attempt to evade the gate.
+
+- Observation: a certificate failure cannot be repaired safely by weakening TLS verification.
+  Evidence: Sherwood Soccer's robots request reports an expired certificate. The coordinator emits `ROBOTS_REVIEW_REQUIRED`, queues no public capture, and leaves the source outside the frozen gold release pending an operator decision.
+
 ## Decision Log
 
 - Decision: do not train model weights from `LEGACY_PARTIAL` or `STALE` mappings.
@@ -133,17 +146,29 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: the user explicitly directed this cohort to use the existing ScrapingDog setup and asked for issues to be reported without fixes. A brief post-pass diagnostic change was reverted, an alternate-provider attempt was stopped, and neither is counted in the unchanged-setup coverage totals. The live store retains its append-only diagnostic artifacts, but they are not eligible for the locked release unless the user later accepts them.
   Date/Author: 2026-07-29 / User and Codex
 
+- Decision: accept only current-provider evidence whose backing object belongs to the active storage provider.
+  Rationale: source-level readiness must survive process and host boundaries. A content artifact with a non-empty size is ineligible when its `File` row points at local storage during a Spaces-backed live capture, and reusable content must pass an object-head check before a new run references it.
+  Date/Author: 2026-07-30 / Codex
+
+- Decision: treat authenticated registration actions as explicit access-status evidence rather than scrape failures.
+  Rationale: 401 and 403 responses describe a stable source limitation. Recording that limitation is useful training evidence; retrying through stealth or alternate providers would be wasteful and could cross the intended access boundary.
+  Date/Author: 2026-07-30 / Codex
+
+- Decision: never bypass a failed TLS certificate for robots or policy review.
+  Rationale: an expired certificate prevents a trustworthy policy fetch. The safe result is a review-required source, not a disabled certificate check or an inferred allow decision.
+  Date/Author: 2026-07-30 / Codex
+
 ## Outcomes & Retrospective
 
 Milestones 1, the proposal-and-lock portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, preserve an explicitly approved held-out cohort without recomputing it, prepare bounded live capture batches, and write an immutable private release once approved examples exist. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, and records exact capture-page requirements.
 
 The redacted local proposal is persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record.
 
-The test cohort is locked and the complete first ScrapingDog pass has finished. Under the unchanged current setup, 108 of 137 required pages have ScrapingDog HTML or Markdown, 15 are supported policy blocks, two reuse older Firecrawl-only content, and 12 are unresolved. The unresolved set is two Gresham-Barlow pages, two Lake Oswego pages, one Soccer Chance Academy page reused without evidence, five Portland Ultimate registration pages, the Sherwood Soccer home page, and the intentionally unfetched Team Lillard home page. This means 27 sources have complete current-provider evidence, two otherwise-complete sources rely on older-provider evidence, one source is a terminal policy block, and five sources need an explicit capture disposition.
+The test cohort is locked and the remediated ScrapingDog pass is complete. Of 137 required page references, 115 have current ScrapingDog HTML or Markdown, 15 have supported robots-block evidence, and five protected registration actions have explicit authentication-required evidence. Sherwood Soccer is the only page-level review because its expired certificate prevents a trustworthy robots check. Team Lillard is the separate source-level blocked-refusal example and intentionally has no page capture. The final cohort runner reports 34 complete sources, one review-required source, and zero failed sources.
 
-The exported evidence is internally sound: 74 manifests reference 1,306 artifacts totaling 89,198,851 bytes, with zero missing files and zero hash mismatches. A brief post-pass diagnostic captured the two Gresham-Barlow content pages after changing a robots bound, so the append-only live store now shows 110 ScrapingDog-content pages and 10 missing pages. That code change was reverted at the user's direction and those two pages are excluded from the unchanged-setup baseline. A Firecrawl diagnostic captured no replacement pages and was stopped. No retry or URL substitution remains in progress.
+The exported evidence remains internally sound, and the repaired captures add readable Spaces-backed bundles for Lake Oswego, Portland Ultimate, Aspire NW Volleyball, and Union County Youth Soccer. A direct live object audit found zero unreadable or wrong-provider files among the evidence selected for the locked cohort, and the live database contains zero affiliate-intake artifacts whose backing `File.bucket` is null. No discovery or intake job remains active, and all 44 discovery campaigns are paused.
 
-All 35 rows remain explicitly `UNAPPROVED`, and there are still zero approved real gold examples to pass into the release writer. The cohort is not ready to freeze as a 35-example gold test release until the five capture issues and two older-provider reuses are reviewed. No model training has started.
+All 35 rows remain explicitly `UNAPPROVED`, and there are still zero approved real gold examples to pass into the release writer. The capture layer is ready for human output review except for the Sherwood certificate disposition, which must be approved as a safe refusal or replaced in a new cohort version. No model training has started.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -329,6 +354,16 @@ After explicit authorization for intake captures, use the existing admin intake 
     npm run affiliate:intake:export -- --live --source-key <source-key> --run-id <run-id>
 
 These export commands read stored live data and object storage but make no public request and write no live row. Queueing or refreshing an intake is a separate authorized operation. Record the selected source key, run id, compliance result, pages, artifact kinds, and hashes in each review envelope.
+
+When running the locked cohort against a live database reached through an explicit tunnel, declare the object-storage boundary as part of the command:
+
+    npm run affiliate:mapping:gold-capture-cohort -- \
+      --apply \
+      --approve-existing \
+      --export-current-database \
+      --storage-provider=spaces
+
+The coordinator rejects evidence backed by the wrong active provider. Do not omit the storage provider for a live tunnel capture, and do not use `local` storage for live artifact rows.
 
 Build the locked private test release:
 

@@ -45,6 +45,12 @@ const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => 
 const main = async () => {
   const shouldApply = process.argv.includes('--apply');
   const approveExisting = process.argv.includes('--approve-existing');
+  const exportCurrentDatabase = process.argv.includes('--export-current-database');
+  const storageProvider = readOption('--storage-provider');
+  if (storageProvider && storageProvider !== 'local' && storageProvider !== 'spaces') {
+    throw new Error('--storage-provider must be local or spaces.');
+  }
+  if (storageProvider) process.env.STORAGE_PROVIDER = storageProvider;
   if (approveExisting && !shouldApply) throw new Error('--approve-existing requires --apply.');
   const proposalPath = path.resolve(
     readOption('--proposal')
@@ -101,7 +107,7 @@ const main = async () => {
       };
       sourceResult.batches.push(batchResult);
       try {
-        for (let attempt = 0; attempt < 5; attempt += 1) {
+        for (let attempt = 0; attempt < Math.max(5, batches[batchIndex].length + 1); attempt += 1) {
           const prepare = await runJsonCommand(
             'scripts/prepare-affiliate-mapping-gold-capture.ts',
             [
@@ -130,7 +136,11 @@ const main = async () => {
             batchResult.status = queueStatus;
             break;
           }
-          if (queueStatus === 'NO_BATCH_PAGES_OWNED') {
+          if ([
+            'CROSS_INTAKE_COMPLIANCE_REVIEW_REQUIRED',
+            'REQUIRED_BATCH_PAGES_MISSING',
+            'ROBOTS_REVIEW_REQUIRED',
+          ].includes(queueStatus)) {
             batchResult.status = queueStatus;
             break;
           }
@@ -139,7 +149,13 @@ const main = async () => {
           }
           const processed = await runJsonCommand(
             'scripts/process-affiliate-source-intakes.ts',
-            [`--run-id=${prepare.runId}`, '--once', '--summary'],
+            [
+              `--run-id=${prepare.runId}`,
+              '--once',
+              '--summary',
+              '--provider=SCRAPINGDOG',
+              '--fallback-provider=NONE',
+            ],
           );
           batchResult.processResults.push(processed);
           const processedRun = Array.isArray(processed.results) ? processed.results[0] : null;
@@ -147,8 +163,8 @@ const main = async () => {
             const exported = await runJsonCommand(
               'scripts/export-affiliate-source-intake.ts',
               [
-                '--live',
-                `--source-key=${prepare.intakeSourceKey}`,
+                ...(!exportCurrentDatabase ? ['--live'] : []),
+                `--source-key=${prepare.queuedIntakeSourceKey ?? prepare.intakeSourceKey}`,
                 `--run-id=${processedRun.runId}`,
               ],
             );
@@ -165,7 +181,11 @@ const main = async () => {
         const message = error instanceof Error ? error.message : String(error);
         sourceResult.errors.push(`Batch ${batchIndex + 1}: ${message}`);
       }
-      if (batchResult.status === 'COMPLIANCE_REVIEW_REQUIRED') break;
+      if ([
+        'COMPLIANCE_REVIEW_REQUIRED',
+        'CROSS_INTAKE_COMPLIANCE_REVIEW_REQUIRED',
+        'ROBOTS_REVIEW_REQUIRED',
+      ].includes(batchResult.status)) break;
     }
     sourceResult.status = sourceResult.errors.length
       ? 'FAILED'

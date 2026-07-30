@@ -3,8 +3,13 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import {
   assertLockedGoldCaptureCohort,
+  goldCapturePageNeedsRobotsReview,
+  pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
+  type GoldCaptureEvidenceArtifact,
+  type GoldCaptureEvidencePage,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
+import { getStorageProviderName } from '../src/lib/storageProvider';
 import {
   affiliateIntakeUrlKey,
   canonicalizeAffiliateIntakeUrl,
@@ -163,6 +168,8 @@ const main = async () => {
       pagesReusedFromOtherIntakes: [] as Array<{ url: string; intakeId: string }>,
       queueStatus: 'NOT_REQUESTED',
       runId: null as string | null,
+      queuedIntakeId: null as string | null,
+      queuedIntakeSourceKey: null as string | null,
       publicCaptureRequestsQueued: 0,
     };
     if (!shouldApply) {
@@ -257,63 +264,137 @@ const main = async () => {
       affiliateIntakeUrlKey(canonicalizeAffiliateIntakeUrl(page.url))
     ));
     const batchPages = await db.affiliateSourceIntakePages.findMany({
-      where: { intakeId: intake.id, urlKey: { in: batchUrlKeys }, status: 'ACTIVE' },
-      select: { id: true, urlKey: true, robotsStatus: true },
+      where: { urlKey: { in: batchUrlKeys }, status: 'ACTIVE' },
+      select: {
+        id: true,
+        intakeId: true,
+        urlKey: true,
+        role: true,
+        robotsStatus: true,
+        robotsNotes: true,
+      },
     });
-    const pageByUrlKey = new Map(batchPages.map((page: any) => [page.urlKey, page]));
-    const ownedPages = batchUrlKeys
+    type BatchPage = GoldCaptureEvidencePage & { urlKey: string };
+    const pageByUrlKey = new Map<string, BatchPage>(
+      batchPages.map((page: BatchPage) => [page.urlKey, page]),
+    );
+    const requiredPages = batchUrlKeys
       .map((urlKey) => pageByUrlKey.get(urlKey))
-      .filter(Boolean);
-    if (!ownedPages.length) {
-      summary.queueStatus = 'NO_BATCH_PAGES_OWNED';
+      .filter((page): page is BatchPage => Boolean(page));
+    if (requiredPages.length !== batchUrlKeys.length) {
+      summary.queueStatus = 'REQUIRED_BATCH_PAGES_MISSING';
       console.log(JSON.stringify(summary, null, 2));
       return;
     }
 
     const contentArtifacts = await db.affiliateSourceIntakeArtifacts.findMany({
       where: {
-        intakeId: intake.id,
-        pageId: { in: ownedPages.map((page: any) => page.id) },
-        kind: { in: ['PAGE_HTML', 'PAGE_MARKDOWN', 'ROBOTS'] },
+        pageId: { in: requiredPages.map((page: any) => page.id) },
+        kind: { in: ['PAGE_HTML', 'PAGE_MARKDOWN', 'PAGE_ACCESS_STATUS', 'ROBOTS'] },
       },
-      select: { pageId: true, kind: true },
+      select: {
+        pageId: true,
+        runId: true,
+        kind: true,
+        provider: true,
+        sizeBytes: true,
+        fileId: true,
+      },
     });
-    const artifactKindsByPage = new Map<string, Set<string>>();
-    for (const artifact of contentArtifacts) {
-      const kinds = artifactKindsByPage.get(artifact.pageId) ?? new Set<string>();
-      kinds.add(artifact.kind);
-      artifactKindsByPage.set(artifact.pageId, kinds);
-    }
-    const missingPages = ownedPages.filter((page: any) => {
-      const kinds = artifactKindsByPage.get(page.id) ?? new Set<string>();
-      return page.robotsStatus === 'DISALLOWED'
-        ? !kinds.has('ROBOTS')
-        : !kinds.has('PAGE_HTML') && !kinds.has('PAGE_MARKDOWN');
-    });
+    const contentFileIds = Array.from(new Set<string>(
+      contentArtifacts.map((artifact: any) => artifact.fileId),
+    ));
+    const contentFiles = contentFileIds.length
+      ? await db.file.findMany({
+        where: { id: { in: contentFileIds } },
+        select: { id: true, bucket: true },
+      })
+      : [];
+    const expectedStorageProvider = getStorageProviderName();
+    const storageReadyByFileId = new Map<string, boolean>(
+      contentFiles.map((file: any) => [
+        file.id,
+        expectedStorageProvider === 'spaces' ? Boolean(file.bucket) : !file.bucket,
+      ]),
+    );
+    const typedContentArtifacts = contentArtifacts.map((artifact: any) => ({
+      pageId: artifact.pageId,
+      runId: artifact.runId,
+      kind: artifact.kind,
+      provider: artifact.provider,
+      sizeBytes: artifact.sizeBytes,
+      storageReady: storageReadyByFileId.get(artifact.fileId) === true,
+    })) as GoldCaptureEvidenceArtifact[];
+    const contentRunIds = Array.from(new Set<string>(
+      typedContentArtifacts.map((artifact) => artifact.runId),
+    ));
+    const successfulRuns = contentRunIds.length
+      ? await db.affiliateSourceIntakeRuns.findMany({
+        where: {
+          id: { in: contentRunIds },
+          status: { in: ['SUCCEEDED', 'PARTIAL'] },
+        },
+        select: { id: true },
+      })
+      : [];
+    const successfulRunIds = new Set<string>(successfulRuns.map((run: any) => run.id));
+    const missingPages = requiredPages.filter((page) => (
+      !pageHasCurrentGoldCaptureEvidence(page, typedContentArtifacts, successfulRunIds)
+    ));
     if (!missingPages.length) {
       summary.queueStatus = 'EVIDENCE_ALREADY_CAPTURED';
       console.log(JSON.stringify(summary, null, 2));
       return;
     }
+    const robotsReviewPage = missingPages.find((page) => (
+      goldCapturePageNeedsRobotsReview(page)
+    ));
+    if (robotsReviewPage) {
+      summary.queueStatus = 'ROBOTS_REVIEW_REQUIRED';
+      console.log(JSON.stringify({
+        ...summary,
+        robotsReviewPageId: robotsReviewPage.id,
+        robotsReviewNotes: robotsReviewPage.robotsNotes,
+      }, null, 2));
+      return;
+    }
+    const captureIntakeId = missingPages[0].intakeId;
+    const capturePages = missingPages.filter((page) => page.intakeId === captureIntakeId);
+    const captureIntake = captureIntakeId === intake.id
+      ? intake
+      : await db.affiliateSourceIntakes.findUnique({
+        where: { id: captureIntakeId },
+      });
+    if (!captureIntake || captureIntake.complianceStatus !== 'ALLOWED') {
+      summary.queueStatus = 'CROSS_INTAKE_COMPLIANCE_REVIEW_REQUIRED';
+      summary.queuedIntakeId = captureIntakeId;
+      summary.queuedIntakeSourceKey = captureIntake?.sourceKey ?? null;
+      console.log(JSON.stringify(summary, null, 2));
+      return;
+    }
     const activeRun = await db.affiliateSourceIntakeRuns.findFirst({
-      where: { intakeId: intake.id, status: { in: ['QUEUED', 'RUNNING'] } },
+      where: { intakeId: captureIntake.id, status: { in: ['QUEUED', 'RUNNING'] } },
       orderBy: { queuedAt: 'asc' },
       select: { id: true, status: true },
     });
     if (activeRun) {
       summary.queueStatus = `ACTIVE_RUN_${activeRun.status}`;
       summary.runId = activeRun.id;
+      summary.queuedIntakeId = captureIntake.id;
+      summary.queuedIntakeSourceKey = captureIntake.sourceKey;
       console.log(JSON.stringify(summary, null, 2));
       return;
     }
     const run = await intakeService.queueAffiliateSourceIntakeRun(
-      intake.id,
-      missingPages.map((page: any) => page.id),
+      captureIntake.id,
+      capturePages.map((page: any) => page.id),
       lock.approvedByUserId,
     );
     summary.queueStatus = 'QUEUED';
     summary.runId = run.id;
-    summary.publicCaptureRequestsQueued = missingPages.length;
+    summary.queuedIntakeId = captureIntake.id;
+    summary.queuedIntakeSourceKey = captureIntake.sourceKey;
+    summary.publicCaptureRequestsQueued = capturePages.length;
     console.log(JSON.stringify(summary, null, 2));
   } finally {
     await db.$disconnect();

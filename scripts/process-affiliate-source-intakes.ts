@@ -74,6 +74,7 @@ const main = async () => {
           status: result?.run?.status ?? result?.status ?? null,
           capturedPages: result?.summary?.capturedPages?.length ?? 0,
           blockedPages: result?.summary?.blockedPages?.length ?? 0,
+          restrictedPages: result?.summary?.restrictedPages?.length ?? 0,
           failedPages: result?.summary?.failedPages?.length ?? 0,
           warnings: result?.summary?.warnings?.length ?? 0,
           classification: result?.summary?.classification?.type ?? null,

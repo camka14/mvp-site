@@ -12,6 +12,7 @@ const prismaMock = {
   },
 };
 const putObjectMock = jest.fn();
+const headObjectMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/id', () => {
@@ -19,8 +20,10 @@ jest.mock('@/lib/id', () => {
   return { createId: () => `generated_${++id}` };
 });
 jest.mock('@/lib/storageProvider', () => ({
+  getStorageProviderName: () => 'local',
   getStorageProvider: () => ({
     putObject: (...args: unknown[]) => putObjectMock(...args),
+    headObject: (...args: unknown[]) => headObjectMock(...args),
   }),
 }));
 
@@ -43,6 +46,7 @@ describe('affiliate source intake artifacts', () => {
       sizeBytes: 4,
       contentType: 'image/png',
     });
+    headObjectMock.mockResolvedValue({ exists: true });
   });
 
   it('rejects oversized image artifacts', () => {
@@ -80,7 +84,11 @@ describe('affiliate source intake artifacts', () => {
 
   it('reuses a prior file for identical bytes while creating a run artifact', async () => {
     prismaMock.affiliateSourceIntakeArtifacts.findFirst.mockResolvedValue({ fileId: 'file_existing' });
-    prismaMock.file.findUnique.mockResolvedValue({ id: 'file_existing' });
+    prismaMock.file.findUnique.mockResolvedValue({
+      id: 'file_existing',
+      bucket: null,
+      path: 'page-markdown-existing.md',
+    });
 
     await persistAffiliateSourceIntakeArtifact({
       intakeId: 'intake_1',
@@ -97,5 +105,28 @@ describe('affiliate source intake artifacts', () => {
     expect(prismaMock.affiliateSourceIntakeArtifacts.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ fileId: 'file_existing', runId: 'run_2' }),
     });
+  });
+
+  it('uploads new bytes when a reusable file is missing from storage', async () => {
+    prismaMock.affiliateSourceIntakeArtifacts.findFirst.mockResolvedValue({ fileId: 'file_missing' });
+    prismaMock.file.findUnique.mockResolvedValue({
+      id: 'file_missing',
+      bucket: null,
+      path: 'missing.md',
+    });
+    headObjectMock.mockResolvedValue({ exists: false });
+
+    await persistAffiliateSourceIntakeArtifact({
+      intakeId: 'intake_1',
+      pageId: 'page_1',
+      runId: 'run_3',
+      kind: 'PAGE_MARKDOWN',
+      data: Buffer.from('same content'),
+      sourceUrl: 'https://example.com/events',
+      mimeType: 'text/markdown',
+    });
+
+    expect(putObjectMock).toHaveBeenCalledTimes(1);
+    expect(prismaMock.file.create).toHaveBeenCalledTimes(1);
   });
 });
