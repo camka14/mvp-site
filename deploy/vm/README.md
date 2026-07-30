@@ -48,7 +48,10 @@ Use a non-root deployment account and keep the checkout at `/opt/bracketiq`:
 
 Install Docker Engine and the Compose plugin from Docker's official Ubuntu repository. Install the PostgreSQL 17 client and Restic from supported repositories. Enable unattended security upgrades. Initially rate-limit inbound TCP 22 with key-only authentication and Fail2ban; restrict it to a stable operator or VPN CIDR later if one is available. Allow TCP 80 and 443 plus UDP 443 publicly, and deny 3000, 5432, and 6379. Configure at least 2 GiB swap as an emergency cushion even though the selected VPS has 8 GiB RAM.
 
-Do not use a floating `latest` application tag. Publish an image with the manual GitHub workflow and copy the full commit-SHA tag into `deployment.env`.
+Do not use a floating `latest` application tag. After the push-triggered `CI`
+workflow passes on `main`, publish an image with the manual GitHub workflow and
+copy the full commit-SHA tag into `deployment.env`. The publish workflow rejects
+commits without a successful CI run for that exact SHA.
 
 ## Validate configuration without exposing secrets
 
@@ -66,7 +69,17 @@ Run:
 
     ./bin/deploy.sh ghcr.io/camka14/mvp-site:<full-commit-sha>
 
-The script accepts only a full commit SHA or image digest, waits for database readiness, and restores the previously recorded image if the new container becomes unhealthy. Set `RUN_MIGRATIONS=true` only when the migration-owner URL is correct and the release actually needs schema deployment. Application rollback does not reverse database migrations; after a non-backward-compatible migration, roll forward with a fixed image.
+The script accepts only a full commit SHA or image digest, verifies that the
+exact commit has a completed successful push-triggered `CI` run on `main`, waits
+for database readiness, and restores the previously recorded image if the new
+container becomes unhealthy. A digest deployment must also set
+`DEPLOY_COMMIT_SHA` to the tested 40-character commit. If a push does not need a
+backend redeploy, do not publish or deploy an image; CI still runs for the push.
+Set `RUN_MIGRATIONS=true` only when the migration-owner URL is correct and the
+release actually needs schema deployment. The CI verification happens before
+the migration container or application is changed. Application rollback does
+not reverse database migrations; after a non-backward-compatible migration,
+roll forward with a fixed image.
 
 ## Maintenance mode
 

@@ -3,19 +3,44 @@ name: Publish production VM image
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+permissions: {}
 
 concurrency:
   group: publish-production-vm-image
   cancel-in-progress: false
 
 jobs:
+  verify-ci:
+    name: Verify successful main CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require the main branch
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Production images can only be published from main." >&2
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify CI passed for this commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: deploy/vm/bin/verify-ci.sh "$GITHUB_SHA"
+
   publish:
+    needs: verify-ci
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

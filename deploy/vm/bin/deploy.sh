@@ -6,14 +6,22 @@ vm_dir="$(CDPATH= cd -- "$script_dir/.." && pwd)"
 compose_file="${COMPOSE_FILE:-$vm_dir/compose.production.yml}"
 deployment_env="${COMPOSE_ENV_FILE:-$vm_dir/deployment.env}"
 new_image="${1:-}"
+commit_sha=""
 
 if [[ -z "$new_image" ]]; then
   echo "Usage: $0 ghcr.io/camka14/mvp-site:<full-commit-sha>" >&2
   exit 64
 fi
 
-if [[ ! "$new_image" =~ ^ghcr\.io/camka14/mvp-site:[0-9a-f]{40}$ \
-  && ! "$new_image" =~ ^ghcr\.io/camka14/mvp-site@sha256:[0-9a-f]{64}$ ]]; then
+if [[ "$new_image" =~ ^ghcr\.io/camka14/mvp-site:([0-9a-f]{40})$ ]]; then
+  commit_sha="${BASH_REMATCH[1]}"
+elif [[ "$new_image" =~ ^ghcr\.io/camka14/mvp-site@sha256:[0-9a-f]{64}$ ]]; then
+  commit_sha="${DEPLOY_COMMIT_SHA:-}"
+  if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "DEPLOY_COMMIT_SHA must identify the tested commit when deploying by image digest." >&2
+    exit 64
+  fi
+else
   echo "Refusing a mutable or unexpected image reference: $new_image" >&2
   exit 64
 fi
@@ -22,6 +30,8 @@ if [[ ! -f "$deployment_env" ]]; then
   echo "Missing deployment environment file: $deployment_env" >&2
   exit 66
 fi
+
+"$script_dir/verify-ci.sh" "$commit_sha"
 
 compose=(docker compose --env-file "$deployment_env" -f "$compose_file")
 previous_image="$(awk -F= '$1 == "APP_IMAGE" { sub(/^[^=]*=/, ""); print; exit }' "$deployment_env")"
