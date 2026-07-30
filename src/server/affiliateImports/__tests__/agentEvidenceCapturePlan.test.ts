@@ -119,7 +119,16 @@ describe('affiliate evidence capture plan', () => {
     expect(plan.deficits).toEqual(expect.arrayContaining([
       expect.stringContaining('real executable examples: required 95'),
       expect.stringContaining('RENTAL examples across train and validation: required 11'),
+      expect.stringContaining(
+        'blocked or insufficient-evidence examples across train and validation: required 12',
+      ),
     ]));
+    expect(plan.summary.minimumBlockedOrInsufficientExampleCount).toBe(12);
+    expect(plan.summary.preferredExecutableTargetKinds).toEqual({
+      EVENT: 60,
+      CLUB: 20,
+      RENTAL: 15,
+    });
     expect(plan.deficits.some((deficit) => deficit.includes('TEAM'))).toBe(false);
   });
 

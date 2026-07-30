@@ -52,6 +52,12 @@ export type AffiliateEvidenceCapturePlan = {
     targetKinds: Record<string, number>;
     minimumRealExampleCount: 95;
     preferredRealExampleCount: 120;
+    minimumBlockedOrInsufficientExampleCount?: 12;
+    preferredExecutableTargetKinds?: {
+      EVENT: 60;
+      CLUB: 20;
+      RENTAL: 15;
+    };
     databaseWrites: 0;
     publicRequests: 0;
   };
@@ -194,6 +200,11 @@ export const buildAffiliateEvidenceCapturePlan = (input: {
   requireCount('real executable examples', executable.length, 95);
   requireCount('RENTAL examples across train and validation', targetKinds.RENTAL ?? 0, 11);
   requireCount('CLUB examples across train and validation', targetKinds.CLUB ?? 0, 11);
+  requireCount(
+    'blocked or insufficient-evidence examples across train and validation',
+    examples.length - executable.length,
+    12,
+  );
 
   const summary = {
     exampleCount: examples.length,
@@ -207,6 +218,12 @@ export const buildAffiliateEvidenceCapturePlan = (input: {
     targetKinds,
     minimumRealExampleCount: 95 as const,
     preferredRealExampleCount: 120 as const,
+    minimumBlockedOrInsufficientExampleCount: 12 as const,
+    preferredExecutableTargetKinds: {
+      EVENT: 60 as const,
+      CLUB: 20 as const,
+      RENTAL: 15 as const,
+    },
     databaseWrites: 0 as const,
     publicRequests: 0 as const,
   };
