@@ -263,6 +263,19 @@ const candidateIdentity = (candidate: AffiliateCandidateAssertion): string => [
   candidate.startsAt ?? '',
 ].join('|');
 
+const candidateContainsForbiddenTrainingData = (
+  candidate: AffiliateCandidateInput,
+): boolean => {
+  const serialized = JSON.stringify(candidate);
+  return (
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(serialized)
+    || /\b(?:sk-|AKIA)[A-Za-z0-9_-]{12,}/.test(serialized)
+    || /[?&](?:x-amz-[^=]*|sig|signature|token|api[_-]?key|access[_-]?key|auth)=[^&\s"]+/i.test(
+      serialized,
+    )
+  );
+};
+
 const evidenceForDraft = (
   context: AffiliateMappingJobContext,
   fixturePages: AffiliateGoldFixturePage[],
@@ -412,11 +425,20 @@ export const materializeAffiliateMappingGoldExample = async (
           client,
         );
         extractedCandidateCount = enriched.length;
-        const importable = enriched.filter((candidate) => (
+        const currentCandidates = enriched.filter((candidate) => (
           candidate.listingKind === input.targetKind
           && isAffiliateAgentTargetKind(candidate.listingKind)
           && candidateImportRejectionReasons(candidate, new Date(input.approval.approvedAt)).length === 0
         ));
+        const importable = currentCandidates.filter((candidate) => (
+          !candidateContainsForbiddenTrainingData(candidate)
+        ));
+        const unsafeCandidateCount = currentCandidates.length - importable.length;
+        if (unsafeCandidateCount > 0) {
+          warnings.push(
+            `Excluded ${unsafeCandidateCount} candidate(s) containing private or credentialed data.`,
+          );
+        }
         importableCandidateCount = importable.length;
         const loadedFixtures = await loadFixturePages(input.fixtureDirectory, input.fixturePages);
         let supported = importable.filter((candidate) => (

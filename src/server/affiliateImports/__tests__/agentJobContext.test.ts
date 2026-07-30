@@ -17,7 +17,10 @@ describe('affiliate mapping job context builder', () => {
       await fs.mkdir(evidenceDirectory, { recursive: true });
       await fs.mkdir(path.join(repositoryRoot, 'src/server/affiliateImports'), { recursive: true });
       await fs.mkdir(path.join(repositoryRoot, 'docs'), { recursive: true });
-      const markdown = Buffer.from('# River City events\nContact coach@rivercity.example');
+      const markdown = Buffer.from(
+        '# River City events\nContact coach@rivercity.example\n'
+        + 'Asset: https://cdn.example/image?Signature=secret-value&Key-Pair-Id=public',
+      );
       const robots = Buffer.from('User-agent: *\\nAllow: /events');
       const markdownHash = createHash('sha256').update(markdown).digest('hex');
       const robotsHash = createHash('sha256').update(robots).digest('hex');
@@ -90,7 +93,8 @@ describe('affiliate mapping job context builder', () => {
           expect.objectContaining({ kind: 'ROBOTS', content: robots.toString('utf8') }),
           expect.objectContaining({
             kind: 'PAGE_MARKDOWN',
-            content: '# River City events\nContact [redacted-email]',
+            content: '# River City events\nContact [redacted-email]\n'
+              + 'Asset: https://cdn.example/image?Signature=[redacted]&Key-Pair-Id=public',
             truncated: true,
           }),
         ]),

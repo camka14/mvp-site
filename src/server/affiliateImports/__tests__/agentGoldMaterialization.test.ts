@@ -171,6 +171,24 @@ describe('affiliate mapping gold materialization', () => {
     );
   });
 
+  it('excludes candidates whose actions contain direct contact data', async () => {
+    const input = await baseInput();
+    input.mapping.manualCandidates?.push({
+      title: 'River City Summer League',
+      officialActionUrl: 'https://calendar.google.com/calendar?cid=coach@river.example',
+      sourceUrl: 'https://river.example/events',
+      startsAt: '2026-09-01T18:00:00.000Z',
+      dateDisplayMode: 'SCHEDULED',
+      dateDisplayText: 'September 1, 2026',
+    });
+    const result = await materializeAffiliateMappingGoldExample(input);
+
+    expect(result.example.expectedPersistedCandidates).toHaveLength(1);
+    expect(result.warnings).toContain(
+      'Excluded 1 candidate(s) containing private or credentialed data.',
+    );
+  });
+
   it('preserves explicit blocked and custom-extractor outcomes without executable mappings', async () => {
     const input = await baseInput();
     const blocked = await materializeAffiliateMappingGoldExample({

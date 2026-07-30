@@ -33,10 +33,19 @@ const redactAffiliatePromptExcerpt = (content: string): {
   content: string;
   redacted: boolean;
 } => {
-  const redacted = content.replace(
-    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
-    '[redacted-email]',
-  );
+  const redacted = content
+    .replace(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+      '[redacted-email]',
+    )
+    .replace(
+      /\b(?:sk-|AKIA)[A-Za-z0-9_-]{12,}/g,
+      '[redacted-provider-key]',
+    )
+    .replace(
+      /([?&](?:x-amz-[^=&\s]*|sig|signature|token|api[_-]?key|access[_-]?key|auth)=)[^&\s"'<>\\)]+/gi,
+      '$1[redacted]',
+    );
   return {
     content: redacted,
     redacted: redacted !== content,
