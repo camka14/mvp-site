@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import {
   planGoldCaptureBatches,
+  resolveGoldCaptureMaxAttempts,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
 import {
   resolveAffiliateEvidenceCaptureSelection,
@@ -57,6 +58,7 @@ const main = async () => {
     throw new Error('--evidence-environment must be local or live.');
   }
   const storageProvider = readOption('--storage-provider');
+  const maximumAttempts = resolveGoldCaptureMaxAttempts(readOption('--max-attempts'));
   if (storageProvider && storageProvider !== 'local' && storageProvider !== 'spaces') {
     throw new Error('--storage-provider must be local or spaces.');
   }
@@ -100,6 +102,7 @@ const main = async () => {
     startedAt: new Date().toISOString(),
     completedAt: null as string | null,
     mode: shouldApply ? 'apply' : 'dry-run',
+    maximumAttempts,
     sourceCount: examples.length,
     sources: [] as Array<Record<string, any>>,
   };
@@ -126,7 +129,7 @@ const main = async () => {
       };
       sourceResult.batches.push(batchResult);
       try {
-        for (let attempt = 0; attempt < Math.max(5, batches[batchIndex].length + 1); attempt += 1) {
+        for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
           const prepare = await runJsonCommand(
             'scripts/prepare-affiliate-mapping-gold-capture.ts',
             [
@@ -203,7 +206,9 @@ const main = async () => {
           }
         }
         if (batchResult.status === 'IN_PROGRESS') {
-          throw new Error('Capture batch did not reach a terminal evidence state after five attempts.');
+          throw new Error(
+            `Capture batch did not reach a terminal evidence state after ${maximumAttempts} attempts.`,
+          );
         }
       } catch (error) {
         batchResult.status = 'FAILED';

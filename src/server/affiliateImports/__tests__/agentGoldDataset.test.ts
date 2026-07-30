@@ -19,6 +19,7 @@ import {
   goldCapturePageNeedsRobotsReview,
   pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
+  resolveGoldCaptureMaxAttempts,
 } from '../agentGoldCaptureCohort';
 
 const HASH_HTML = 'a'.repeat(64);
@@ -536,6 +537,18 @@ describe('affiliate mapping gold cohort planning', () => {
 
     expect(planGoldCaptureBatches(pages).map((batch) => batch.length))
       .toEqual([10, 10, 3]);
+  });
+
+  it('uses three capture attempts by default and permits an explicit override', () => {
+    expect(resolveGoldCaptureMaxAttempts()).toBe(3);
+    expect(resolveGoldCaptureMaxAttempts('1')).toBe(1);
+    expect(resolveGoldCaptureMaxAttempts('4')).toBe(4);
+    expect(() => resolveGoldCaptureMaxAttempts('0')).toThrow(
+      'Gold capture maximum attempts must be a positive integer.',
+    );
+    expect(() => resolveGoldCaptureMaxAttempts('2.5')).toThrow(
+      'Gold capture maximum attempts must be a positive integer.',
+    );
   });
 
   it('requires non-empty ScrapingDog content from a successful or partial run', () => {

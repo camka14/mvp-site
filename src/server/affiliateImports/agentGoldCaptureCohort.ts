@@ -177,6 +177,23 @@ export const planGoldCaptureBatches = (
   return batches;
 };
 
+export const DEFAULT_GOLD_CAPTURE_MAX_ATTEMPTS = 3;
+
+export const resolveGoldCaptureMaxAttempts = (
+  value?: string,
+): number => {
+  if (value === undefined) return DEFAULT_GOLD_CAPTURE_MAX_ATTEMPTS;
+  const maximumAttempts = Number.parseInt(value, 10);
+  if (
+    !Number.isInteger(maximumAttempts)
+    || maximumAttempts < 1
+    || String(maximumAttempts) !== value.trim()
+  ) {
+    throw new Error('Gold capture maximum attempts must be a positive integer.');
+  }
+  return maximumAttempts;
+};
+
 export const pageHasCurrentGoldCaptureEvidence = (
   page: GoldCaptureEvidencePage,
   artifacts: GoldCaptureEvidenceArtifact[],
