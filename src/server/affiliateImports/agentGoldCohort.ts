@@ -118,9 +118,9 @@ const affiliateGoldCohortProposalBody = (
   deficits: proposal.deficits,
 });
 
-export const assertAffiliateGoldCohortProposalIntegrity = (
+export function assertAffiliateGoldCohortProposalIntegrity(
   value: unknown,
-): asserts value is AffiliateGoldCohortProposal => {
+): asserts value is AffiliateGoldCohortProposal {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Cohort proposal must be a JSON object.');
   }
@@ -160,6 +160,107 @@ export const assertAffiliateGoldCohortProposalIntegrity = (
   if (proposal.readyToLock !== (proposal.deficits.length === 0)) {
     throw new Error('Cohort proposal readiness does not match its recorded deficits.');
   }
+}
+
+const validatedCohortRevisionUrl = (value: string, label: string): URL => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be an absolute URL.`);
+  }
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || url.hash
+  ) {
+    throw new Error(`${label} must be a public HTTPS URL without credentials or a fragment.`);
+  }
+  return url;
+};
+
+const cohortRevisionHostIdentity = (url: URL): string => (
+  url.hostname.toLowerCase().replace(/^www\./, '')
+);
+
+export const reviseAffiliateGoldCohortRequiredPage = (input: {
+  proposal: AffiliateGoldCohortProposal;
+  sourceKey: string;
+  fromUrl: string;
+  toUrl: string;
+  reason: string;
+  repositoryCommit: string;
+}): AffiliateGoldCohortProposal => {
+  assertAffiliateGoldCohortProposalIntegrity(input.proposal);
+  const sourceKey = input.sourceKey.trim();
+  const reason = input.reason.trim();
+  const repositoryCommit = input.repositoryCommit.trim();
+  if (!sourceKey) throw new Error('Cohort revision source key is required.');
+  if (!reason) throw new Error('Cohort revision reason is required.');
+  if (!repositoryCommit) throw new Error('Cohort revision repository commit is required.');
+
+  const fromUrl = validatedCohortRevisionUrl(input.fromUrl, 'Cohort revision source URL');
+  const toUrl = validatedCohortRevisionUrl(input.toUrl, 'Cohort revision replacement URL');
+  if (fromUrl.toString() === toUrl.toString()) {
+    throw new Error('Cohort revision replacement URL must differ from the source URL.');
+  }
+  if (cohortRevisionHostIdentity(fromUrl) !== cohortRevisionHostIdentity(toUrl)) {
+    throw new Error('Cohort revision URLs must remain on the same registrable host.');
+  }
+
+  const exampleIndex = input.proposal.examples.findIndex(
+    (example) => example.sourceKey === sourceKey,
+  );
+  if (exampleIndex < 0) {
+    throw new Error(`Cohort revision source was not found: ${sourceKey}`);
+  }
+  const example = input.proposal.examples[exampleIndex];
+  const matchingPageIndexes = example.requiredCapturePages.flatMap((page, index) => (
+    new URL(page.url).toString() === fromUrl.toString() ? [index] : []
+  ));
+  if (matchingPageIndexes.length !== 1) {
+    throw new Error(
+      `Cohort revision expected exactly one required page ${fromUrl.toString()} for ${sourceKey}; found ${matchingPageIndexes.length}.`,
+    );
+  }
+  if (example.requiredCapturePages.some((page, index) => (
+    index !== matchingPageIndexes[0]
+    && new URL(page.url).toString() === toUrl.toString()
+  ))) {
+    throw new Error(`Cohort revision replacement page already exists for ${sourceKey}.`);
+  }
+
+  const examples = input.proposal.examples.map((candidate, index) => {
+    if (index !== exampleIndex) return candidate;
+    return {
+      ...candidate,
+      requiredCapturePages: candidate.requiredCapturePages.map((page, pageIndex) => (
+        pageIndex === matchingPageIndexes[0]
+          ? { ...page, url: toUrl.toString() }
+          : page
+      )),
+      selectionReasons: [
+        ...candidate.selectionReasons,
+        `Cohort revision: ${reason}`,
+      ],
+    };
+  });
+  const proposalBody = affiliateGoldCohortProposalBody({
+    ...input.proposal,
+    repositoryCommit,
+    examples,
+  });
+  const proposalSha256 = stableAgentArtifactSha256(proposalBody);
+  const revisedProposal: AffiliateGoldCohortProposal = {
+    schemaVersion: 1,
+    cohortId: `affiliate-mapping-test-${proposalSha256.slice(0, 16)}`,
+    ...proposalBody,
+    proposalSha256,
+    readyToLock: proposalBody.deficits.length === 0,
+  };
+  assertAffiliateGoldCohortProposalIntegrity(revisedProposal);
+  return revisedProposal;
 };
 
 const TARGET_EXAMPLE_COUNT = 35;

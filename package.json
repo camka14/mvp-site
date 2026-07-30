@@ -43,6 +43,7 @@
     "affiliate:mapping:dataset": "tsx scripts/export-affiliate-mapping-training-data.ts",
     "affiliate:mapping:backfill-plan": "tsx scripts/plan-affiliate-source-evidence-backfill.ts",
     "affiliate:mapping:gold-plan": "tsx scripts/plan-affiliate-mapping-gold-cohort.ts",
+    "affiliate:mapping:gold-revise": "tsx scripts/revise-affiliate-mapping-gold-cohort.ts",
     "affiliate:mapping:gold-capture": "tsx scripts/prepare-affiliate-mapping-gold-capture.ts",
     "affiliate:mapping:gold-capture-cohort": "tsx scripts/capture-affiliate-mapping-gold-cohort.ts",
     "affiliate:mapping:gold-release": "tsx scripts/build-affiliate-mapping-gold-release.ts",

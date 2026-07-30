@@ -11,6 +11,7 @@ import {
 import {
   assertAffiliateGoldCohortProposalIntegrity,
   planAffiliateGoldTestCohort,
+  reviseAffiliateGoldCohortRequiredPage,
   type AffiliateGoldCohortCandidate,
 } from '../agentGoldCohort';
 import {
@@ -459,6 +460,51 @@ const cohortCandidate = (
 };
 
 describe('affiliate mapping gold cohort planning', () => {
+  it('creates a newly hashed proposal when one approved capture URL is revised', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'historical-commit',
+    });
+    const example = proposal.examples[0];
+    const originalPage = example.requiredCapturePages[0];
+    const originalUrl = new URL(originalPage.url);
+    const replacementUrl = new URL(originalPage.url);
+    replacementUrl.hostname = `www.${originalUrl.hostname}`;
+
+    const revised = reviseAffiliateGoldCohortRequiredPage({
+      proposal,
+      sourceKey: example.sourceKey,
+      fromUrl: originalUrl.toString(),
+      toUrl: replacementUrl.toString(),
+      reason: 'The canonical www endpoint has valid TLS while the apex endpoint does not.',
+      repositoryCommit: 'revision-commit',
+    });
+
+    expect(revised.cohortId).not.toBe(proposal.cohortId);
+    expect(revised.proposalSha256).not.toBe(proposal.proposalSha256);
+    expect(revised.repositoryCommit).toBe('revision-commit');
+    expect(revised.examples.find((candidate) => candidate.sourceKey === example.sourceKey))
+      .toEqual(expect.objectContaining({
+        requiredCapturePages: [{
+          ...originalPage,
+          url: replacementUrl.toString(),
+        }],
+        selectionReasons: expect.arrayContaining([
+          'Cohort revision: The canonical www endpoint has valid TLS while the apex endpoint does not.',
+        ]),
+      }));
+    expect(proposal.examples[0].requiredCapturePages[0].url).toBe(originalPage.url);
+    expect(() => assertAffiliateGoldCohortProposalIntegrity(revised)).not.toThrow();
+    expect(() => reviseAffiliateGoldCohortRequiredPage({
+      proposal,
+      sourceKey: example.sourceKey,
+      fromUrl: originalUrl.toString(),
+      toUrl: 'https://different.example/',
+      reason: 'Unsafe cross-domain replacement.',
+      repositoryCommit: 'revision-commit',
+    })).toThrow('same registrable host');
+  });
+
   it('requires a matching immutable lock before planning live capture batches', () => {
     const proposal = planAffiliateGoldTestCohort({
       candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
