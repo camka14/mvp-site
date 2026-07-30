@@ -53,6 +53,11 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-30 22:31Z) Materialized the 70 evidence-complete non-test sources and built immutable gold release `affiliate-mapping-gold-train-validation-bf60727f200d956a-v1`, SHA-256 `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4`. The deterministic split is 55 train and 15 validation, all from real captures. Exact evidence supports 48 manual executable examples and requires 22 insufficient-evidence refusals.
 - [x] (2026-07-30 22:32Z) Built matching SFT release `affiliate-mapping-sft-train-validation-bf60727f200d956a-v1`. Its 55 training and 15 validation rows exactly match gold example ids, domains, splits, and frozen prompt hash; its manifest SHA-256 is `29e9a7377fd0082f816065da2ad64da083a29f397fa79e0bc1f9279bcddec939`. The release contains no held-out test row.
 - [x] (2026-07-30 22:39Z) Implemented the fail-closed combined readiness command and emitted report `affiliate-mapping-training-readiness-2026-07-30-v1.json`, SHA-256 `c2718938111d7c2396778eca98591fb7adaa30ef1440d8536adbb99b0a74aa0`. It verifies both gold releases, every fixture manifest, the SFT release, prompt identity, exact row identity, and cross-split domain isolation before returning `DO_NOT_TRAIN`.
+- [x] (2026-07-31 00:02Z) Added additive train/validation assignment. Expanded materialization can accept an immutable base gold release, carry its exact examples forward, preserve every existing domain split, reject conflicting frozen assignments, reserve up to three new selector domains for validation, and assign remaining new domains to training.
+- [x] (2026-07-31 00:04Z) Proved the extension boundary against the current private artifacts. The dry extension carries forward all 70 frozen examples, selects zero of the fifteen evidence-incomplete examples, reports the base release id and SHA-256, and makes zero public requests and database writes.
+- [x] (2026-07-31 00:08Z) Implemented and froze deterministic acquisition plan `affiliate-mapping-training-acquisition-67e825365e1c2e74`, SHA-256 `67e825365e1c2e741eb31dec65ce22886d539cc896b489a2cdc5d222006b9efa`, against repository commit `eb2d35e47538ee05d3bf031a41278bbc7ef3f1e8`. It derives gaps from the 70 materialized rows, not historical mapping intent.
+- [x] (2026-07-31 00:08Z) Classified fourteen recovery sources as actionable and placed Lane Amateur Hockey on policy/TLS hold. The plan assigns the three recoverable RENTAL sources to training and three viable selector domains to validation. Perfect recovery would still leave 23 EVENT, five CLUB, and five RENTAL finished examples missing; the observed 68.6 percent executable yield produces a buffered discovery target of 38 EVENT, nine CLUB, and nine RENTAL candidates.
+- [ ] Review and explicitly approve the exact recovery/public-capture portion of `affiliate-mapping-training-acquisition-67e825365e1c2e74`; no ScrapingDog work has been queued from it.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
 - [ ] Run the untouched base-model bakeoff on the real OVH host and preserve immutable reports.
@@ -152,6 +157,15 @@ The first locked test release contains 35 reviewed examples representing at leas
 - Observation: immutable release verification needs to traverse files, not only trust a manifest object.
   Evidence: `report-affiliate-mapping-training-readiness.ts` rehashes each gold release, reads every split JSONL file, verifies every fixture-manifest file, validates the SFT rows and hashes, checks exact train/validation row identity, and then combines the releases through the domain-leakage validator. The current report references gold release hashes `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4` and `808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844`.
 
+- Observation: recomputing train/validation from the full source list would move previously frozen domains when new sources are inserted.
+  Evidence: the original materializer chose validation domains from sorted source keys each run. The additive assignment contract now loads the prior gold release, preserves every existing domain assignment, rejects conflicting frozen assignments, and selects validation only among genuinely new domains.
+
+- Observation: only fourteen of the fifteen omitted historical sources are actionable capture work.
+  Evidence: thirteen report missing exact evidence, Clear Creek reports missing required batch-page configuration, and Lane Amateur Hockey reports a TLS handshake failure while checking policy. The acquisition plan holds Lane for replacement or repaired policy evidence rather than treating certificate bypass as data collection.
+
+- Observation: recovering the existing backlog cannot close the corpus by itself.
+  Evidence: the fourteen actionable examples contain at most eight EVENT, three CLUB, and three RENTAL executable intents. Even if every one materializes successfully, the preferred composition still lacks 23 EVENT, five CLUB, and five RENTAL finished examples. Applying the observed 48-of-70 executable yield produces a buffered new-candidate target of 38 EVENT, nine CLUB, and nine RENTAL.
+
 ## Decision Log
 
 - Decision: do not train model weights from `LEGACY_PARTIAL` or `STALE` mappings.
@@ -250,6 +264,22 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: refusals are valuable safety curriculum, but they do not prove that a model can create a working scraper. The readiness report therefore records 48 executable and 22 refusal train-plus-validation examples separately and enforces the executable target, CLUB and RENTAL floors, per-split refusal coverage, and selector/manual diversity.
   Date/Author: 2026-07-30 / Codex
 
+- Decision: extend train and validation additively from immutable gold releases.
+  Rationale: a domain must never move between train and validation merely because later source keys sort earlier. Expanded materialization accepts a verified base release, carries existing examples without recapturing or relabeling them, assigns additions by whole registrable domain, and fails on a conflicting frozen assignment.
+  Date/Author: 2026-07-30 / Codex
+
+- Decision: reserve three new selector-intent domains for validation rather than the one-example hard minimum.
+  Rationale: a selector-intent capture can still materialize as insufficient evidence. Reserving three distinct domains gives the next release a reasonable chance to obtain at least one real generic selector without moving existing validation examples or weakening evidence rules.
+  Date/Author: 2026-07-30 / Codex
+
+- Decision: use observed materialization yield for discovery capacity while keeping finished executable rows as the actual gate.
+  Rationale: only 48 of 70 complete current sources materialized executable output. The acquisition plan therefore distinguishes the exact remaining 33 finished examples after optimistic recovery from a 56-candidate discovery buffer. Candidate counts never satisfy readiness; only exact executable materialization does.
+  Date/Author: 2026-07-30 / Codex
+
+- Decision: hold Lane Amateur Hockey and repair Clear Creek through different paths.
+  Rationale: Lane lacks trustworthy policy evidence because of a TLS handshake failure, so it must wait for a repaired endpoint or be replaced. Clear Creek is not a policy failure; its capture plan lacks required batch pages and may proceed only after that configuration is corrected and reviewed. Neither condition authorizes ad hoc browsing or certificate bypass.
+  Date/Author: 2026-07-30 / Codex
+
 ## Outcomes & Retrospective
 
 Milestones 1 and 2 are complete, the data-construction portion of Milestones 3 and 6 is complete for every currently evidence-complete source, and the data-only portion of Milestone 7 is complete. The repository can now validate a private gold example, deterministically materialize approved mappings from exact stored evidence, construct and verify immutable gold and SFT releases, preserve held-out cohorts without recomputing them, traverse every release and fixture hash, and emit a fail-closed readiness decision. The revised planner and readiness command report rather than weaken executable, target-kind, mapping-mode, and refusal deficits; exclude TEAM work; and make no public request or live write.
@@ -269,6 +299,8 @@ The currently supportable training and validation corpus is also frozen. Gold re
 The fifteen omitted planned sources are `axiom-vbc-reviewed-programs`, `carr-sports-academy`, `hoopsource-basketball-portland-events`, `lane-amateur-hockey-final-review`, `lincoln-youth-soccer-final-review`, `oregon-state-hockey-youth-directory`, `portland-chaos-volleyball-club`, `portland-softball-current-programs`, `reynolds-school-district-facility-rentals`, `rose-city-futsal-adult-leagues`, `rose-city-futsal-court-rentals`, `southeast-portland-girls-basketball`, `the-courts-at-clear-creek-rentals`, `winterhawks-jr-hockey-final-review`, and `ymca-cw-volleyball-programs`. Their current audit status is `REVIEW_REQUIRED`; none was silently substituted or included as a weak example.
 
 Training is not authorized. Readiness report `affiliate-mapping-training-readiness-2026-07-30-v1.json`, SHA-256 `c2718938111d7c2396778eca98591fb7adaa30ef1440d8536adbb99b0a74aa0`, returns `DO_NOT_TRAIN`. Its executable train-plus-validation coverage is 29 EVENT, 12 CLUB, and seven RENTAL; training alone has 22 EVENT, ten CLUB, and five RENTAL. All 48 executable rows are manual-candidate outputs, so both train and validation lack a generic selector example. The immediate data deficit is at least 25 additional training rows, 47 additional executable rows to reach 95, four executable RENTAL rows to reach the hard train-plus-validation floor, five executable RENTAL training rows to reach the training floor, and at least one safe generic selector example in each split. Fifteen planned sources remain excluded because their exact evidence is incomplete. The untouched-base evaluation and verified OVH runtime observation also remain absent. No model training or new public capture started while building these releases.
+
+The next acquisition step is now reproducible rather than implicit. Private plan `affiliate-mapping-training-acquisition-67e825365e1c2e74`, SHA-256 `67e825365e1c2e741eb31dec65ce22886d539cc896b489a2cdc5d222006b9efa`, records fourteen actionable recoveries, one Lane policy/TLS hold, three training RENTAL assignments, three validation selector assignments, the exact 33-example residual after perfect recovery, and the 56-candidate discovery buffer implied by current yield. The plan is read-only and unapproved: it has not queued ScrapingDog, changed an intake, or created a new source.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -291,12 +323,14 @@ The existing code already provides important boundaries:
 - `src/server/affiliateImports/agentTrainingRelease.ts` accepts only human-approved `FAITHFUL` or safe `BLOCKED` teaching envelopes and rejects secrets and domain leakage.
 - `src/server/affiliateImports/agentEvaluation.ts` scores structured model output but must be extended to consume real execution results.
 - `src/server/affiliateImports/agentGoldMaterialization.ts` converts exact approved capture evidence into bounded, privacy-screened gold examples and deterministic train/validation assignments.
+- `src/server/affiliateImports/agentTrainingAcquisitionPlan.ts` compares an immutable train/validation release with its source capture plan and evidence audit, freezes prior domain assignments, prioritizes recoverable gaps, and estimates new-source capacity from observed executable yield.
 - `src/server/affiliateImports/agentGenerator.ts` renders allowlisted files from safe generic or manual drafts.
 - `src/server/affiliateImports/agentRunner.ts` binds a draft to job identity and evidence and operates in an isolated worktree.
 - `src/server/affiliateImports/agentReviewFixtureClient.ts` reads exact local page fixtures by URL, verifies SHA-256, enforces path containment, and makes no network request.
 - `scripts/run-affiliate-agent-disposable-scrape-fixture.ts` proves the generated setup and import path against digest-pinned PostgreSQL for one invented example.
 - `scripts/evaluate-affiliate-mapping-agent.ts` invokes a fixture worker or private llama.cpp worker against a JSON suite.
 - `scripts/materialize-affiliate-mapping-gold-dataset.ts` reads a locked cohort or approved capture plan and writes private gold JSONL plus a materialization report without contacting a public site.
+- `scripts/plan-affiliate-mapping-training-acquisition.ts` creates the read-only gap plan from the current gold release, prior capture plan, and capture audit. It does not discover sites, queue capture, or approve its own output.
 - `scripts/report-affiliate-mapping-training-readiness.ts` reopens both gold releases, every fixture manifest, and the SFT release; verifies exact row and prompt identity; checks split isolation and coverage; and emits the current decision without launching training.
 - `docs/affiliate-source-mapping-model-bakeoff.md` is the durable not-yet-run base-model result surface.
 
@@ -519,6 +553,24 @@ After the test release and base baseline are locked, build training and validati
       --input=<approved-train-validation-envelopes.jsonl> \
       --release=affiliate-mapping-sft-v1
 
+Before queueing more captures, reproduce and review the gap-driven acquisition plan:
+
+    npm run affiliate:mapping:training-acquisition-plan
+    npm run affiliate:mapping:training-acquisition-plan -- --write
+
+The dry run and immutable write must report the same plan hash for the same repository commit. Expected current output includes fourteen actionable recoveries, one held policy/TLS source, three assigned training RENTAL examples, three assigned validation selector domains, 33 minimum finished new examples after optimistic recovery, 56 buffered new candidates at observed yield, `databaseWrites: 0`, and `publicRequests: 0`. Writing the plan does not approve or execute it.
+
+When materializing only newly complete examples, preserve the prior release:
+
+    npm run affiliate:mapping:gold-materialize -- \
+      --plan=<approved-extension-capture-plan.json> \
+      --approval=<matching-approval.json> \
+      --capture-audit=<read-only-capture-audit.json> \
+      --base-gold-release=<immutable-train-validation-gold-release-directory> \
+      --output-dir=<new-materialized-extension-directory>
+
+The dry extension must report the immutable base release id and SHA-256, the count of carried-forward examples, and only genuinely new complete examples. It must not move a frozen domain between splits.
+
 Produce the no-training/training decision:
 
     npm run affiliate:mapping:training-readiness -- \
@@ -547,6 +599,8 @@ Run the Python command from `training/affiliate-source-mapping`; run every other
 The gold contract is accepted when the same approved envelopes produce byte-identical manifests and row hashes, while missing approval, evidence mismatch, leaked secrets, internal action URLs, invented dates, generated logos, duplicate ids, and domain leakage all fail before file output.
 
 The current private release set is accepted as an immutable below-threshold checkpoint when the readiness command reproduces 55 train, 15 validation, and 35 test rows; 48 executable and 22 refusal train-plus-validation rows; zero cross-split domain leakage; source gold hashes `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4` and `808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844`; and decision `DO_NOT_TRAIN`. These outputs prove preservation and provenance, not sufficient volume.
+
+The acquisition planner is accepted when it excludes every example already present in the source gold release, preserves all frozen domain assignments, classifies policy/TLS evidence separately from missing content, assigns coverage-critical RENTAL and selector recoveries deliberately, computes exact finished gaps and a separately labeled yield buffer, detects plan tampering, and reports zero public requests and database writes.
 
 The cohort planner is accepted when it deterministically proposes the required 35-example test cohort from unchanged inputs, reports every coverage quota and deficit, assigns each registrable domain to exactly one split, and makes zero public requests and database writes.
 
@@ -833,3 +887,5 @@ Revised 2026-07-30 after generating the exact replacement proposal. The revision
 Revised 2026-07-30 after explicit approval and lock of the no-TEAM replacement cohort. The revision records the immutable lock, the new read-only live audit mode and 35-of-35 evidence result, the regenerated unapproved training capture plan, its exact no-TEAM composition and deficits, and the decision to acquire missing CLUB, RENTAL, and refusal examples before authorizing further capture or training.
 
 Revised 2026-07-30 after exact gold materialization and release packaging. The revision records the immutable 35-example test release, 55/15 train-validation gold and SFT releases, all release and report hashes, the evidence-driven downgrade of 22 historical mappings to insufficient-evidence refusals, the 48-example executable pool, RENTAL and generic-selector deficits, the fifteen excluded incomplete sources, and the reproducible `DO_NOT_TRAIN` decision. This revision replaces the earlier planning estimate with exact post-materialization coverage while preserving every prior proposal, lock, capture report, and private release.
+
+Revised 2026-07-30 after implementing additive release extension and actual-outcome acquisition planning. The revision records frozen train/validation domain assignments, the base-release dry extension, immutable acquisition plan `affiliate-mapping-training-acquisition-67e825365e1c2e74`, fourteen actionable recoveries, the Lane policy/TLS hold, deliberate RENTAL and selector assignments, the 33-example optimistic residual, the 56-candidate observed-yield buffer, and the continuing approval boundary before any public capture.
