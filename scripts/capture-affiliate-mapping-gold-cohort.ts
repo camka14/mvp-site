@@ -48,6 +48,14 @@ const main = async () => {
   const shouldApply = process.argv.includes('--apply');
   const approveExisting = process.argv.includes('--approve-existing');
   const exportCurrentDatabase = process.argv.includes('--export-current-database');
+  const evidenceEnvironment = readOption('--evidence-environment');
+  if (
+    evidenceEnvironment
+    && evidenceEnvironment !== 'local'
+    && evidenceEnvironment !== 'live'
+  ) {
+    throw new Error('--evidence-environment must be local or live.');
+  }
   const storageProvider = readOption('--storage-provider');
   if (storageProvider && storageProvider !== 'local' && storageProvider !== 'spaces') {
     throw new Error('--storage-provider must be local or spaces.');
@@ -182,6 +190,9 @@ const main = async () => {
               'scripts/export-affiliate-source-intake.ts',
               [
                 ...(!exportCurrentDatabase ? ['--live'] : []),
+                ...(evidenceEnvironment
+                  ? [`--environment=${evidenceEnvironment}`]
+                  : []),
                 `--source-key=${prepare.queuedIntakeSourceKey ?? prepare.intakeSourceKey}`,
                 `--run-id=${processedRun.runId}`,
               ],

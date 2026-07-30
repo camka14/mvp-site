@@ -10,6 +10,9 @@ import {
   renderAffiliateSourceEvidenceMarkdown,
   selectAffiliateSourceIntakeExportRun,
 } from '../src/server/affiliateImports/sourceIntakeExport';
+import {
+  resolveAffiliateDatasetEnvironment,
+} from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -34,6 +37,11 @@ const readOption = (name: string): string | undefined => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1]?.trim() || undefined : undefined;
 };
+
+const environment = resolveAffiliateDatasetEnvironment({
+  explicitEnvironment: readOption('--environment'),
+  useLiveDatabase: useLive,
+});
 
 const safeName = (value: string): string => value
   .toLowerCase()
@@ -132,7 +140,7 @@ const main = async () => {
   try {
     if (process.argv.includes('--list')) {
       console.log(JSON.stringify({
-        environment: useLive ? 'live' : 'local',
+        environment,
         intakes: await listIntakes(db, readOption('--search')),
       }, null, 2));
       return;
@@ -180,7 +188,7 @@ const main = async () => {
     }
 
     const sourceEvidence = buildAffiliateSourceEvidence({
-      environment: useLive ? 'live' : 'local',
+      environment,
       intake: context.intake,
       run,
       pages: context.pages,
