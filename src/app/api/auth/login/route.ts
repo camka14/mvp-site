@@ -10,17 +10,10 @@ import {
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 import { buildAuthSessionPayload } from '@/server/authSessionPayload';
-import {
-  createWebLoginMfaChallenge,
-  isLocalAuthMfaBypassEnabled,
-  isTotpMfaError,
-  readTotpMfaRequestMetadata,
-} from '@/server/authTotpMfa';
 
 const loginSchema = z.object({
   email: z.string().trim().min(1),
   password: z.string().min(8),
-  clientType: z.enum(['web']).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -92,39 +85,6 @@ export async function POST(req: NextRequest) {
       },
       { status: 403 },
     );
-  }
-
-  if (!isLocalAuthMfaBypassEnabled(req)) {
-    try {
-      const challenge = await createWebLoginMfaChallenge({
-        userId: authUser.id,
-        sessionVersion: authUser.sessionVersion ?? 0,
-        metadata: readTotpMfaRequestMetadata(req),
-      });
-      if (challenge) {
-        return NextResponse.json(
-          {
-            error: 'Authenticator verification required.',
-            code: challenge.code,
-            email: authUser.email,
-            requiresMfa: true,
-            requiresMfaSetup: false,
-            mfa: challenge.mfa,
-            requiresEmailVerification,
-            verificationEmailSent,
-          },
-          { status: 200 },
-        );
-      }
-    } catch (error) {
-      if (isTotpMfaError(error)) {
-        return NextResponse.json(
-          { error: error.message, code: error.code },
-          { status: error.status },
-        );
-      }
-      throw error;
-    }
   }
 
   const now = new Date();
