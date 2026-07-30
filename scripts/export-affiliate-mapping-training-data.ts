@@ -44,6 +44,9 @@ const main = async () => {
     collectAffiliateHistoricalDatasetInput,
     renderJsonLines,
   } = await import('../src/server/affiliateImports/agentDataset');
+  const {
+    buildAffiliateGoldCohortCandidates,
+  } = await import('../src/server/affiliateImports/agentGoldCohort');
 
   try {
     const datasetInput = await collectAffiliateHistoricalDatasetInput({
@@ -53,6 +56,7 @@ const main = async () => {
       capturedAt,
     });
     const dataset = buildAffiliateHistoricalDatasetInventory(datasetInput);
+    const captureCandidates = buildAffiliateGoldCohortCandidates(datasetInput);
     const datasetId = `dataset-${safeTimestamp(capturedAt)}-${repositoryCommit.slice(0, 12)}`;
     const outputRoot = path.resolve(
       readOption('--output-dir')
@@ -73,6 +77,10 @@ const main = async () => {
       trainingExamplesSha256: (
         await import('../src/server/affiliateImports/agentContracts')
       ).stableAgentArtifactSha256(dataset.trainingExamples),
+      captureCandidateCount: captureCandidates.length,
+      captureCandidatesSha256: (
+        await import('../src/server/affiliateImports/agentContracts')
+      ).stableAgentArtifactSha256(captureCandidates),
       databaseWrites: 0,
       publicRequests: 0,
     };
@@ -96,6 +104,11 @@ const main = async () => {
         fs.writeFile(
           path.join(outputDirectory, 'training.jsonl'),
           renderJsonLines(dataset.trainingExamples),
+          'utf8',
+        ),
+        fs.writeFile(
+          path.join(outputDirectory, 'capture-candidates.jsonl'),
+          renderJsonLines(captureCandidates),
           'utf8',
         ),
       ]);

@@ -139,6 +139,7 @@ export type HistoricalDatasetInventoryRow = {
   mappingValidatedAt: string | null;
   intakeMatch: EvidenceBackfillMatch;
   intakeId: string | null;
+  intakeSourceKey: string | null;
   runId: string | null;
   artifactCount: number;
   artifactKinds: string[];
@@ -655,6 +656,7 @@ export const buildAffiliateHistoricalDatasetInventory = (
         mappingValidatedAt: isoString(mapping?.validatedAt),
         intakeMatch,
         intakeId: intake?.id ?? null,
+        intakeSourceKey: intake?.sourceKey ?? null,
         runId: run?.id ?? null,
         artifactCount: artifacts.length,
         artifactKinds,

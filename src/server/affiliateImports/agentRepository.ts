@@ -14,7 +14,11 @@ export const resolveAffiliateDatasetEnvironment = (input: {
   ) {
     throw new Error('Dataset environment must be "local" or "live".');
   }
-  return explicitEnvironment ?? (input.useLiveDatabase ? 'live' : 'local');
+  return explicitEnvironment
+    ? explicitEnvironment as AffiliateDatasetEnvironment
+    : input.useLiveDatabase
+      ? 'live'
+      : 'local';
 };
 
 export const resolveAffiliateRepositoryCommit = (input: {

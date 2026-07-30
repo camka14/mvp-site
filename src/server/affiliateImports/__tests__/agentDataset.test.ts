@@ -169,6 +169,7 @@ describe('affiliate mapping historical dataset', () => {
       evidenceLabel: 'FAITHFUL',
       artifactKinds: ['PAGE_HTML', 'ROBOTS'],
       mappingId: 'mapping_1',
+      intakeSourceKey: 'river-city',
       setupScriptPath: 'scripts/setup-river-city-affiliate-source.ts',
       trainingExample: expect.objectContaining({
         evidenceLabel: 'FAITHFUL',
