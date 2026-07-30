@@ -46,6 +46,7 @@
     "affiliate:mapping:gold-revise": "tsx scripts/revise-affiliate-mapping-gold-cohort.ts",
     "affiliate:mapping:gold-capture": "tsx scripts/prepare-affiliate-mapping-gold-capture.ts",
     "affiliate:mapping:gold-capture-cohort": "tsx scripts/capture-affiliate-mapping-gold-cohort.ts",
+    "affiliate:mapping:evidence-capture-plan": "tsx scripts/plan-affiliate-mapping-evidence-capture.ts",
     "affiliate:mapping:gold-release": "tsx scripts/build-affiliate-mapping-gold-release.ts",
     "affiliate:mapping:evaluate": "tsx scripts/evaluate-affiliate-mapping-agent.ts",
     "affiliate:mapping:bakeoff:record": "tsx scripts/record-affiliate-mapping-model-bakeoff.ts",

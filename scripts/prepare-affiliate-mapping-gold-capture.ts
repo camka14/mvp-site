@@ -2,13 +2,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import {
-  assertLockedGoldCaptureCohort,
   goldCapturePageNeedsRobotsReview,
   pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
   type GoldCaptureEvidenceArtifact,
   type GoldCaptureEvidencePage,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
+import {
+  resolveAffiliateEvidenceCaptureSelection,
+} from '../src/server/affiliateImports/agentEvidenceCapturePlan';
 import { getStorageProviderName } from '../src/lib/storageProvider';
 import {
   affiliateIntakeUrlKey,
@@ -66,20 +68,30 @@ const isExplicitlyBlocked = (source: { status: string; metadata: unknown }): boo
 };
 
 const main = async () => {
-  const proposalPath = path.resolve(
-    readOption('--proposal')
+  const capturePlanOption = readOption('--capture-plan');
+  const selectionPath = path.resolve(
+    capturePlanOption
+      ?? readOption('--proposal')
       ?? 'output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json',
   );
-  const lockPath = path.resolve(
-    readOption('--lock') ?? path.join(path.dirname(proposalPath), 'lock.json'),
+  const approvalPath = path.resolve(
+    capturePlanOption
+      ? readOption('--capture-approval') ?? path.join(path.dirname(selectionPath), 'approval.json')
+      : readOption('--lock') ?? path.join(path.dirname(selectionPath), 'lock.json'),
   );
   const sourceKey = readOption('--source-key');
   if (!sourceKey) throw new Error('--source-key is required.');
   const batchNumber = readBatch();
-  const { proposal, lock } = assertLockedGoldCaptureCohort(
-    JSON.parse(await fs.readFile(proposalPath, 'utf8')),
-    JSON.parse(await fs.readFile(lockPath, 'utf8')),
+  const selection = resolveAffiliateEvidenceCaptureSelection(
+    JSON.parse(await fs.readFile(selectionPath, 'utf8')),
+    JSON.parse(await fs.readFile(approvalPath, 'utf8')),
   );
+  const proposal = {
+    cohortId: selection.selectionId,
+    proposalSha256: selection.selectionSha256,
+    examples: selection.examples,
+  };
+  const lock = { approvedByUserId: selection.approvedByUserId };
   const example = proposal.examples.find((candidate) => candidate.sourceKey === sourceKey);
   if (!example) throw new Error(`Source is not in locked cohort ${proposal.cohortId}: ${sourceKey}`);
   const batches = planGoldCaptureBatches(example.requiredCapturePages);

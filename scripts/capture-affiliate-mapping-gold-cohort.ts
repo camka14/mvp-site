@@ -3,9 +3,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import {
-  assertLockedGoldCaptureCohort,
   planGoldCaptureBatches,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
+import {
+  resolveAffiliateEvidenceCaptureSelection,
+} from '../src/server/affiliateImports/agentEvidenceCapturePlan';
 
 const execFileAsync = promisify(execFile);
 const tsxPath = path.resolve('node_modules', '.bin', 'tsx');
@@ -52,17 +54,26 @@ const main = async () => {
   }
   if (storageProvider) process.env.STORAGE_PROVIDER = storageProvider;
   if (approveExisting && !shouldApply) throw new Error('--approve-existing requires --apply.');
-  const proposalPath = path.resolve(
-    readOption('--proposal')
+  const capturePlanOption = readOption('--capture-plan');
+  const selectionPath = path.resolve(
+    capturePlanOption
+      ?? readOption('--proposal')
       ?? 'output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json',
   );
-  const lockPath = path.resolve(
-    readOption('--lock') ?? path.join(path.dirname(proposalPath), 'lock.json'),
+  const approvalPath = path.resolve(
+    capturePlanOption
+      ? readOption('--capture-approval') ?? path.join(path.dirname(selectionPath), 'approval.json')
+      : readOption('--lock') ?? path.join(path.dirname(selectionPath), 'lock.json'),
   );
-  const { proposal } = assertLockedGoldCaptureCohort(
-    JSON.parse(await fs.readFile(proposalPath, 'utf8')),
-    JSON.parse(await fs.readFile(lockPath, 'utf8')),
+  const selection = resolveAffiliateEvidenceCaptureSelection(
+    JSON.parse(await fs.readFile(selectionPath, 'utf8')),
+    JSON.parse(await fs.readFile(approvalPath, 'utf8')),
   );
+  const proposal = {
+    cohortId: selection.selectionId,
+    proposalSha256: selection.selectionSha256,
+    examples: selection.examples,
+  };
   const onlySourceKey = readOption('--source-key');
   const sourceLimit = readLimit();
   const examples = proposal.examples
@@ -72,7 +83,7 @@ const main = async () => {
 
   const reportPath = path.resolve(
     readOption('--report')
-      ?? path.join(path.dirname(proposalPath), 'capture-progress.json'),
+      ?? path.join(path.dirname(selectionPath), 'capture-progress.json'),
   );
   const report = {
     schemaVersion: 1,
@@ -111,8 +122,15 @@ const main = async () => {
           const prepare = await runJsonCommand(
             'scripts/prepare-affiliate-mapping-gold-capture.ts',
             [
-              `--proposal=${proposalPath}`,
-              `--lock=${lockPath}`,
+              ...(capturePlanOption
+                ? [
+                    `--capture-plan=${selectionPath}`,
+                    `--capture-approval=${approvalPath}`,
+                  ]
+                : [
+                    `--proposal=${selectionPath}`,
+                    `--lock=${approvalPath}`,
+                  ]),
               `--source-key=${example.sourceKey}`,
               `--batch=${batchIndex + 1}`,
               ...(shouldApply ? ['--apply', '--queue'] : []),
