@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import {
+  configureAffiliateLiveDatabaseEnvironment,
   resolveAffiliateDatasetEnvironment,
   resolveAffiliateRepositoryCommit,
 } from '../src/server/affiliateImports/agentRepository';
@@ -23,11 +24,7 @@ const readOption = (name: string): string | undefined => {
 };
 
 if (useLive) {
-  if (!process.env.DATABASE_URL_LIVE?.trim()) {
-    throw new Error('DATABASE_URL_LIVE is required with --live.');
-  }
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
 }
 
 const writeImmutableJson = async (filePath: string, value: unknown, label: string) => {

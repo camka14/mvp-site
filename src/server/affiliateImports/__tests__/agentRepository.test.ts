@@ -1,11 +1,33 @@
 /** @jest-environment node */
 
 import {
+  configureAffiliateLiveDatabaseEnvironment,
   resolveAffiliateDatasetEnvironment,
   resolveAffiliateRepositoryCommit,
 } from '../agentRepository';
 
 describe('affiliate agent repository metadata', () => {
+  it('preserves non-TLS OVH database mode and normalizes TLS live URLs', () => {
+    const ovhEnv: NodeJS.ProcessEnv = {
+      PG_SSL_REJECT_UNAUTHORIZED: 'false',
+    };
+    expect(configureAffiliateLiveDatabaseEnvironment(
+      ' postgresql://user:pass@127.0.0.1:5432/app?sslmode=disable ',
+      ovhEnv,
+    )).toContain('sslmode=disable');
+    expect(ovhEnv.DATABASE_URL).toContain('127.0.0.1:5432');
+    expect(ovhEnv.PG_SSL_REJECT_UNAUTHORIZED).toBeUndefined();
+
+    const managedEnv: NodeJS.ProcessEnv = {};
+    configureAffiliateLiveDatabaseEnvironment(
+      'postgresql://user:pass@managed.example/app?sslmode=require',
+      managedEnv,
+    );
+    expect(managedEnv.PG_SSL_REJECT_UNAUTHORIZED).toBe('false');
+    expect(() => configureAffiliateLiveDatabaseEnvironment(' ', {}))
+      .toThrow('DATABASE_URL_LIVE is required with --live.');
+  });
+
   it('labels a production-local database as live without switching connection modes', () => {
     expect(resolveAffiliateDatasetEnvironment({
       explicitEnvironment: 'live',

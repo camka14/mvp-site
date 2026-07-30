@@ -3,6 +3,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import type { AffiliateGoldCohortProposal } from '../src/server/affiliateImports/agentGoldCohort';
+import {
+  configureAffiliateLiveDatabaseEnvironment,
+} from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -41,21 +44,7 @@ if (savedProposalPath && reviseFromProposalPath) {
   throw new Error('--proposal cannot be combined with --revise-from.');
 }
 if (useLive && !savedProposalPath) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) {
-    throw new Error('DATABASE_URL_LIVE is required with --live.');
-  }
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  try {
-    const sslMode = new URL(liveDatabaseUrl).searchParams.get('sslmode')?.toLowerCase();
-    if (sslMode === 'disable') {
-      delete process.env.PG_SSL_REJECT_UNAUTHORIZED;
-    } else {
-      process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
-    }
-  } catch {
-    process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
-  }
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
 }
 
 const writeImmutableJson = async (
