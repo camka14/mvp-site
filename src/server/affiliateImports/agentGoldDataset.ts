@@ -467,6 +467,7 @@ export const affiliateMappingTrainingReadinessReportSchema = z.object({
   schemaVersion: z.literal(1),
   decision: z.enum(['DO_NOT_TRAIN', 'TRAINING_CANDIDATE', 'BASE_MODEL_SUFFICIENT']),
   goldReleaseSha256: sha256Schema,
+  sourceGoldReleaseSha256s: z.array(sha256Schema).min(1),
   sftReleaseSha256: sha256Schema.nullable(),
   baseEvaluationSha256: sha256Schema.nullable(),
   runtimeObservationSha256: sha256Schema.nullable(),
@@ -479,6 +480,40 @@ export const affiliateMappingTrainingReadinessReportSchema = z.object({
     train: z.number().int().nonnegative(),
     validation: z.number().int().nonnegative(),
     test: z.number().int().nonnegative(),
+  }).strict(),
+  coverage: z.object({
+    realExecutable: z.object({
+      train: z.number().int().nonnegative(),
+      validation: z.number().int().nonnegative(),
+      test: z.number().int().nonnegative(),
+      trainAndValidation: z.number().int().nonnegative(),
+    }).strict(),
+    realRefusals: z.object({
+      train: z.number().int().nonnegative(),
+      validation: z.number().int().nonnegative(),
+      test: z.number().int().nonnegative(),
+    }).strict(),
+    executableTargetKinds: z.object({
+      train: z.object({
+        EVENT: z.number().int().nonnegative(),
+        CLUB: z.number().int().nonnegative(),
+        RENTAL: z.number().int().nonnegative(),
+      }).strict(),
+      validation: z.object({
+        EVENT: z.number().int().nonnegative(),
+        CLUB: z.number().int().nonnegative(),
+        RENTAL: z.number().int().nonnegative(),
+      }).strict(),
+      trainAndValidation: z.object({
+        EVENT: z.number().int().nonnegative(),
+        CLUB: z.number().int().nonnegative(),
+        RENTAL: z.number().int().nonnegative(),
+      }).strict(),
+    }).strict(),
+    executableImplementationModes: z.object({
+      train: countMapSchema,
+      validation: countMapSchema,
+    }).strict(),
   }).strict(),
   testRegistrableDomains: z.number().int().nonnegative(),
   blockingReasons: z.array(nonEmptyStringSchema),
@@ -732,6 +767,7 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
     materialCorrections: number;
   };
   learnableErrorCategories?: string[];
+  sourceGoldReleaseSha256s?: string[];
 }): AffiliateMappingTrainingReadinessReport => {
   const goldRelease = assertAffiliateMappingGoldReleaseIntegrity(input.goldRelease);
   const countsForSplit = (split: AffiliateMappingGoldExample['split']) => (
@@ -752,6 +788,66 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
     validation: realCountForSplit('validation'),
     test: realCountForSplit('test'),
   };
+  const isRealExecutable = (example: AffiliateMappingGoldExample): boolean => (
+    example.evidenceOrigin === 'REAL_CAPTURE'
+    && example.target.type === 'LISTING_KIND'
+    && (
+      example.approvedDraft.implementationMode === 'GENERIC_MAPPING'
+      || example.approvedDraft.implementationMode === 'MANUAL_CANDIDATES'
+    )
+  );
+  const realExecutableForSplit = (split: AffiliateMappingGoldExample['split']) => (
+    goldRelease.examples.filter((example) => example.split === split && isRealExecutable(example))
+  );
+  const realRefusalsForSplit = (split: AffiliateMappingGoldExample['split']) => (
+    goldRelease.examples.filter((example) => (
+      example.split === split
+      && example.evidenceOrigin === 'REAL_CAPTURE'
+      && example.target.type === 'REFUSAL'
+    ))
+  );
+  const executableTargetKindCounts = (examples: AffiliateMappingGoldExample[]) => ({
+    EVENT: examples.filter((example) => (
+      example.target.type === 'LISTING_KIND' && example.target.listingKind === 'EVENT'
+    )).length,
+    CLUB: examples.filter((example) => (
+      example.target.type === 'LISTING_KIND' && example.target.listingKind === 'CLUB'
+    )).length,
+    RENTAL: examples.filter((example) => (
+      example.target.type === 'LISTING_KIND' && example.target.listingKind === 'RENTAL'
+    )).length,
+  });
+  const executableModeCounts = (examples: AffiliateMappingGoldExample[]) => {
+    const result: Record<string, number> = {};
+    for (const example of examples) increment(result, example.approvedDraft.implementationMode);
+    return result;
+  };
+  const trainExecutable = realExecutableForSplit('train');
+  const validationExecutable = realExecutableForSplit('validation');
+  const testExecutable = realExecutableForSplit('test');
+  const trainAndValidationExecutable = [...trainExecutable, ...validationExecutable];
+  const coverage = {
+    realExecutable: {
+      train: trainExecutable.length,
+      validation: validationExecutable.length,
+      test: testExecutable.length,
+      trainAndValidation: trainAndValidationExecutable.length,
+    },
+    realRefusals: {
+      train: realRefusalsForSplit('train').length,
+      validation: realRefusalsForSplit('validation').length,
+      test: realRefusalsForSplit('test').length,
+    },
+    executableTargetKinds: {
+      train: executableTargetKindCounts(trainExecutable),
+      validation: executableTargetKindCounts(validationExecutable),
+      trainAndValidation: executableTargetKindCounts(trainAndValidationExecutable),
+    },
+    executableImplementationModes: {
+      train: executableModeCounts(trainExecutable),
+      validation: executableModeCounts(validationExecutable),
+    },
+  };
   const testRegistrableDomains = new Set(
     goldRelease.examples
       .filter((example) => (
@@ -765,6 +861,20 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
     && realApprovedCounts.validation >= 15
     && realApprovedCounts.test >= 30
     && testRegistrableDomains >= 30
+    && coverage.realExecutable.trainAndValidation >= 95
+    && coverage.executableTargetKinds.trainAndValidation.CLUB >= 11
+    && coverage.executableTargetKinds.trainAndValidation.RENTAL >= 11
+    && coverage.executableTargetKinds.train.CLUB >= 10
+    && coverage.executableTargetKinds.train.RENTAL >= 10
+    && coverage.realRefusals.train >= 12
+    && coverage.realRefusals.validation >= 3
+    && coverage.executableTargetKinds.validation.EVENT > 0
+    && coverage.executableTargetKinds.validation.CLUB > 0
+    && coverage.executableTargetKinds.validation.RENTAL > 0
+    && (coverage.executableImplementationModes.train.GENERIC_MAPPING ?? 0) > 0
+    && (coverage.executableImplementationModes.train.MANUAL_CANDIDATES ?? 0) > 0
+    && (coverage.executableImplementationModes.validation.GENERIC_MAPPING ?? 0) > 0
+    && (coverage.executableImplementationModes.validation.MANUAL_CANDIDATES ?? 0) > 0
   );
   if (realApprovedCounts.test < 30) {
     blockingReasons.push('Fewer than 30 real approved held-out test examples.');
@@ -777,6 +887,46 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
   }
   if (realApprovedCounts.validation < 15) {
     blockingReasons.push('Fewer than 15 real approved validation examples.');
+  }
+  if (coverage.realExecutable.trainAndValidation < 95) {
+    blockingReasons.push(
+      'Fewer than 95 real approved executable training-plus-validation examples.',
+    );
+  }
+  if (coverage.executableTargetKinds.trainAndValidation.CLUB < 11) {
+    blockingReasons.push(
+      'Fewer than 11 real approved executable CLUB training-plus-validation examples.',
+    );
+  }
+  if (coverage.executableTargetKinds.trainAndValidation.RENTAL < 11) {
+    blockingReasons.push(
+      'Fewer than 11 real approved executable RENTAL training-plus-validation examples.',
+    );
+  }
+  if (coverage.executableTargetKinds.train.CLUB < 10) {
+    blockingReasons.push('Fewer than 10 executable CLUB training examples.');
+  }
+  if (coverage.executableTargetKinds.train.RENTAL < 10) {
+    blockingReasons.push('Fewer than 10 executable RENTAL training examples.');
+  }
+  if (coverage.realRefusals.train < 12) {
+    blockingReasons.push('Fewer than 12 real refusal training examples.');
+  }
+  if (coverage.realRefusals.validation < 3) {
+    blockingReasons.push('Fewer than 3 real refusal validation examples.');
+  }
+  for (const targetKind of ['EVENT', 'CLUB', 'RENTAL'] as const) {
+    if (coverage.executableTargetKinds.validation[targetKind] === 0) {
+      blockingReasons.push(`Validation has no executable ${targetKind} example.`);
+    }
+  }
+  for (const split of ['train', 'validation'] as const) {
+    if ((coverage.executableImplementationModes[split].GENERIC_MAPPING ?? 0) === 0) {
+      blockingReasons.push(`${split} has no executable generic selector mapping example.`);
+    }
+    if ((coverage.executableImplementationModes[split].MANUAL_CANDIDATES ?? 0) === 0) {
+      blockingReasons.push(`${split} has no executable manual-candidate example.`);
+    }
   }
   if (!input.sftManifest) {
     blockingReasons.push('No immutable SFT release manifest.');
@@ -843,11 +993,16 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
   ) {
     throw new Error('Sol material corrections cannot exceed reviewed examples.');
   }
+  const goldReleaseSha256 = stableAgentArtifactSha256(goldRelease);
+  const sourceGoldReleaseSha256s = Array.from(new Set(
+    input.sourceGoldReleaseSha256s ?? [goldReleaseSha256],
+  )).sort();
 
   return affiliateMappingTrainingReadinessReportSchema.parse({
     schemaVersion: 1,
     decision,
-    goldReleaseSha256: stableAgentArtifactSha256(goldRelease),
+    goldReleaseSha256,
+    sourceGoldReleaseSha256s,
     sftReleaseSha256: input.sftManifest
       ? stableAgentArtifactSha256(input.sftManifest)
       : null,
@@ -859,6 +1014,7 @@ export const buildAffiliateMappingTrainingReadinessReport = (input: {
       : null,
     counts,
     realApprovedCounts,
+    coverage,
     testRegistrableDomains,
     blockingReasons: decision === 'BASE_MODEL_SUFFICIENT' ? [] : blockingReasons,
     learnableErrorCategories,

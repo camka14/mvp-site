@@ -427,6 +427,47 @@ describe('affiliate mapping gold dataset contracts', () => {
     expect(report.realApprovedCounts.train).toBe(0);
     expect(report.blockingReasons).toContain('Fewer than 80 real approved training examples.');
   });
+
+  it('reports executable target, refusal, and implementation-mode coverage separately', () => {
+    const release = buildAffiliateMappingGoldRelease([
+      realExample({
+        exampleId: 'real-train-event',
+        split: 'train',
+        includedInTraining: true,
+        includedInRetrieval: true,
+      }),
+      blockedExample(),
+    ], {
+      releaseId: 'coverage-v1',
+      createdAt: new Date('2026-07-29T21:00:00.000Z'),
+      repositoryCommit: 'abc123',
+    });
+    const report = buildAffiliateMappingTrainingReadinessReport({
+      goldRelease: release,
+      sftManifest: null,
+      baseEvaluation: null,
+      runtimeObservation: null,
+    });
+
+    expect(report.coverage.realExecutable).toEqual({
+      train: 1,
+      validation: 0,
+      test: 0,
+      trainAndValidation: 1,
+    });
+    expect(report.coverage.realRefusals.train).toBe(1);
+    expect(report.coverage.executableTargetKinds.train).toEqual({
+      EVENT: 1,
+      CLUB: 0,
+      RENTAL: 0,
+    });
+    expect(report.coverage.executableImplementationModes.train).toEqual({
+      GENERIC_MAPPING: 1,
+    });
+    expect(report.blockingReasons).toContain(
+      'Fewer than 95 real approved executable training-plus-validation examples.',
+    );
+  });
 });
 
 const cohortCandidate = (

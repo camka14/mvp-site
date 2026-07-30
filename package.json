@@ -56,6 +56,7 @@
     "affiliate:mapping:agent": "tsx scripts/run-affiliate-mapping-agent.ts",
     "affiliate:mapping:review": "tsx scripts/review-affiliate-mapping-job.ts",
     "affiliate:mapping:sft-release": "tsx scripts/build-affiliate-mapping-sft-release.ts",
+    "affiliate:mapping:training-readiness": "tsx scripts/report-affiliate-mapping-training-readiness.ts",
     "affiliate:intakes:cleanup": "tsx scripts/cleanup-affiliate-source-intake-artifacts.ts",
     "affiliate:sources:audit-backlog": "tsx scripts/audit-affiliate-source-backlog.ts",
     "affiliate:setup:oysa-clubs": "tsx scripts/setup-oregon-youth-soccer-club-directory-source.ts",

@@ -47,11 +47,18 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-30 21:22Z) Explicitly approved and locked the exact saved proposal `affiliate-mapping-test-7e930a8a04b0dc2f` without recomputing membership. The lock records proposal hash `7e930a8a04b0dc2fc1eb00568648118bb862d533945fd31e774d1426006e8788`, repository commit `402278822c021c1dbb653e9bb6a4b5b3702d067a`, timestamp `2026-07-30T21:22:19.862Z`, and the approving user's stable internal id.
 - [x] (2026-07-30 21:27Z) Added a structurally read-only `--audit-only` capture mode and used it against the live OVH database and Spaces-backed evidence. The immutable report covers all 35 locked sources and 136 required page references with 35 complete, zero failed, and zero review-required sources. It queued no processor run or public request, made no database write, and has SHA-256 `618f66e29c550b8ff1b9270aa0eb729746cca2403f7f44d867a3a8bd191edfcd`.
 - [x] (2026-07-30 21:34Z) Regenerated the leakage-safe no-TEAM training capture plan only after the replacement test lock existed. Unapproved plan `affiliate-mapping-training-capture-bf60727f200d956a`, hash `bf60727f200d956a2224c1bdb40bec573029d5a74611be40a84b3c99fcf64945`, contains 85 executable mappings across 78 domains and 306 required pages: 60 EVENT, 15 CLUB, and ten RENTAL. It correctly remains below minimum with deficits of ten executable mappings, one hard-floor RENTAL mapping, and twelve blocked or insufficient-evidence examples; generation made zero public requests and zero database writes.
+- [x] (2026-07-30 22:16Z) Implemented deterministic gold materialization from a locked test cohort or approved training capture plan. The materializer selects exact captured runs and pages, exports already-stored missing runs without making public requests, builds bounded redacted HTML and Markdown context, excludes direct contact or credential data, preserves multi-run provenance, and converts unsupported historical outputs into explicit refusal examples rather than guessing.
+- [x] (2026-07-30 22:18Z) Materialized all 35 locked held-out examples from real captures and built immutable release `affiliate-mapping-gold-test-7e930a8a04b0dc2f-v1`. It contains 21 executable and 14 refusal cases across 35 domains: 18 manual mappings, three generic mappings, eleven insufficient-evidence refusals, two custom-extractor refusals, and one policy block. Its release SHA-256 is `808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844`.
+- [x] (2026-07-30 22:19Z) Recorded the user's approval of the existing non-test mappings against exact plan `affiliate-mapping-training-capture-bf60727f200d956a` and ran a read-only live evidence audit. Seventy sources are complete and fifteen are review-required; the audit used at most one attempt, made no public request, and changed no live row.
+- [x] (2026-07-30 22:31Z) Materialized the 70 evidence-complete non-test sources and built immutable gold release `affiliate-mapping-gold-train-validation-bf60727f200d956a-v1`, SHA-256 `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4`. The deterministic split is 55 train and 15 validation, all from real captures. Exact evidence supports 48 manual executable examples and requires 22 insufficient-evidence refusals.
+- [x] (2026-07-30 22:32Z) Built matching SFT release `affiliate-mapping-sft-train-validation-bf60727f200d956a-v1`. Its 55 training and 15 validation rows exactly match gold example ids, domains, splits, and frozen prompt hash; its manifest SHA-256 is `29e9a7377fd0082f816065da2ad64da083a29f397fa79e0bc1f9279bcddec939`. The release contains no held-out test row.
+- [x] (2026-07-30 22:39Z) Implemented the fail-closed combined readiness command and emitted report `affiliate-mapping-training-readiness-2026-07-30-v1.json`, SHA-256 `c2718938111d7c2396778eca98591fb7adaa30ef1440d8536adbb99b0a74aa0`. It verifies both gold releases, every fixture manifest, the SFT release, prompt identity, exact row identity, and cross-split domain isolation before returning `DO_NOT_TRAIN`.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
 - [ ] Run the untouched base-model bakeoff on the real OVH host and preserve immutable reports.
-- [ ] Build at least 80 approved training examples and 15 approved validation examples, with a target of 100 and 20, while leaving the test release unchanged.
-- [ ] Emit the final pre-training readiness decision and either stop because the base model is sufficient, authorize a bounded adapter experiment, or select a different base model.
+- [ ] Build at least 80 approved training examples and 15 approved validation examples, with a target of 100 and 20, while leaving the test release unchanged. Completed: 55 train and 15 validation are frozen. Remaining: at least 25 additional training rows and the executable/mapping-mode coverage recorded by the readiness report.
+- [x] (2026-07-30 22:39Z) Emit the current data-only pre-training decision. It is `DO_NOT_TRAIN`; no adapter job is authorized.
+- [ ] After end-to-end evaluation and the untouched-base bakeoff exist, emit the final model-aware decision and either use the sufficient base, authorize a bounded adapter experiment, or select a different base model.
 
 ## Surprises & Discoveries
 
@@ -132,6 +139,18 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 - Observation: executable coverage alone does not supply the safe-refusal curriculum.
   Evidence: the new plan contains zero blocked or insufficient-evidence examples against the required twelve. The planner now reports that deficit explicitly and records the preferred executable composition of 60 EVENT, 20 CLUB, and 15 RENTAL rather than allowing a nominal executable count to hide it.
+
+- Observation: exact captured inputs turn many approved historical mappings into useful refusal examples instead of executable teaching examples.
+  Evidence: of the 70 evidence-complete non-test sources, only 48 still support executable output from the exact captured pages. The other 22 materialize as real `INSUFFICIENT_EVIDENCE` examples. Those 22 satisfy the refusal-volume requirement but cannot count toward the 95-example executable target.
+
+- Observation: the planning-time executable deficit of ten understated the post-materialization deficit.
+  Evidence: the planner classified 85 approved mappings as intended executable outputs before examining the exact prompt evidence. Fifteen lacked complete captured evidence and 22 of the remaining 70 could not support their historical output. The frozen corpus therefore has 48 executable train-plus-validation examples and needs 47 more to reach 95.
+
+- Observation: the evidence-complete non-test pool has enough CLUB coverage but not enough RENTAL or selector diversity.
+  Evidence: executable train-plus-validation coverage is 29 EVENT, 12 CLUB, and seven RENTAL. Training has ten CLUB and five RENTAL, while validation has two CLUB and two RENTAL. All 48 executable outputs use `MANUAL_CANDIDATES`; neither split contains an evidence-supported generic selector mapping.
+
+- Observation: immutable release verification needs to traverse files, not only trust a manifest object.
+  Evidence: `report-affiliate-mapping-training-readiness.ts` rehashes each gold release, reads every split JSONL file, verifies every fixture-manifest file, validates the SFT rows and hashes, checks exact train/validation row identity, and then combines the releases through the domain-leakage validator. The current report references gold release hashes `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4` and `808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844`.
 
 ## Decision Log
 
@@ -219,9 +238,21 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: the current 85-example plan is a truthful inventory, not an authorized workload. The next acquisition proposal should target at least five additional CLUB and five additional RENTAL executable examples to reach the preferred 60/20/15 composition, plus twelve human-approved blocked or derived insufficient-evidence examples. Existing failed or review-required examples must either become complete through the unchanged evidence process or be replaced by additional successful same-kind examples.
   Date/Author: 2026-07-30 / Codex
 
+- Decision: record the user's prior approval of existing mappings for materialization without treating it as authorization for missing captures or training.
+  Rationale: approval settles who accepted the historical output, but the exact stored HTML and Markdown still determine whether that output is teachable. The audit and materializer therefore read only already-captured evidence, downgrade unsupported outputs to refusal examples, and leave fifteen incomplete sources out. They do not queue ScrapingDog, change live rows, or weaken the minimum corpus gates.
+  Date/Author: 2026-07-30 / User and Codex
+
+- Decision: freeze useful below-threshold gold and SFT releases instead of waiting to package them until the corpus is large enough.
+  Rationale: immutable hashes preserve exactly what is currently trustworthy, allow an untouched base model to be tested against the held-out release, and make future additions auditable. Packaging 55 train and 15 validation rows does not imply readiness; the separate report remains `DO_NOT_TRAIN` until every count, coverage, runtime, and base-evaluation gate passes.
+  Date/Author: 2026-07-30 / Codex
+
+- Decision: count exact evidence-supported executable examples separately from real refusal examples.
+  Rationale: refusals are valuable safety curriculum, but they do not prove that a model can create a working scraper. The readiness report therefore records 48 executable and 22 refusal train-plus-validation examples separately and enforces the executable target, CLUB and RENTAL floors, per-split refusal coverage, and selector/manual diversity.
+  Date/Author: 2026-07-30 / Codex
+
 ## Outcomes & Retrospective
 
-Milestones 1, the proposal-and-lock portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, preserve explicitly approved held-out cohorts without recomputing them, audit a complete cohort without opening any write or public-request path, prepare bounded live capture batches, and write an immutable private release once approved examples exist. The revised planner reports rather than weakens executable, target-kind, and refusal deficits; excludes TEAM work; and records exact capture-page requirements.
+Milestones 1 and 2 are complete, the data-construction portion of Milestones 3 and 6 is complete for every currently evidence-complete source, and the data-only portion of Milestone 7 is complete. The repository can now validate a private gold example, deterministically materialize approved mappings from exact stored evidence, construct and verify immutable gold and SFT releases, preserve held-out cohorts without recomputing them, traverse every release and fixture hash, and emit a fail-closed readiness decision. The revised planner and readiness command report rather than weaken executable, target-kind, mapping-mode, and refusal deficits; exclude TEAM work; and make no public request or live write.
 
 The original redacted local proposal remains persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record. Approved revision `affiliate-mapping-test-aa6aa626e3f2367c`, hash `aa6aa626e3f2367c4a62f045067b4dfe24ed6347ae9eb6eb2944941ad3292667`, preserves the same membership, assignments, and coverage while correcting only Sherwood's required page to its canonical `www` endpoint and recording why.
 
@@ -229,9 +260,15 @@ The original test cohort is locked and its remediated ScrapingDog pass is comple
 
 Replacement cohort `affiliate-mapping-test-7e930a8a04b0dc2f` is approved and locked. Its only membership diff from the prior approved cohort is removal of `timbers-army-fc-community-teams` and addition of `westside-metros-fc-club-events`; all 34 retained example objects are byte-for-byte unchanged. The removed example required three pages and the replacement requires two, reducing the total from 137 to 136. A formal live read-only audit found all 35 sources complete from existing evidence, with zero failed or review-required sources and report SHA-256 `618f66e29c550b8ff1b9270aa0eb729746cca2403f7f44d867a3a8bd191edfcd`.
 
-The exported evidence remains internally sound. The latest local verification covers 297 manifests, 8,148 referenced artifacts, and 440,558,789 bytes with zero missing files, hash mismatches, or size mismatches. A direct live object audit found zero unreadable or wrong-provider files among the evidence selected for the locked cohort, and the live database contains zero affiliate-intake artifacts whose backing `File.bucket` is null. No discovery or intake job remains active, and all 44 discovery campaigns are paused.
+The exported evidence remains internally sound. The last full integrity verification covered 297 manifests, 8,148 referenced artifacts, and 440,558,789 bytes with zero missing files, hash mismatches, or size mismatches. Exact materialization subsequently exported four already-captured object-store runs and brought the local private archive to 303 manifests and approximately 500 MiB without making public requests. A direct live object audit found zero unreadable or wrong-provider files among the evidence selected for the locked cohort, and the live database contains zero affiliate-intake artifacts whose backing `File.bucket` is null. No discovery or intake job remains active, and all 44 discovery campaigns are paused.
 
-Capture of the locked test cohort is complete, but training is not authorized. The current live dataset still has zero train-eligible gold examples because the approved historical mappings have not yet been converted into exact human-approved input/output envelopes tied to these runs. The regenerated leakage-safe plan contains 85 executable mappings: 60 EVENT, 15 CLUB, and ten RENTAL. Seventy have complete prior capture outcomes, while eleven failed and four require review. The plan is unapproved and correctly reports shortages of ten executable mappings, one hard-floor RENTAL mapping, and twelve blocked or insufficient-evidence examples. Reaching the preferred 60/20/15 composition requires at least five new CLUB and five new RENTAL examples if the fifteen unresolved sources are recovered; otherwise each unresolved source also needs a successful replacement. No model training or new public capture has started from this plan.
+The held-out release is complete and immutable. `affiliate-mapping-gold-test-7e930a8a04b0dc2f-v1` contains 35 real-capture examples across 35 domains: 21 executable and 14 refusal cases. It has 18 manual mappings, three generic mappings, eleven insufficient-evidence refusals, two custom-extractor refusals, and one policy block. Its release SHA-256 is `808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844`; its test rows are absent from retrieval, gold training, and SFT output.
+
+The currently supportable training and validation corpus is also frozen. Gold release `affiliate-mapping-gold-train-validation-bf60727f200d956a-v1`, SHA-256 `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4`, contains 55 training and 15 validation examples. Matching SFT release `affiliate-mapping-sft-train-validation-bf60727f200d956a-v1` has manifest SHA-256 `29e9a7377fd0082f816065da2ad64da083a29f397fa79e0bc1f9279bcddec939`. All 70 rows are real captures. Exact evidence supports 37 executable plus 18 refusal training examples and eleven executable plus four refusal validation examples.
+
+The fifteen omitted planned sources are `axiom-vbc-reviewed-programs`, `carr-sports-academy`, `hoopsource-basketball-portland-events`, `lane-amateur-hockey-final-review`, `lincoln-youth-soccer-final-review`, `oregon-state-hockey-youth-directory`, `portland-chaos-volleyball-club`, `portland-softball-current-programs`, `reynolds-school-district-facility-rentals`, `rose-city-futsal-adult-leagues`, `rose-city-futsal-court-rentals`, `southeast-portland-girls-basketball`, `the-courts-at-clear-creek-rentals`, `winterhawks-jr-hockey-final-review`, and `ymca-cw-volleyball-programs`. Their current audit status is `REVIEW_REQUIRED`; none was silently substituted or included as a weak example.
+
+Training is not authorized. Readiness report `affiliate-mapping-training-readiness-2026-07-30-v1.json`, SHA-256 `c2718938111d7c2396778eca98591fb7adaa30ef1440d8536adbb99b0a74aa0`, returns `DO_NOT_TRAIN`. Its executable train-plus-validation coverage is 29 EVENT, 12 CLUB, and seven RENTAL; training alone has 22 EVENT, ten CLUB, and five RENTAL. All 48 executable rows are manual-candidate outputs, so both train and validation lack a generic selector example. The immediate data deficit is at least 25 additional training rows, 47 additional executable rows to reach 95, four executable RENTAL rows to reach the hard train-plus-validation floor, five executable RENTAL training rows to reach the training floor, and at least one safe generic selector example in each split. Fifteen planned sources remain excluded because their exact evidence is incomplete. The untouched-base evaluation and verified OVH runtime observation also remain absent. No model training or new public capture started while building these releases.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -253,11 +290,14 @@ The existing code already provides important boundaries:
 - `src/server/affiliateImports/agentDataset.ts` inventories historical data, labels evidence, and assigns deterministic domain splits.
 - `src/server/affiliateImports/agentTrainingRelease.ts` accepts only human-approved `FAITHFUL` or safe `BLOCKED` teaching envelopes and rejects secrets and domain leakage.
 - `src/server/affiliateImports/agentEvaluation.ts` scores structured model output but must be extended to consume real execution results.
+- `src/server/affiliateImports/agentGoldMaterialization.ts` converts exact approved capture evidence into bounded, privacy-screened gold examples and deterministic train/validation assignments.
 - `src/server/affiliateImports/agentGenerator.ts` renders allowlisted files from safe generic or manual drafts.
 - `src/server/affiliateImports/agentRunner.ts` binds a draft to job identity and evidence and operates in an isolated worktree.
 - `src/server/affiliateImports/agentReviewFixtureClient.ts` reads exact local page fixtures by URL, verifies SHA-256, enforces path containment, and makes no network request.
 - `scripts/run-affiliate-agent-disposable-scrape-fixture.ts` proves the generated setup and import path against digest-pinned PostgreSQL for one invented example.
 - `scripts/evaluate-affiliate-mapping-agent.ts` invokes a fixture worker or private llama.cpp worker against a JSON suite.
+- `scripts/materialize-affiliate-mapping-gold-dataset.ts` reads a locked cohort or approved capture plan and writes private gold JSONL plus a materialization report without contacting a public site.
+- `scripts/report-affiliate-mapping-training-readiness.ts` reopens both gold releases, every fixture manifest, and the SFT release; verifies exact row and prompt identity; checks split isolation and coverage; and emits the current decision without launching training.
 - `docs/affiliate-source-mapping-model-bakeoff.md` is the durable not-yet-run base-model result surface.
 
 The affiliate source-builder rules remain authoritative for gold approval. Official outbound action URLs must be preserved. Dates cannot be inferred from scrape time or invented. Venue, address, and city are publish-critical when the source exposes them. Blocked policy is a successful refusal. New mappings remain unvalidated, recurring scraping remains disabled, and real organization logos must come from official evidence or stay missing for manual review.
@@ -482,11 +522,14 @@ After the test release and base baseline are locked, build training and validati
 Produce the no-training/training decision:
 
     npm run affiliate:mapping:training-readiness -- \
-      --gold=<gold-release-manifest.json> \
-      --sft=<sft-release-manifest.json> \
+      --train-validation-gold=<train-validation-gold-release-directory> \
+      --test-gold=<held-out-gold-release-directory> \
+      --sft=<sft-release-directory> \
       --base-report=<selected-base-report.json> \
       --runtime=<runtime-observation.json> \
       --output=<training-readiness-report.json>
+
+Before a base-model report or runtime observation exists, omit `--base-report` and `--runtime`. The command still verifies both gold releases, every fixture manifest, the exact SFT row identities, the frozen prompt hash, and split isolation, then emits `DO_NOT_TRAIN` with the missing model/runtime gates. It refuses to overwrite an existing output unless `--force` is explicit.
 
 Finish with repository validation:
 
@@ -502,6 +545,8 @@ Run the Python command from `training/affiliate-source-mapping`; run every other
 ## Validation and Acceptance
 
 The gold contract is accepted when the same approved envelopes produce byte-identical manifests and row hashes, while missing approval, evidence mismatch, leaked secrets, internal action URLs, invented dates, generated logos, duplicate ids, and domain leakage all fail before file output.
+
+The current private release set is accepted as an immutable below-threshold checkpoint when the readiness command reproduces 55 train, 15 validation, and 35 test rows; 48 executable and 22 refusal train-plus-validation rows; zero cross-split domain leakage; source gold hashes `488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4` and `808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844`; and decision `DO_NOT_TRAIN`. These outputs prove preservation and provenance, not sufficient volume.
 
 The cohort planner is accepted when it deterministically proposes the required 35-example test cohort from unchanged inputs, reports every coverage quota and deficit, assigns each registrable domain to exactly one split, and makes zero public requests and database writes.
 
@@ -633,23 +678,44 @@ The broader post-implementation validation reported:
     npx tsc --noEmit: exited 0
     git diff --check: exited 0
 
-A readiness result should resemble:
+The current readiness result is:
 
     {
       "schemaVersion": 1,
       "decision": "DO_NOT_TRAIN",
-      "goldReleaseSha256": "...",
-      "sftReleaseSha256": null,
+      "goldReleaseSha256": "83af1bcba75e6d10a3e47c733b91fff61079ab2cc08f69f077b0ad5878e2ba52",
+      "sourceGoldReleaseSha256s": [
+        "488d228215bb32edd56a52567d7c546486c26f1f4275bf87e5c412b338cd52f4",
+        "808aa83a9faee7b73d1bbcf00787a3964459531357c93a50e7f1d3863fd08844"
+      ],
+      "sftReleaseSha256": "29e9a7377fd0082f816065da2ad64da083a29f397fa79e0bc1f9279bcddec939",
       "baseEvaluationSha256": null,
       "counts": {
-        "train": 0,
-        "validation": 0,
-        "test": 0
+        "train": 55,
+        "validation": 15,
+        "test": 35
+      },
+      "coverage": {
+        "realExecutable": {
+          "train": 37,
+          "validation": 11,
+          "test": 21,
+          "trainAndValidation": 48
+        },
+        "realRefusals": {
+          "train": 18,
+          "validation": 4,
+          "test": 14
+        }
       },
       "blockingReasons": [
-        "No frozen real test release.",
-        "No approved training examples.",
-        "No untouched-base benchmark."
+        "Fewer than 80 real approved training examples.",
+        "Fewer than 95 real approved executable training-plus-validation examples.",
+        "Fewer than 11 real approved executable RENTAL training-plus-validation examples.",
+        "train has no executable generic selector mapping example.",
+        "validation has no executable generic selector mapping example.",
+        "No untouched-base evaluation.",
+        "No verified OVH runtime observation."
       ]
     }
 
@@ -765,3 +831,5 @@ Revised 2026-07-30 after the user removed TEAM from affiliate-agent scope. The r
 Revised 2026-07-30 after generating the exact replacement proposal. The revision records the immutable one-for-one membership change, its live inventory and proposal hashes, existing complete replacement evidence, zero deficits, and the remaining explicit approval-and-lock checkpoint.
 
 Revised 2026-07-30 after explicit approval and lock of the no-TEAM replacement cohort. The revision records the immutable lock, the new read-only live audit mode and 35-of-35 evidence result, the regenerated unapproved training capture plan, its exact no-TEAM composition and deficits, and the decision to acquire missing CLUB, RENTAL, and refusal examples before authorizing further capture or training.
+
+Revised 2026-07-30 after exact gold materialization and release packaging. The revision records the immutable 35-example test release, 55/15 train-validation gold and SFT releases, all release and report hashes, the evidence-driven downgrade of 22 historical mappings to insufficient-evidence refusals, the 48-example executable pool, RENTAL and generic-selector deficits, the fifteen excluded incomplete sources, and the reproducible `DO_NOT_TRAIN` decision. This revision replaces the earlier planning estimate with exact post-materialization coverage while preserving every prior proposal, lock, capture report, and private release.

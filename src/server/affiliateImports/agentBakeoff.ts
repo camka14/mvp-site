@@ -85,7 +85,7 @@ const evaluationSummarySchema = z.object({
   assistedPilotEligible: z.boolean(),
 }).strict();
 
-const evaluationReportSchema = z.object({
+export const affiliateMappingEvaluationReportSchema = z.object({
   schemaVersion: z.literal(1),
   model: z.object({
     family: nonEmptyStringSchema,
@@ -137,7 +137,7 @@ export const affiliateMappingBakeoffReportSchema = z.object({
   modelManifestSha256: sha256Schema,
   modelManifest: openWeightModelManifestSchema,
   runtime: affiliateModelRuntimeObservationSchema,
-  evaluation: evaluationReportSchema,
+  evaluation: affiliateMappingEvaluationReportSchema,
   solMaterialCorrectionRate: z.number().min(0).max(1).nullable(),
   compositeScore: z.number().min(0).max(1),
   eligibilityViolations: z.array(nonEmptyStringSchema),
@@ -155,7 +155,9 @@ export const buildAffiliateMappingBakeoffReport = (input: {
   if (!input.reportId.trim()) throw new Error('Bakeoff report id is required.');
   const manifest = openWeightModelManifestSchema.parse(input.modelManifest);
   const runtime = affiliateModelRuntimeObservationSchema.parse(input.runtime);
-  const evaluation = evaluationReportSchema.parse(input.evaluation) as AffiliateMappingEvaluationReport;
+  const evaluation = affiliateMappingEvaluationReportSchema.parse(
+    input.evaluation,
+  ) as AffiliateMappingEvaluationReport;
   const solMaterialCorrectionRate = input.solMaterialCorrectionRate ?? null;
   if (
     solMaterialCorrectionRate !== null
