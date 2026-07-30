@@ -17,15 +17,23 @@ import {
   buildAffiliateMappingJobContextFromExports,
 } from '../src/server/affiliateImports/agentJobContext';
 import {
+  buildAffiliateTrainingValidationSplitAssignments,
   materializeAffiliateMappingGoldExample,
   type AffiliateGoldFixturePage,
+  type AffiliateFrozenTrainingValidationExample,
 } from '../src/server/affiliateImports/agentGoldMaterialization';
+import {
+  assertAffiliateMappingGoldReleaseIntegrity,
+  type AffiliateMappingGoldExample,
+  type AffiliateMappingGoldRelease,
+} from '../src/server/affiliateImports/agentGoldDataset';
 import {
   affiliateIntakeUrlKey,
   canonicalizeAffiliateIntakeUrl,
 } from '../src/server/affiliateImports/sourceIntakeUrlSafety';
 import {
   isAffiliateAgentTargetKind,
+  stableAgentArtifactSha256,
 } from '../src/server/affiliateImports/agentContracts';
 import {
   parseAffiliateScrapeMapping,
@@ -44,6 +52,70 @@ const readOption = (name: string): string | undefined => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1]?.trim() || undefined : undefined;
 };
+
+const readJsonLines = async (filePath: string): Promise<unknown[]> => (
+  (await fs.readFile(filePath, 'utf8'))
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        throw new Error(`Invalid JSON in ${filePath} on line ${index + 1}.`);
+      }
+    })
+);
+
+const releaseDirectoryFor = (inputPath: string): string => {
+  const resolved = path.resolve(inputPath);
+  return path.basename(resolved) === 'manifest.json' ? path.dirname(resolved) : resolved;
+};
+
+const readGoldRelease = async (inputPath: string): Promise<{
+  release: AffiliateMappingGoldRelease;
+  releaseSha256: string;
+}> => {
+  const directory = releaseDirectoryFor(inputPath);
+  const examples = (
+    await Promise.all((['train', 'validation', 'test'] as const).map(
+      (split) => readJsonLines(path.join(directory, `${split}.jsonl`)),
+    ))
+  ).flat().sort((left, right) => (
+    String((left as { exampleId?: unknown }).exampleId)
+      .localeCompare(String((right as { exampleId?: unknown }).exampleId))
+  ));
+  const release = assertAffiliateMappingGoldReleaseIntegrity({
+    manifest: JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8')),
+    examples,
+  });
+  const releaseSha256 = stableAgentArtifactSha256(release);
+  const recordedSha256 = (
+    await fs.readFile(path.join(directory, 'release.sha256'), 'utf8')
+  ).trim();
+  if (recordedSha256 !== releaseSha256) {
+    throw new Error(`Base gold release hash mismatch for ${release.manifest.releaseId}.`);
+  }
+  if (release.examples.some((example) => example.split === 'test')) {
+    throw new Error('A base train/validation release cannot contain held-out test examples.');
+  }
+  return { release, releaseSha256 };
+};
+
+const frozenSplitExample = (
+  example: AffiliateMappingGoldExample,
+): AffiliateFrozenTrainingValidationExample => ({
+  registrableDomain: example.registrableDomain,
+  split: example.split as 'train' | 'validation',
+  targetKind: example.target.type === 'LISTING_KIND'
+    ? example.target.listingKind
+    : null,
+  mappingMode: example.approvedDraft.implementationMode === 'GENERIC_MAPPING'
+    ? 'SELECTOR'
+    : example.approvedDraft.implementationMode === 'MANUAL_CANDIDATES'
+      ? 'MANUAL_CANDIDATES'
+      : 'NONE',
+});
 
 const useLive = process.argv.includes('--live');
 if (useLive) {
@@ -431,46 +503,6 @@ const countBy = (values: string[]): Record<string, number> => Object.fromEntries
   ]),
 );
 
-const trainingValidationSplits = (
-  examples: Array<{
-    registrableDomain: string;
-    sourceKey: string;
-    targetKind: string;
-    mappingMode: string;
-  }>,
-): Map<string, 'train' | 'validation'> => {
-  const byDomain = new Map<string, typeof examples>();
-  examples.forEach((example) => {
-    const rows = byDomain.get(example.registrableDomain) ?? [];
-    rows.push(example);
-    byDomain.set(example.registrableDomain, rows);
-  });
-  const validationDomains = new Set<string>();
-  const addFirstDomain = (predicate: (example: typeof examples[number]) => boolean) => {
-    const example = [...examples]
-      .sort((left, right) => left.sourceKey.localeCompare(right.sourceKey))
-      .find((candidate) => (
-        predicate(candidate) && !validationDomains.has(candidate.registrableDomain)
-      ));
-    if (example) validationDomains.add(example.registrableDomain);
-  };
-  addFirstDomain((example) => example.targetKind === 'EVENT');
-  addFirstDomain((example) => example.targetKind === 'CLUB');
-  addFirstDomain((example) => example.targetKind === 'RENTAL');
-  addFirstDomain((example) => example.mappingMode === 'SELECTOR');
-  addFirstDomain((example) => example.mappingMode === 'MANUAL_CANDIDATES');
-  const validationCount = () => Array.from(validationDomains)
-    .reduce((total, domain) => total + (byDomain.get(domain)?.length ?? 0), 0);
-  for (const domain of Array.from(byDomain.keys()).sort()) {
-    if (validationCount() >= 15) break;
-    validationDomains.add(domain);
-  }
-  return new Map(Array.from(byDomain.keys()).map((domain) => [
-    domain,
-    validationDomains.has(domain) ? 'validation' : 'train',
-  ]));
-};
-
 const main = async () => {
   const proposalPath = path.resolve(
     readOption('--plan')
@@ -520,6 +552,18 @@ const main = async () => {
     approvedAt = lock.lockedAt;
   }
   const plannedExampleCount = selectedExamples.length;
+  const baseGoldOption = readOption('--base-gold-release');
+  const baseGold = baseGoldOption ? await readGoldRelease(baseGoldOption) : null;
+  const baseExampleIds = new Set(
+    baseGold?.release.examples.map((example) => example.exampleId) ?? [],
+  );
+  const carriedForwardSourceKeys = selectedExamples
+    .filter((example) => baseExampleIds.has(`${selectionId}-${example.sourceKey}`))
+    .map((example) => example.sourceKey)
+    .sort();
+  selectedExamples = selectedExamples.filter((example) => (
+    !baseExampleIds.has(`${selectionId}-${example.sourceKey}`)
+  ));
   let evidenceIncompleteSourceKeys: string[] = [];
   const captureAuditPath = readOption('--capture-audit');
   if (captureAuditPath) {
@@ -545,7 +589,15 @@ const main = async () => {
     ));
   }
   const splitByDomain = isTrainingPlan
-    ? trainingValidationSplits(selectedExamples)
+    ? buildAffiliateTrainingValidationSplitAssignments({
+      candidates: selectedExamples.map((example) => ({
+        registrableDomain: example.registrableDomain,
+        sourceKey: example.sourceKey,
+        targetKind: example.targetKind,
+        mappingMode: example.mappingMode,
+      })),
+      frozenExamples: baseGold?.release.examples.map(frozenSplitExample) ?? [],
+    })
     : new Map<string, 'test'>(selectedExamples.map((example) => [
         example.registrableDomain,
         'test',
@@ -556,6 +608,9 @@ const main = async () => {
       selectionId,
       plannedExampleCount,
       exampleCount: selectedExamples.length,
+      carriedForwardExampleCount: carriedForwardSourceKeys.length,
+      baseGoldReleaseId: baseGold?.release.manifest.releaseId ?? null,
+      baseGoldReleaseSha256: baseGold?.releaseSha256 ?? null,
       evidenceIncompleteSourceCount: evidenceIncompleteSourceKeys.length,
       splitCounts: countBy(selectedExamples.map((example) => (
         splitByDomain.get(example.registrableDomain) ?? 'test'
@@ -927,6 +982,9 @@ const main = async () => {
       materializedAt: new Date().toISOString(),
       plannedExampleCount,
       exampleCount: results.length,
+      carriedForwardSourceKeys,
+      baseGoldReleaseId: baseGold?.release.manifest.releaseId ?? null,
+      baseGoldReleaseSha256: baseGold?.releaseSha256 ?? null,
       evidenceIncompleteSourceKeys,
       intendedScenarios: countBy(results.map((result) => result.intendedScenario)),
       outcomes: countBy(results.map((result) => result.outcome)),

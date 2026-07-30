@@ -76,6 +76,127 @@ export type AffiliateGoldMaterializationResult = {
   warnings: string[];
 };
 
+export type AffiliateTrainingValidationSplitCandidate = {
+  registrableDomain: string;
+  sourceKey: string;
+  targetKind: AffiliateAgentTargetKind;
+  mappingMode: 'SELECTOR' | 'MANUAL_CANDIDATES' | 'NONE';
+};
+
+export type AffiliateFrozenTrainingValidationExample = {
+  registrableDomain: string;
+  split: 'train' | 'validation';
+  targetKind: AffiliateAgentTargetKind | null;
+  mappingMode: 'SELECTOR' | 'MANUAL_CANDIDATES' | 'NONE';
+};
+
+const normalizedDomain = (value: string): string => value.trim().toLowerCase();
+
+export const buildAffiliateTrainingValidationSplitAssignments = (input: {
+  candidates: AffiliateTrainingValidationSplitCandidate[];
+  frozenExamples?: AffiliateFrozenTrainingValidationExample[];
+  minimumValidationExamples?: number;
+  preferredValidationSelectorDomains?: number;
+}): Map<string, 'train' | 'validation'> => {
+  const candidates = input.candidates.map((candidate) => ({
+    ...candidate,
+    registrableDomain: normalizedDomain(candidate.registrableDomain),
+  })).sort(
+    (left, right) => (
+      left.sourceKey.localeCompare(right.sourceKey)
+      || left.registrableDomain.localeCompare(right.registrableDomain)
+    ),
+  );
+  const byDomain = new Map<string, AffiliateTrainingValidationSplitCandidate[]>();
+  for (const candidate of candidates) {
+    const domain = normalizedDomain(candidate.registrableDomain);
+    if (!domain) throw new Error('Training split candidates require a registrable domain.');
+    const rows = byDomain.get(domain) ?? [];
+    rows.push({ ...candidate, registrableDomain: domain });
+    byDomain.set(domain, rows);
+  }
+
+  const frozenAssignments = new Map<string, 'train' | 'validation'>();
+  const frozenValidationExamples = (input.frozenExamples ?? []).filter((example) => {
+    const domain = normalizedDomain(example.registrableDomain);
+    if (!domain) throw new Error('Frozen split examples require a registrable domain.');
+    const existing = frozenAssignments.get(domain);
+    if (existing && existing !== example.split) {
+      throw new Error(`Frozen domain ${domain} leaks across ${existing} and ${example.split}.`);
+    }
+    frozenAssignments.set(domain, example.split);
+    return example.split === 'validation';
+  });
+
+  const assignments = new Map<string, 'train' | 'validation'>();
+  for (const domain of byDomain.keys()) {
+    const frozen = frozenAssignments.get(domain);
+    if (frozen) assignments.set(domain, frozen);
+  }
+  const validationDomains = new Set(
+    Array.from(assignments.entries())
+      .filter(([, split]) => split === 'validation')
+      .map(([domain]) => domain),
+  );
+  const validationExamples = (): Array<
+    AffiliateTrainingValidationSplitCandidate | AffiliateFrozenTrainingValidationExample
+  > => [
+    ...frozenValidationExamples,
+    ...Array.from(validationDomains).flatMap((domain) => byDomain.get(domain) ?? []),
+  ];
+  const addFirstNewDomain = (
+    predicate: (candidate: AffiliateTrainingValidationSplitCandidate) => boolean,
+  ): boolean => {
+    const candidate = candidates.find((row) => (
+      predicate(row)
+      && !assignments.has(row.registrableDomain)
+    ));
+    if (!candidate) return false;
+    assignments.set(candidate.registrableDomain, 'validation');
+    validationDomains.add(candidate.registrableDomain);
+    return true;
+  };
+
+  for (const targetKind of ['EVENT', 'CLUB', 'RENTAL'] as const) {
+    if (!validationExamples().some((example) => example.targetKind === targetKind)) {
+      addFirstNewDomain((candidate) => candidate.targetKind === targetKind);
+    }
+  }
+  if (!validationExamples().some((example) => example.mappingMode === 'MANUAL_CANDIDATES')) {
+    addFirstNewDomain((candidate) => candidate.mappingMode === 'MANUAL_CANDIDATES');
+  }
+  const preferredValidationSelectorDomains = input.preferredValidationSelectorDomains ?? 3;
+  const validationSelectorDomainCount = () => new Set(validationExamples()
+    .filter((example) => example.mappingMode === 'SELECTOR')
+    .map((example) => normalizedDomain(example.registrableDomain))).size;
+  while (
+    validationSelectorDomainCount() < preferredValidationSelectorDomains
+    && addFirstNewDomain((candidate) => candidate.mappingMode === 'SELECTOR')
+  ) {
+    // Keep reserving distinct selector domains until the preferred coverage is met.
+  }
+
+  const minimumValidationExamples = input.minimumValidationExamples ?? 15;
+  const validationExampleCount = () => (
+    frozenValidationExamples.length
+    + Array.from(validationDomains).reduce(
+      (total, domain) => total + (byDomain.get(domain)?.length ?? 0),
+      0,
+    )
+  );
+  for (const domain of Array.from(byDomain.keys()).sort()) {
+    if (validationExampleCount() >= minimumValidationExamples) break;
+    if (!assignments.has(domain)) {
+      assignments.set(domain, 'validation');
+      validationDomains.add(domain);
+    }
+  }
+  for (const domain of byDomain.keys()) {
+    if (!assignments.has(domain)) assignments.set(domain, 'train');
+  }
+  return assignments;
+};
+
 const nullableText = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();

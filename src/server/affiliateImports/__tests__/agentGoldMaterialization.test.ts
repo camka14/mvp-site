@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  buildAffiliateTrainingValidationSplitAssignments,
   materializeAffiliateMappingGoldExample,
 } from '../agentGoldMaterialization';
 import type { AffiliateMappingJobContext } from '../agentModelClient';
@@ -207,5 +208,62 @@ describe('affiliate mapping gold materialization', () => {
     expect(blocked.example.approvedDraft.mapping).toBeNull();
     expect(custom.outcome).toBe('CUSTOM_EXTRACTOR_REQUIRED');
     expect(custom.example.approvedDraft.mapping).toBeNull();
+  });
+
+  it('preserves frozen domain splits and reserves new selector domains for validation', () => {
+    const frozenExamples = Array.from({ length: 15 }, (_, index) => ({
+      registrableDomain: `frozen-validation-${index}.example`,
+      split: 'validation' as const,
+      targetKind: index === 0 ? 'CLUB' as const : index === 1 ? 'RENTAL' as const : 'EVENT' as const,
+      mappingMode: 'MANUAL_CANDIDATES' as const,
+    })).concat([{
+      registrableDomain: 'frozen-train.example',
+      split: 'train' as const,
+      targetKind: 'EVENT' as const,
+      mappingMode: 'SELECTOR' as const,
+    }]);
+    const assignments = buildAffiliateTrainingValidationSplitAssignments({
+      frozenExamples,
+      candidates: [
+        {
+          registrableDomain: 'frozen-train.example',
+          sourceKey: 'same-frozen-domain',
+          targetKind: 'EVENT',
+          mappingMode: 'SELECTOR',
+        },
+        ...['a', 'b', 'c', 'd'].map((key) => ({
+          registrableDomain: `selector-${key}.example`,
+          sourceKey: `selector-${key}`,
+          targetKind: 'EVENT' as const,
+          mappingMode: 'SELECTOR' as const,
+        })),
+      ],
+    });
+
+    expect(assignments.get('frozen-train.example')).toBe('train');
+    expect(assignments.get('selector-a.example')).toBe('validation');
+    expect(assignments.get('selector-b.example')).toBe('validation');
+    expect(assignments.get('selector-c.example')).toBe('validation');
+    expect(assignments.get('selector-d.example')).toBe('train');
+  });
+
+  it('rejects conflicting frozen split assignments', () => {
+    expect(() => buildAffiliateTrainingValidationSplitAssignments({
+      candidates: [],
+      frozenExamples: [
+        {
+          registrableDomain: 'same.example',
+          split: 'train',
+          targetKind: 'EVENT',
+          mappingMode: 'SELECTOR',
+        },
+        {
+          registrableDomain: 'same.example',
+          split: 'validation',
+          targetKind: 'EVENT',
+          mappingMode: 'SELECTOR',
+        },
+      ],
+    })).toThrow('leaks across');
   });
 });
