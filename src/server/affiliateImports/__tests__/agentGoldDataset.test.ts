@@ -10,6 +10,7 @@ import {
 } from '../agentGoldDataset';
 import {
   assertAffiliateGoldCohortProposalIntegrity,
+  buildAffiliateGoldCohortRevisionCandidates,
   planAffiliateGoldTestCohort,
   reviseAffiliateGoldCohortRequiredPage,
   type AffiliateGoldCohortCandidate,
@@ -731,6 +732,42 @@ describe('affiliate mapping gold cohort planning', () => {
       registrableDomain: legacyTeam.registrableDomain,
       split: 'test',
     });
+  });
+
+  it('preserves an immutable cohort while replacing exactly one source', () => {
+    const originalCandidates = Array.from(
+      { length: 45 },
+      (_, index) => cohortCandidate(index),
+    );
+    const original = planAffiliateGoldTestCohort({
+      candidates: originalCandidates,
+      repositoryCommit: 'abc123',
+    });
+    const removed = original.examples[0];
+    const replacement = cohortCandidate(100);
+    const revisionCandidates = buildAffiliateGoldCohortRevisionCandidates({
+      proposal: original,
+      currentCandidates: [...originalCandidates, replacement],
+      removeSourceKeys: [removed.sourceKey],
+      replacementSourceKeys: [replacement.sourceKey],
+    });
+    const revised = planAffiliateGoldTestCohort({
+      candidates: revisionCandidates,
+      repositoryCommit: 'def456',
+    });
+
+    expect(revised.readyToLock).toBe(true);
+    expect(revised.examples.map((example) => example.sourceKey)).not.toContain(removed.sourceKey);
+    expect(revised.examples.map((example) => example.sourceKey)).toContain(replacement.sourceKey);
+    expect(revised.examples.filter((example) => (
+      original.examples.some((prior) => prior.sourceKey === example.sourceKey)
+    ))).toHaveLength(34);
+    expect(() => buildAffiliateGoldCohortRevisionCandidates({
+      proposal: original,
+      currentCandidates: originalCandidates,
+      removeSourceKeys: [removed.sourceKey],
+      replacementSourceKeys: [],
+    })).toThrow('one replacement per removed source');
   });
 
   it('reports deficits instead of silently weakening a small inventory', () => {

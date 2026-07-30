@@ -166,6 +166,77 @@ export function assertAffiliateGoldCohortProposalIntegrity(
   }
 }
 
+const proposalExampleAsCandidate = (
+  example: AffiliateGoldCohortProposalExample,
+): AffiliateGoldCohortCandidate => {
+  const {
+    scenarioIntent: _scenarioIntent,
+    approvalStatus: _approvalStatus,
+    selectionReasons: _selectionReasons,
+    ...candidate
+  } = example;
+  return candidate;
+};
+
+export const buildAffiliateGoldCohortRevisionCandidates = (input: {
+  proposal: AffiliateGoldCohortProposal;
+  currentCandidates: AffiliateGoldCohortCandidate[];
+  removeSourceKeys: string[];
+  replacementSourceKeys: string[];
+}): AffiliateGoldCohortCandidate[] => {
+  assertAffiliateGoldCohortProposalIntegrity(input.proposal);
+  const removeSourceKeys = Array.from(new Set(
+    input.removeSourceKeys.map((sourceKey) => sourceKey.trim()).filter(Boolean),
+  )).sort();
+  const replacementSourceKeys = Array.from(new Set(
+    input.replacementSourceKeys.map((sourceKey) => sourceKey.trim()).filter(Boolean),
+  )).sort();
+  if (!removeSourceKeys.length) {
+    throw new Error('Cohort membership revision requires at least one removed source key.');
+  }
+  if (removeSourceKeys.length !== replacementSourceKeys.length) {
+    throw new Error('Cohort membership revision requires one replacement per removed source.');
+  }
+  const priorSourceKeys = new Set(input.proposal.examples.map((example) => example.sourceKey));
+  const missingRemovedSource = removeSourceKeys.find((sourceKey) => !priorSourceKeys.has(sourceKey));
+  if (missingRemovedSource) {
+    throw new Error(`Cohort membership revision source was not found: ${missingRemovedSource}`);
+  }
+  const removed = new Set(removeSourceKeys);
+  const preserved = input.proposal.examples
+    .filter((example) => !removed.has(example.sourceKey))
+    .map(proposalExampleAsCandidate);
+  const unsupportedPreserved = preserved.find(
+    (candidate) => !isAffiliateAgentTargetKind(candidate.targetKind),
+  );
+  if (unsupportedPreserved) {
+    throw new Error(
+      `Cohort membership revision still contains unsupported target kind ${unsupportedPreserved.targetKind} for ${unsupportedPreserved.sourceKey}.`,
+    );
+  }
+  const currentBySourceKey = new Map(
+    input.currentCandidates.map((candidate) => [candidate.sourceKey, candidate]),
+  );
+  const preservedSourceKeys = new Set(preserved.map((candidate) => candidate.sourceKey));
+  const replacements = replacementSourceKeys.map((sourceKey) => {
+    if (preservedSourceKeys.has(sourceKey)) {
+      throw new Error(`Cohort membership replacement is already preserved: ${sourceKey}`);
+    }
+    const replacement = currentBySourceKey.get(sourceKey);
+    if (!replacement) {
+      throw new Error(`Cohort membership replacement was not found: ${sourceKey}`);
+    }
+    return replacement;
+  });
+  const revised = [...preserved, ...replacements];
+  if (revised.length !== input.proposal.examples.length) {
+    throw new Error(
+      `Cohort membership revision changed example count from ${input.proposal.examples.length} to ${revised.length}.`,
+    );
+  }
+  return revised;
+};
+
 const validatedCohortRevisionUrl = (value: string, label: string): URL => {
   let url: URL;
   try {

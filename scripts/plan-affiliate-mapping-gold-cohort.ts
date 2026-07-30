@@ -23,8 +23,22 @@ const readOption = (name: string): string | undefined => {
 };
 
 const savedProposalPath = readOption('--proposal');
+const reviseFromProposalPath = readOption('--revise-from');
+const removeSourceKey = readOption('--remove-source');
+const replacementSourceKey = readOption('--replacement-source');
 if (savedProposalPath && !lockProposal) {
   throw new Error('--proposal is only supported with --lock.');
+}
+if (
+  [reviseFromProposalPath, removeSourceKey, replacementSourceKey].some(Boolean)
+  && ![reviseFromProposalPath, removeSourceKey, replacementSourceKey].every(Boolean)
+) {
+  throw new Error(
+    '--revise-from, --remove-source, and --replacement-source must be supplied together.',
+  );
+}
+if (savedProposalPath && reviseFromProposalPath) {
+  throw new Error('--proposal cannot be combined with --revise-from.');
 }
 if (useLive && !savedProposalPath) {
   const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
@@ -158,7 +172,9 @@ const main = async () => {
   } = await import('../src/server/affiliateImports/agentDataset');
   const {
     buildAffiliateGoldCohortCandidates,
+    buildAffiliateGoldCohortRevisionCandidates,
     planAffiliateGoldTestCohort,
+    assertAffiliateGoldCohortProposalIntegrity,
   } = await import('../src/server/affiliateImports/agentGoldCohort');
   const {
     stableAgentArtifactSha256,
@@ -172,8 +188,39 @@ const main = async () => {
     });
     const inventory = buildAffiliateHistoricalDatasetInventory(datasetInput);
     const candidates = buildAffiliateGoldCohortCandidates(datasetInput);
+    let proposalCandidates = candidates;
+    let revision: {
+      priorProposalPath: string;
+      priorCohortId: string;
+      removedSourceKey: string;
+      replacementSourceKey: string;
+    } | null = null;
+    if (reviseFromProposalPath && removeSourceKey && replacementSourceKey) {
+      const priorProposalPath = path.resolve(reviseFromProposalPath);
+      const priorProposal = JSON.parse(
+        await fs.readFile(priorProposalPath, 'utf8'),
+      ) as unknown;
+      const assertProposalIntegrity: (
+        value: unknown,
+      ) => asserts value is AffiliateGoldCohortProposal = (
+        assertAffiliateGoldCohortProposalIntegrity
+      );
+      assertProposalIntegrity(priorProposal);
+      proposalCandidates = buildAffiliateGoldCohortRevisionCandidates({
+        proposal: priorProposal,
+        currentCandidates: candidates,
+        removeSourceKeys: [removeSourceKey],
+        replacementSourceKeys: [replacementSourceKey],
+      });
+      revision = {
+        priorProposalPath,
+        priorCohortId: priorProposal.cohortId,
+        removedSourceKey: removeSourceKey,
+        replacementSourceKey,
+      };
+    }
     const proposal = planAffiliateGoldTestCohort({
-      candidates,
+      candidates: proposalCandidates,
       repositoryCommit,
       inventorySha256: stableAgentArtifactSha256(inventory.rows),
     });
@@ -212,6 +259,7 @@ const main = async () => {
 
     const commandResult = {
       ...proposal,
+      revision,
       environment,
       dryRun: !writeOutput,
       locked: Boolean(lockPath),
@@ -230,6 +278,7 @@ const main = async () => {
       readyToLock: proposal.readyToLock,
       reservedForLater: proposal.reservedForLater,
       lockedDomainCount: proposal.lockedDomainAssignments.length,
+      revision,
       environment,
       dryRun: !writeOutput,
       locked: Boolean(lockPath),
