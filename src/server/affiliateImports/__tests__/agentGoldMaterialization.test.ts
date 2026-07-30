@@ -152,6 +152,25 @@ describe('affiliate mapping gold materialization', () => {
     expect(result.example.expectedPersistedCandidates).toEqual([]);
   });
 
+  it('prunes stale manual rows while preserving a current executable mapping', async () => {
+    const input = await baseInput();
+    input.mapping.manualCandidates?.push({
+      title: 'River City Spring League',
+      officialActionUrl: 'https://register.river.example/spring',
+      sourceUrl: 'https://river.example/events',
+      startsAt: '2026-04-01T18:00:00.000Z',
+      dateDisplayMode: 'SCHEDULED',
+      dateDisplayText: 'April 1, 2026',
+    });
+    const result = await materializeAffiliateMappingGoldExample(input);
+
+    expect(result.outcome).toBe('MANUAL_CANDIDATES');
+    expect(result.example.approvedDraft.mapping?.manualCandidates).toHaveLength(1);
+    expect(result.warnings).toContain(
+      'Pruned 1 stale or unsupported manual candidate(s) from the approved mapping.',
+    );
+  });
+
   it('preserves explicit blocked and custom-extractor outcomes without executable mappings', async () => {
     const input = await baseInput();
     const blocked = await materializeAffiliateMappingGoldExample({

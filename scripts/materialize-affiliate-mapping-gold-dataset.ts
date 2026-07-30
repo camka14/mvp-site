@@ -9,8 +9,10 @@ import {
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
 import {
   assertAffiliateGoldCohortProposalIntegrity,
-  type AffiliateGoldCohortProposal,
 } from '../src/server/affiliateImports/agentGoldCohort';
+import {
+  assertApprovedAffiliateEvidenceCapturePlan,
+} from '../src/server/affiliateImports/agentEvidenceCapturePlan';
 import {
   buildAffiliateMappingJobContextFromExports,
 } from '../src/server/affiliateImports/agentJobContext';
@@ -429,13 +431,56 @@ const countBy = (values: string[]): Record<string, number> => Object.fromEntries
   ]),
 );
 
+const trainingValidationSplits = (
+  examples: Array<{
+    registrableDomain: string;
+    sourceKey: string;
+    targetKind: string;
+    mappingMode: string;
+  }>,
+): Map<string, 'train' | 'validation'> => {
+  const byDomain = new Map<string, typeof examples>();
+  examples.forEach((example) => {
+    const rows = byDomain.get(example.registrableDomain) ?? [];
+    rows.push(example);
+    byDomain.set(example.registrableDomain, rows);
+  });
+  const validationDomains = new Set<string>();
+  const addFirstDomain = (predicate: (example: typeof examples[number]) => boolean) => {
+    const example = [...examples]
+      .sort((left, right) => left.sourceKey.localeCompare(right.sourceKey))
+      .find((candidate) => (
+        predicate(candidate) && !validationDomains.has(candidate.registrableDomain)
+      ));
+    if (example) validationDomains.add(example.registrableDomain);
+  };
+  addFirstDomain((example) => example.targetKind === 'EVENT');
+  addFirstDomain((example) => example.targetKind === 'CLUB');
+  addFirstDomain((example) => example.targetKind === 'RENTAL');
+  addFirstDomain((example) => example.mappingMode === 'SELECTOR');
+  addFirstDomain((example) => example.mappingMode === 'MANUAL_CANDIDATES');
+  const validationCount = () => Array.from(validationDomains)
+    .reduce((total, domain) => total + (byDomain.get(domain)?.length ?? 0), 0);
+  for (const domain of Array.from(byDomain.keys()).sort()) {
+    if (validationCount() >= 15) break;
+    validationDomains.add(domain);
+  }
+  return new Map(Array.from(byDomain.keys()).map((domain) => [
+    domain,
+    validationDomains.has(domain) ? 'validation' : 'train',
+  ]));
+};
+
 const main = async () => {
   const proposalPath = path.resolve(
-    readOption('--proposal')
+    readOption('--plan')
+      ?? readOption('--proposal')
       ?? 'output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-7e930a8a04b0dc2f/proposal.json',
   );
   const lockPath = path.resolve(
-    readOption('--lock') ?? path.join(path.dirname(proposalPath), 'lock.json'),
+    readOption('--approval')
+      ?? readOption('--lock')
+      ?? path.join(path.dirname(proposalPath), 'lock.json'),
   );
   const exportRoot = path.resolve(readOption('--export-root') ?? 'output/affiliate-intakes');
   const outputDirectory = path.resolve(
@@ -444,14 +489,77 @@ const main = async () => {
   const shouldWrite = process.argv.includes('--write');
   const proposalValue = JSON.parse(await fs.readFile(proposalPath, 'utf8'));
   const lockValue = JSON.parse(await fs.readFile(lockPath, 'utf8'));
-  assertAffiliateGoldCohortProposalIntegrity(proposalValue);
-  const { proposal, lock } = assertLockedGoldCaptureCohort(proposalValue, lockValue);
-  const typedProposal = proposal as AffiliateGoldCohortProposal;
+  const isTrainingPlan = (
+    proposalValue
+    && typeof proposalValue === 'object'
+    && !Array.isArray(proposalValue)
+    && proposalValue.planType === 'TRAINING_EVIDENCE_CAPTURE'
+  );
+  let selectionId: string;
+  let selectionSha256: string;
+  let selectedExamples: Array<any>;
+  let approvedByUserId: string;
+  let approvedAt: string;
+  if (isTrainingPlan) {
+    const { plan, approval } = assertApprovedAffiliateEvidenceCapturePlan(
+      proposalValue,
+      lockValue,
+    );
+    selectionId = plan.capturePlanId;
+    selectionSha256 = plan.planSha256;
+    selectedExamples = plan.examples;
+    approvedByUserId = approval.approvedByUserId;
+    approvedAt = approval.approvedAt;
+  } else {
+    assertAffiliateGoldCohortProposalIntegrity(proposalValue);
+    const { proposal, lock } = assertLockedGoldCaptureCohort(proposalValue, lockValue);
+    selectionId = proposal.cohortId;
+    selectionSha256 = proposal.proposalSha256;
+    selectedExamples = proposal.examples;
+    approvedByUserId = lock.approvedByUserId;
+    approvedAt = lock.lockedAt;
+  }
+  const plannedExampleCount = selectedExamples.length;
+  let evidenceIncompleteSourceKeys: string[] = [];
+  const captureAuditPath = readOption('--capture-audit');
+  if (captureAuditPath) {
+    const audit = JSON.parse(await fs.readFile(path.resolve(captureAuditPath), 'utf8')) as {
+      cohortId?: string;
+      sources?: Array<{ sourceKey?: string; status?: string }>;
+    };
+    if (audit.cohortId !== selectionId || !Array.isArray(audit.sources)) {
+      throw new Error('Capture audit does not match the approved materialization selection.');
+    }
+    const completeSourceKeys = new Set(
+      audit.sources
+        .filter((source) => source.status === 'COMPLETE')
+        .map((source) => source.sourceKey)
+        .filter((sourceKey): sourceKey is string => Boolean(sourceKey)),
+    );
+    evidenceIncompleteSourceKeys = selectedExamples
+      .filter((example) => !completeSourceKeys.has(example.sourceKey))
+      .map((example) => example.sourceKey)
+      .sort();
+    selectedExamples = selectedExamples.filter((example) => (
+      completeSourceKeys.has(example.sourceKey)
+    ));
+  }
+  const splitByDomain = isTrainingPlan
+    ? trainingValidationSplits(selectedExamples)
+    : new Map<string, 'test'>(selectedExamples.map((example) => [
+        example.registrableDomain,
+        'test',
+      ]));
 
   if (!shouldWrite) {
     console.log(JSON.stringify({
-      cohortId: typedProposal.cohortId,
-      exampleCount: typedProposal.examples.length,
+      selectionId,
+      plannedExampleCount,
+      exampleCount: selectedExamples.length,
+      evidenceIncompleteSourceCount: evidenceIncompleteSourceKeys.length,
+      splitCounts: countBy(selectedExamples.map((example) => (
+        splitByDomain.get(example.registrableDomain) ?? 'test'
+      ))),
       outputDirectory,
       writeRequired: true,
       databaseWrites: 0,
@@ -475,7 +583,7 @@ const main = async () => {
   const db = prisma as any;
   const results = [];
   try {
-    for (const cohortExample of typedProposal.examples) {
+    for (const cohortExample of selectedExamples) {
       if (!isAffiliateAgentTargetKind(cohortExample.targetKind)) {
         throw new Error(`Locked cohort contains unsupported target kind ${cohortExample.targetKind}.`);
       }
@@ -533,10 +641,12 @@ const main = async () => {
           intake: linkedIntake,
           outputDirectory: exampleDirectory,
           targetKind: cohortExample.targetKind,
-          lockedAt: lock.lockedAt,
+          lockedAt: approvedAt,
         })];
       } else {
-        const requiredKeys = cohortExample.requiredCapturePages.map((page) => urlKey(page.url));
+        const requiredKeys = cohortExample.requiredCapturePages.map(
+          (page: { url: string }) => urlKey(page.url),
+        );
         const pages = await db.affiliateSourceIntakePages.findMany({
           where: { urlKey: { in: requiredKeys }, status: 'ACTIVE' },
           select: {
@@ -550,7 +660,7 @@ const main = async () => {
           },
         }) as DbPage[];
         const pageByKey = new Map(pages.map((page) => [page.urlKey, page]));
-        const missingPage = cohortExample.requiredCapturePages.find((page) => (
+        const missingPage = cohortExample.requiredCapturePages.find((page: { url: string }) => (
           !pageByKey.has(urlKey(page.url))
         ));
         if (missingPage) {
@@ -747,7 +857,7 @@ const main = async () => {
       }
 
       const { context } = await buildAffiliateMappingJobContextFromExports({
-        jobId: `gold-${typedProposal.cohortId}-${cohortExample.sourceKey}`,
+        jobId: `gold-${selectionId}-${cohortExample.sourceKey}`,
         evidenceDirectories,
         repositoryRoot: process.cwd(),
         instructionsRevision: 'affiliate-source-mapping-contract-v1',
@@ -760,11 +870,11 @@ const main = async () => {
         );
       }
       const result = await materializeAffiliateMappingGoldExample({
-        cohortId: typedProposal.cohortId,
+        cohortId: selectionId,
         proposalSourceKey: cohortExample.sourceKey,
         registrableDomain: cohortExample.registrableDomain,
         platformFamily: cohortExample.platformFamily,
-        split: 'test',
+        split: splitByDomain.get(cohortExample.registrableDomain) ?? 'test',
         targetKind: cohortExample.targetKind,
         scenarioIntent: cohortExample.scenarioIntent,
         context,
@@ -781,9 +891,9 @@ const main = async () => {
           address: organization?.address?.trim() || null,
         },
         approval: {
-          approvedByUserId: lock.approvedByUserId,
-          approvedAt: lock.lockedAt,
-          proposalSha256: typedProposal.proposalSha256,
+          approvedByUserId,
+          approvedAt,
+          proposalSha256: selectionSha256,
         },
       });
       results.push({
@@ -811,11 +921,13 @@ const main = async () => {
     );
     const report = {
       schemaVersion: 1,
-      cohortId: typedProposal.cohortId,
-      proposalSha256: typedProposal.proposalSha256,
-      lockedAt: lock.lockedAt,
+      selectionId,
+      selectionSha256,
+      approvedAt,
       materializedAt: new Date().toISOString(),
+      plannedExampleCount,
       exampleCount: results.length,
+      evidenceIncompleteSourceKeys,
       intendedScenarios: countBy(results.map((result) => result.intendedScenario)),
       outcomes: countBy(results.map((result) => result.outcome)),
       executableCount: results.filter((result) => (

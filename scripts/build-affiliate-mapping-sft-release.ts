@@ -4,6 +4,10 @@ import {
   buildAffiliateMappingSftRelease,
   renderAffiliateMappingSftJsonLines,
 } from '../src/server/affiliateImports/agentTrainingRelease';
+import {
+  affiliateMappingGoldExampleSchema,
+  affiliateMappingTeachingEnvelopeFromGoldExample,
+} from '../src/server/affiliateImports/agentGoldDataset';
 
 const readOption = (name: string): string | undefined => {
   const equals = process.argv.find((argument) => argument.startsWith(`${name}=`));
@@ -37,7 +41,13 @@ const main = async () => {
     throw new Error('--input and --release are required.');
   }
   const inputPath = path.resolve(inputOption);
-  const release = buildAffiliateMappingSftRelease(await readJsonLines(inputPath), {
+  const inputRows = await readJsonLines(inputPath);
+  const envelopes = inputRows.map((row) => (
+    affiliateMappingGoldExampleSchema.safeParse(row).success
+      ? affiliateMappingTeachingEnvelopeFromGoldExample(row)
+      : row
+  ));
+  const release = buildAffiliateMappingSftRelease(envelopes, {
     releaseId,
     createdAt: new Date(),
   });

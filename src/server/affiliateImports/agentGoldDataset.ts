@@ -14,6 +14,8 @@ import {
 } from './agentModelClient';
 import {
   assertNoForbiddenAffiliateTrainingData,
+  affiliateMappingTeachingEnvelopeSchema,
+  type AffiliateMappingTeachingEnvelope,
   type AffiliateMappingSftRelease,
 } from './agentTrainingRelease';
 
@@ -642,6 +644,56 @@ export const renderAffiliateMappingGoldJsonLines = (
 export const affiliateMappingGoldFixtureManifest = (
   example: AffiliateMappingGoldExample,
 ): ReturnType<typeof fixtureManifestForExample> => fixtureManifestForExample(example);
+
+export const affiliateMappingTeachingEnvelopeFromGoldExample = (
+  value: unknown,
+): AffiliateMappingTeachingEnvelope => {
+  const example = affiliateMappingGoldExampleSchema.parse(value);
+  const draftHash = stableAgentArtifactSha256(example.approvedDraft);
+  return affiliateMappingTeachingEnvelopeSchema.parse({
+    schemaVersion: 1,
+    trainingExample: {
+      schemaVersion: 1,
+      exampleId: example.exampleId,
+      evidenceLabel: example.approvedDraft.implementationMode === 'BLOCKED'
+        ? 'BLOCKED'
+        : 'FAITHFUL',
+      input: {
+        intakeSourceKey: example.context.sourceKey,
+        runId: example.context.runId,
+        artifacts: Array.from(new Map(
+          example.context.artifacts.map((artifact) => [
+            `${artifact.kind}|${artifact.sha256}`,
+            {
+              kind: artifact.kind,
+              sha256: artifact.sha256,
+            },
+          ]),
+        ).values()),
+        contextContractVersion: 1,
+      },
+      output: {
+        draftHash,
+        approvedMappingHash: example.approvedDraft.mapping
+          ? stableAgentArtifactSha256(example.approvedDraft.mapping)
+          : null,
+        approvedCandidateFixtureHash: example.expectedPersistedCandidates.length
+          ? stableAgentArtifactSha256(example.expectedPersistedCandidates)
+          : null,
+      },
+      correction: null,
+      split: example.split,
+      registrableDomain: example.registrableDomain,
+      platformFamily: example.platformFamily,
+      humanApproval: {
+        approvedByUserId: example.humanApproval.approvedByUserId,
+        approvedAt: example.humanApproval.approvedAt,
+      },
+    },
+    context: example.context,
+    approvedDraft: example.approvedDraft,
+  });
+};
 
 const runtimeEligibilityIssues = (
   observation: AffiliateModelRuntimeObservation | null,

@@ -383,6 +383,7 @@ export const materializeAffiliateMappingGoldExample = async (
   let importableCandidateCount = 0;
   let evidenceSupportedCandidateCount = 0;
   let expectedCandidates: AffiliateCandidateAssertion[] = [];
+  let approvedMapping = input.mapping;
   let implementationMode = refusalModeFor(
     input.scenarioIntent,
     input.context.policyDisposition,
@@ -425,6 +426,28 @@ export const materializeAffiliateMappingGoldExample = async (
           supported = supported.slice(0, 1);
           warnings.push('CLUB materialization retained one organization identity and excluded program-like rows.');
         }
+        if (input.mapping.manualCandidates?.length) {
+          const supportedSourceIndexes = new Set(supported.flatMap((candidate) => {
+            const sourceIndex = candidate.rawPayload?.sourceIndex;
+            return typeof sourceIndex === 'number' && Number.isInteger(sourceIndex)
+              ? [sourceIndex]
+              : [];
+          }));
+          const supportedManualCandidates = input.mapping.manualCandidates.filter(
+            (_candidate, index) => supportedSourceIndexes.has(index),
+          );
+          approvedMapping = {
+            ...input.mapping,
+            manualCandidates: supportedManualCandidates,
+          };
+          const removedCount = input.mapping.manualCandidates.length
+            - supportedManualCandidates.length;
+          if (removedCount > 0) {
+            warnings.push(
+              `Pruned ${removedCount} stale or unsupported manual candidate(s) from the approved mapping.`,
+            );
+          }
+        }
         evidenceSupportedCandidateCount = supported.length;
         expectedCandidates = Array.from(new Map(
           supported.map(affiliateCandidateAssertionFromInput)
@@ -436,7 +459,7 @@ export const materializeAffiliateMappingGoldExample = async (
             'The exact captured fixtures produced no current, importable, evidence-supported candidate.',
           );
         } else {
-          implementationMode = input.mapping.manualCandidates?.length
+          implementationMode = approvedMapping?.manualCandidates?.length
             ? 'MANUAL_CANDIDATES'
             : 'GENERIC_MAPPING';
         }
@@ -452,7 +475,7 @@ export const materializeAffiliateMappingGoldExample = async (
   const approvedDraft = draftFor({
     materialization: input,
     implementationMode,
-    mapping: input.mapping,
+    mapping: approvedMapping,
     expectedCandidates,
     warnings,
   });

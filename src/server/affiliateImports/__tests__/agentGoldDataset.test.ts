@@ -3,6 +3,7 @@
 import {
   affiliateMappingGoldFixtureManifest,
   affiliateMappingGoldExampleSchema,
+  affiliateMappingTeachingEnvelopeFromGoldExample,
   assertAffiliateMappingGoldReleaseIntegrity,
   buildAffiliateMappingGoldRelease,
   buildAffiliateMappingTrainingReadinessReport,
@@ -280,6 +281,22 @@ describe('affiliate mapping gold dataset contracts', () => {
       exampleId: first.examples[0].exampleId,
       fixturePages: first.examples[0].fixturePages,
     });
+  });
+
+  it('converts approved gold rows into hash-linked SFT teaching envelopes', () => {
+    const envelope = affiliateMappingTeachingEnvelopeFromGoldExample(blockedExample());
+
+    expect(envelope.trainingExample).toEqual(expect.objectContaining({
+      exampleId: 'blocked-policy',
+      evidenceLabel: 'BLOCKED',
+      split: 'train',
+      humanApproval: {
+        approvedByUserId: 'admin_1',
+        approvedAt: '2026-07-29T20:00:00.000Z',
+      },
+    }));
+    expect(envelope.trainingExample.output?.approvedMappingHash).toBeNull();
+    expect(envelope.approvedDraft.implementationMode).toBe('BLOCKED');
   });
 
   it('rejects unsafe release paths and detects manifest tampering', () => {
