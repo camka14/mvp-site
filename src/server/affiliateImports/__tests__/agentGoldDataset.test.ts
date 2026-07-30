@@ -762,6 +762,12 @@ describe('affiliate mapping gold cohort planning', () => {
     expect(revised.examples.filter((example) => (
       original.examples.some((prior) => prior.sourceKey === example.sourceKey)
     ))).toHaveLength(34);
+    expect(revised.examples.filter((example) => (
+      original.examples.some((prior) => (
+        prior.sourceKey === example.sourceKey
+        && JSON.stringify(prior) !== JSON.stringify(example)
+      ))
+    ))).toEqual([]);
     expect(() => buildAffiliateGoldCohortRevisionCandidates({
       proposal: original,
       currentCandidates: originalCandidates,

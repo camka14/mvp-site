@@ -51,6 +51,7 @@ export type AffiliateGoldCohortCandidate = {
     | 'PROPOSE_INTAKE'
     | 'RECORD_BLOCKED';
   requiredCapturePages: Array<{ url: string; role: string }>;
+  preservedSelectionReasons?: string[];
 };
 
 export type AffiliateGoldCohortProposalExample = AffiliateGoldCohortCandidate & {
@@ -172,10 +173,13 @@ const proposalExampleAsCandidate = (
   const {
     scenarioIntent: _scenarioIntent,
     approvalStatus: _approvalStatus,
-    selectionReasons: _selectionReasons,
+    selectionReasons,
     ...candidate
   } = example;
-  return candidate;
+  return {
+    ...candidate,
+    preservedSelectionReasons: selectionReasons,
+  };
 };
 
 export const buildAffiliateGoldCohortRevisionCandidates = (input: {
@@ -742,11 +746,15 @@ export const planAffiliateGoldTestCohort = (input: {
         : insufficientIds.has(candidate.sourceId)
           ? 'INSUFFICIENT_EVIDENCE_REVIEW'
           : 'EXECUTABLE_MAPPING';
+    const {
+      preservedSelectionReasons,
+      ...proposalCandidate
+    } = candidate;
     return {
-      ...candidate,
+      ...proposalCandidate,
       scenarioIntent,
       approvalStatus: 'UNAPPROVED',
-      selectionReasons: reasonsFor(candidate, scenarioIntent),
+      selectionReasons: preservedSelectionReasons ?? reasonsFor(candidate, scenarioIntent),
     };
   });
   const summary = {
