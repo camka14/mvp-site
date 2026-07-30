@@ -94,7 +94,7 @@ describe('affiliate mapping job context builder', () => {
           expect.objectContaining({
             kind: 'PAGE_MARKDOWN',
             content: '# River City events\nContact [redacted-email]\n'
-              + 'Asset: https://cdn.example/image?Signature=[redacted]&Key-Pair-Id=public',
+              + 'Asset: https://cdn.example/image[redacted-signed-parameter]&Key-Pair-Id=public',
             truncated: true,
           }),
         ]),

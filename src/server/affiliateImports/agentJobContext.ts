@@ -43,8 +43,8 @@ const redactAffiliatePromptExcerpt = (content: string): {
       '[redacted-provider-key]',
     )
     .replace(
-      /([?&](?:x-amz-[^=&\s]*|sig|signature|token|api[_-]?key|access[_-]?key|auth)=)[^&\s"'<>\\)]+/gi,
-      '$1[redacted]',
+      /[?&](?:x-amz-[^=&\s]*|sig|signature|token|api[_-]?key|access[_-]?key|auth)=[^&\s"'<>\\)]+/gi,
+      '[redacted-signed-parameter]',
     );
   return {
     content: redacted,
