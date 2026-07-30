@@ -692,11 +692,7 @@ describe('auth routes', () => {
       expect(json.user.id).toBe('user_1');
       expect(prismaMock.authUser.update).toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
-      expect(authTotpMfaMock.createWebLoginMfaChallenge).toHaveBeenCalledWith({
-        userId: 'user_1',
-        sessionVersion: 0,
-        metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
-      });
+      expect(authTotpMfaMock.createWebLoginMfaChallenge).not.toHaveBeenCalled();
     });
 
     it('resolves a username to its authentication account', async () => {
@@ -742,41 +738,7 @@ describe('auth routes', () => {
       expect(prismaMock.authUser.findUnique).toHaveBeenCalledWith({ where: { id: 'user_1' } });
     });
 
-    it('does not force MFA setup for website login when no authenticator is enabled', async () => {
-      prismaMock.authUser.findUnique.mockResolvedValue({
-        id: 'user_1',
-        email: 'test@example.com',
-        name: 'Tester',
-        passwordHash: 'hashed',
-        emailVerifiedAt: new Date(),
-        sessionVersion: 3,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
-
-      const req = buildJsonRequest('http://localhost/api/auth/login', {
-        email: 'test@example.com',
-        password: 'password123',
-        clientType: 'web',
-      });
-
-      const res = await LOGIN_POST(req);
-      const json = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(json.user.id).toBe('user_1');
-      expect(json.code).toBeUndefined();
-      expect(authTotpMfaMock.createWebLoginMfaChallenge).toHaveBeenCalledWith({
-        userId: 'user_1',
-        sessionVersion: 3,
-        metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
-      });
-      expect(prismaMock.authUser.update).toHaveBeenCalled();
-      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
-    });
-
-    it('requires MFA for website login without setting a session cookie', async () => {
+    it('does not invoke authenticator MFA during ordinary password login', async () => {
       authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValueOnce({
         code: 'MFA_REQUIRED',
         mfa: {
@@ -795,77 +757,11 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-
-      const req = buildJsonRequest('http://localhost/api/auth/login', {
-        email: 'test@example.com',
-        password: 'password123',
-        clientType: 'web',
-      });
-
-      const res = await LOGIN_POST(req);
-      const json = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(json.code).toBe('MFA_REQUIRED');
-      expect(json.requiresMfa).toBe(true);
-      expect(json.mfa).toEqual({
-        challengeId: 'mfa_1',
-        expiresAt: '2026-06-11T20:00:00.000Z',
-        method: 'totp',
-      });
-      expect(authTotpMfaMock.createWebLoginMfaChallenge).toHaveBeenCalledWith({
-        userId: 'user_1',
-        sessionVersion: 3,
-        metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
-      });
-      expect(prismaMock.authUser.update).not.toHaveBeenCalled();
-      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
-      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
-    });
-
-    it('requires MFA even when clientType is omitted', async () => {
-      authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValueOnce({
-        code: 'MFA_REQUIRED',
-        mfa: {
-          challengeId: 'mfa_omitted_client',
-          expiresAt: '2026-06-11T20:00:00.000Z',
-          method: 'totp',
-        },
-      });
-      prismaMock.authUser.findUnique.mockResolvedValue({
-        id: 'user_1',
-        email: 'test@example.com',
-        passwordHash: 'hashed',
-        emailVerifiedAt: new Date(),
-        sessionVersion: 3,
-      });
-
-      const res = await LOGIN_POST(buildJsonRequest('http://localhost/api/auth/login', {
-        email: 'test@example.com',
-        password: 'password123',
-      }));
-      const json = await res.json();
-
-      expect(json.code).toBe('MFA_REQUIRED');
-      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
-    });
-
-    it('skips MFA for website login when local MFA bypass is enabled', async () => {
-      authTotpMfaMock.isLocalAuthMfaBypassEnabled.mockReturnValueOnce(true);
-      prismaMock.authUser.findUnique.mockResolvedValue({
-        id: 'user_1',
-        email: 'test@example.com',
-        name: 'Tester',
-        passwordHash: 'hashed',
-        emailVerifiedAt: new Date(),
-        sessionVersion: 3,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
       prismaMock.authUser.update.mockResolvedValueOnce({
         id: 'user_1',
         email: 'test@example.com',
         name: 'Tester',
+        passwordHash: 'hashed',
         emailVerifiedAt: new Date(),
         sessionVersion: 3,
         createdAt: new Date(),
@@ -876,7 +772,6 @@ describe('auth routes', () => {
       const req = buildJsonRequest('http://localhost/api/auth/login', {
         email: 'test@example.com',
         password: 'password123',
-        clientType: 'web',
       });
 
       const res = await LOGIN_POST(req);
@@ -884,7 +779,10 @@ describe('auth routes', () => {
 
       expect(res.status).toBe(200);
       expect(json.user.id).toBe('user_1');
+      expect(json.code).toBeUndefined();
+      expect(json.requiresMfa).toBeUndefined();
       expect(authTotpMfaMock.createWebLoginMfaChallenge).not.toHaveBeenCalled();
+      expect(prismaMock.authUser.update).toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     });
 
