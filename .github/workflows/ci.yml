@@ -18,6 +18,7 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/bracketiq_ci
       JWT_SECRET: bracketiq-ci-only-secret-not-used-outside-tests
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      TZ: America/Los_Angeles
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

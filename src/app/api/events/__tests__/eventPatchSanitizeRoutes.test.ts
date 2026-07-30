@@ -828,11 +828,21 @@ describe('event PATCH route', () => {
       start: new Date('2026-01-01T00:00:00.000Z'),
     });
     divisionsMock.findMany
+      .mockResolvedValueOnce([]) // existing league division keys
       .mockResolvedValueOnce([]) // currentDivisionFieldMap lookup
       .mockResolvedValueOnce([]) // existing divisions lookup in syncEventDivisions
-      .mockResolvedValueOnce([]) // playoff division ids lookup (kind=PLAYOFF)
+      .mockResolvedValueOnce([{ id: 'event_1__division__advanced', name: 'Advanced', sortOrder: 0 }]) // response league division ids
+      .mockResolvedValueOnce([]) // response playoff division ids
       .mockResolvedValueOnce([{ id: 'event_1__division__advanced', key: 'advanced', fieldIds: ['field_2'] }]) // response divisionFieldIds
-      .mockResolvedValueOnce([{ id: 'event_1__division__advanced', key: 'advanced', fieldIds: ['field_2'] }]); // response divisionDetails
+      .mockResolvedValueOnce([{
+        id: 'event_1__division__advanced',
+        key: 'advanced',
+        name: 'Advanced',
+        kind: 'LEAGUE',
+        fieldIds: ['field_2'],
+        teamIds: [],
+      }]) // response divisionDetails
+      .mockResolvedValueOnce([]); // response pool associations
     divisionsMock.deleteMany.mockResolvedValue({ count: 0 });
     divisionsMock.upsert.mockResolvedValue({});
 
@@ -855,8 +865,8 @@ describe('event PATCH route', () => {
     );
 
     const json = await res.json();
-    expect(json.divisionFieldIds).toEqual({ advanced: ['field_2'] });
-    expect(json.divisions).toEqual(['advanced']);
+    expect(json.divisionFieldIds).toEqual({ event_1__division__advanced: ['field_2'] });
+    expect(json.divisions).toEqual(['event_1__division__advanced']);
   });
 
   it('persists division-level payment-plan fields from divisionDetails payload', async () => {
@@ -1009,6 +1019,14 @@ describe('event PATCH route', () => {
           id: 'event_1__division__open',
           key: 'open',
           name: 'Open',
+          sortOrder: 0,
+        },
+      ]) // existing league division keys
+      .mockResolvedValueOnce([
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          name: 'Open',
           kind: 'LEAGUE',
           fieldIds: ['field_1'],
           teamIds: ['team_1', 'team_2'],
@@ -1024,7 +1042,15 @@ describe('event PATCH route', () => {
           teamIds: ['team_1', 'team_2'],
         },
       ]) // existing divisions lookup in syncEventDivisions
-      .mockResolvedValueOnce([]) // playoff division ids lookup (kind=PLAYOFF)
+      .mockResolvedValueOnce([
+        {
+          id: 'event_1__division__open',
+          key: 'open',
+          name: 'Open',
+          sortOrder: 0,
+        },
+      ]) // response league division ids
+      .mockResolvedValueOnce([]) // response playoff division ids
       .mockResolvedValueOnce([
         {
           id: 'event_1__division__open',
@@ -1042,7 +1068,8 @@ describe('event PATCH route', () => {
           fieldIds: ['field_1'],
           teamIds: ['team_1', 'team_2'],
         },
-      ]); // response divisionDetails
+      ]) // response divisionDetails
+      .mockResolvedValueOnce([]); // response pool associations
     divisionsMock.deleteMany.mockResolvedValue({ count: 0 });
     divisionsMock.upsert.mockResolvedValue({});
 

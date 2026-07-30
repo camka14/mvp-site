@@ -372,6 +372,27 @@ const buildOrganizationWithFacilityRentalFields = () => {
   return organization;
 };
 
+const buildOrganizationWithFutureFacilityRentals = () => {
+  const organization = buildOrganizationWithFacilityRentalFields();
+  const futureStart = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  futureStart.setHours(10, 0, 0, 0);
+  while ([5, 6].includes(futureStart.getDay())) {
+    futureStart.setDate(futureStart.getDate() + 1);
+  }
+  const futureEnd = new Date(futureStart.getTime() + 60 * 60 * 1000);
+  organization.fields[0].rentalSlots[0] = {
+    ...organization.fields[0].rentalSlots[0],
+    startDate: futureStart.toISOString(),
+    endDate: futureEnd.toISOString(),
+  };
+  organization.fields[1].rentalSlots[0] = {
+    ...organization.fields[1].rentalSlots[0],
+    startDate: new Date(futureStart.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    endDate: new Date(futureEnd.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+  };
+  return organization;
+};
+
 const buildOrganizationWithUnifiedFacilityCalendarFeed = () => {
   const organization = buildOrganizationWithFacilityRentalFields();
   organization.fields[0] = {
@@ -940,6 +961,7 @@ describe('FieldsTabContent calendar navigation', () => {
 
   it('passes facility context through public rental checkout', async () => {
     const selectionReadyMock = jest.fn();
+    const organization = buildOrganizationWithFutureFacilityRentals();
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
       ...field,
@@ -951,7 +973,7 @@ describe('FieldsTabContent calendar navigation', () => {
     render(
       <MantineProvider>
         <FieldsTabContent
-          organization={buildOrganizationWithFacilityRentalFields()}
+          organization={organization}
           organizationId="org_test"
           currentUser={{ $id: 'user_2' } as any}
           onRentalSelectionReady={selectionReadyMock}
@@ -994,6 +1016,7 @@ describe('FieldsTabContent calendar navigation', () => {
 
   it('passes organization-page rental reservations to the checkout handler instead of navigating', async () => {
     const selectionReadyMock = jest.fn();
+    const organization = buildOrganizationWithFutureFacilityRentals();
     getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
     getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
       ...field,
@@ -1006,7 +1029,7 @@ describe('FieldsTabContent calendar navigation', () => {
       <MantineProvider>
         <FieldsTabContent
           organization={{
-            ...buildOrganizationWithFacilityRentalFields(),
+            ...organization,
             publicSlug: 'test-slug',
           }}
           organizationId="org_test"

@@ -33,6 +33,9 @@ const prismaMock = {
   timeSlots: {
     findUnique: jest.fn(),
   },
+  divisions: {
+    findMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -92,6 +95,7 @@ describe('POST /api/billing/bills', () => {
       timeSlotIds: [],
     });
     prismaMock.timeSlots.findUnique.mockResolvedValue(null);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => unknown) => callback(txMock));
   });
 

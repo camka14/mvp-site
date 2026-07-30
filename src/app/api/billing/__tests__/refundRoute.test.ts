@@ -28,6 +28,9 @@ const prismaMock = {
   timeSlots: {
     findUnique: jest.fn(),
   },
+  divisions: {
+    findMany: jest.fn(),
+  },
   refundRequests: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -87,6 +90,7 @@ describe('POST /api/billing/refund', () => {
     prismaMock.teams.findFirst.mockResolvedValue(null);
     prismaMock.teams.findUnique.mockResolvedValue(null);
     prismaMock.timeSlots.findUnique.mockResolvedValue(null);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.refundRequests.findFirst.mockResolvedValue(null);
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
     prismaMock.refundRequests.update.mockResolvedValue({ id: 'refund_1', status: 'APPROVED' });

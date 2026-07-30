@@ -19,6 +19,7 @@ const prismaMock = {
   },
   divisions: {
     findFirst: jest.fn(),
+    findMany: jest.fn(),
   },
   timeSlots: {
     findUnique: jest.fn(),
@@ -174,6 +175,7 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
     });
     prismaMock.teams.findUnique.mockResolvedValue({ id: 'team_1' });
     prismaMock.divisions.findFirst.mockResolvedValue(null);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.timeSlots.findUnique.mockResolvedValue({
       id: 'slot_1',
       divisions: ['div_a'],
@@ -212,6 +214,7 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
       },
       divisions: {
         findFirst: prismaMock.divisions.findFirst,
+        findMany: prismaMock.divisions.findMany,
       },
       timeSlots: {
         findUnique: prismaMock.timeSlots.findUnique,

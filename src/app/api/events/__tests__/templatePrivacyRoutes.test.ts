@@ -857,11 +857,8 @@ describe('event template privacy routes', () => {
       const findManyCalls = prismaMock.events.findMany.mock.calls;
       const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
       const andClauses = Array.isArray(callArgs?.where?.AND) ? callArgs.where.AND : [];
-      const dateFloorClause = andClauses.find((clause: any) =>
-        Array.isArray(clause?.OR)
-        && clause.OR.some((entry: any) => entry?.start?.gte instanceof Date),
-      );
-      const startGte = dateFloorClause?.OR?.find((entry: any) => entry?.eventType?.not === 'WEEKLY_EVENT')?.start?.gte as Date | undefined;
+      const dateFloorClause = andClauses.find((clause: any) => clause?.start?.gte instanceof Date);
+      const startGte = dateFloorClause?.start?.gte as Date | undefined;
       const expectedStart = new Date(
         new Date().getFullYear(),
         new Date().getMonth(),
@@ -906,11 +903,8 @@ describe('event template privacy routes', () => {
     const findManyCalls = prismaMock.events.findMany.mock.calls;
     const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
     const andClauses = Array.isArray(callArgs?.where?.AND) ? callArgs.where.AND : [];
-    const dateFloorClause = andClauses.find((clause: any) =>
-      Array.isArray(clause?.OR)
-      && clause.OR.some((entry: any) => entry?.start?.gte instanceof Date),
-    );
-    const startGte = dateFloorClause?.OR?.find((entry: any) => entry?.eventType?.not === 'WEEKLY_EVENT')?.start?.gte;
+    const dateFloorClause = andClauses.find((clause: any) => clause?.start?.gte instanceof Date);
+    const startGte = dateFloorClause?.start?.gte;
     expect(startGte).toBeInstanceOf(Date);
     expect(startGte.getHours()).toBe(0);
     expect(startGte.getMinutes()).toBe(0);

@@ -1,8 +1,6 @@
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import {
   affiliateSourceDraftSchema,
   type AffiliateSourceDraft,
@@ -13,8 +11,6 @@ import {
   type AffiliateGeneratedFile,
 } from './agentGenerator';
 import type { AffiliateAgentValidationExecutor } from './agentValidation';
-
-const execFileAsync = promisify(execFile);
 
 type ExportedArtifact = {
   kind: string;
@@ -270,36 +266,47 @@ export class AffiliateAgentToolbox {
       }
     }
     if (!allowedRoots.length) return [];
-    const result = await execFileAsync('rg', [
-      '-n',
-      '--fixed-strings',
-      '--no-heading',
-      '--color',
-      'never',
-      '--max-count',
-      String(this.maxSearchResults),
-      '--',
-      query,
-      ...allowedRoots,
-    ], {
-      cwd: this.repositoryRoot,
-      maxBuffer: 512 * 1024,
-    }).catch((error: NodeJS.ErrnoException & { code?: number; stdout?: string }) => {
-      if (error.code === 1) return { stdout: '', stderr: '' };
-      throw error;
-    });
-    return result.stdout
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .slice(0, this.maxSearchResults)
-      .flatMap((line) => {
-        const match = /^(.+?):(\d+):(.*)$/.exec(line);
-        return match ? [{
-          path: match[1],
-          line: Number(match[2]),
-          text: match[3],
-        }] : [];
-      });
+
+    const files: string[] = [];
+    const collectFiles = async (relativePath: string): Promise<void> => {
+      const absolutePath = resolveWithin(this.repositoryRoot, relativePath);
+      const stat = await fs.lstat(absolutePath);
+      if (stat.isSymbolicLink()) return;
+      if (stat.isFile()) {
+        files.push(relativePath);
+        return;
+      }
+      if (!stat.isDirectory()) return;
+      const entries = await fs.readdir(absolutePath, { withFileTypes: true });
+      for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+        await collectFiles(path.join(relativePath, entry.name));
+      }
+    };
+
+    for (const root of allowedRoots) {
+      await collectFiles(root);
+    }
+
+    const matches: Array<{ path: string; line: number; text: string }> = [];
+    for (const relativePath of files) {
+      if (matches.length >= this.maxSearchResults) break;
+      const absolutePath = resolveWithin(this.repositoryRoot, relativePath);
+      const stat = await fs.stat(absolutePath);
+      if (stat.size > this.maxRepositoryReadBytes) continue;
+      const content = await fs.readFile(absolutePath, 'utf8');
+      const lines = content.split(/\r?\n/);
+      for (let index = 0; index < lines.length; index += 1) {
+        if (lines[index].includes(query)) {
+          matches.push({
+            path: relativePath.split(path.sep).join('/'),
+            line: index + 1,
+            text: lines[index],
+          });
+          if (matches.length >= this.maxSearchResults) break;
+        }
+      }
+    }
+    return matches;
   }
 
   validateDraft(value: unknown): AffiliateSourceDraft {
