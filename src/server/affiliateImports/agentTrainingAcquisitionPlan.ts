@@ -98,6 +98,25 @@ export type AffiliateTrainingAcquisitionPlan = {
   publicRequests: 0;
 };
 
+export type AffiliateTrainingAcquisitionApproval = {
+  schemaVersion: 1;
+  acquisitionPlanId: string;
+  planSha256: string;
+  repositoryCommit: string;
+  approvedByUserId: string;
+  approvedAt: string;
+};
+
+export type AffiliateTrainingRecoverySelection = {
+  selectionId: string;
+  selectionSha256: string;
+  repositoryCommit: string;
+  sourceCapturePlanId: string;
+  sourceCapturePlanSha256: string;
+  approvedByUserId: string;
+  recoveryCandidates: AffiliateTrainingRecoveryCandidate[];
+};
+
 type CaptureAudit = {
   cohortId?: string;
   sources?: Array<{
@@ -505,4 +524,47 @@ export const assertAffiliateTrainingAcquisitionPlan = (
     throw new Error('Affiliate training acquisition plan id does not match its contents.');
   }
   return plan;
+};
+
+export const resolveApprovedAffiliateTrainingRecoverySelection = (
+  planValue: unknown,
+  approvalValue: unknown,
+): AffiliateTrainingRecoverySelection => {
+  const plan = assertAffiliateTrainingAcquisitionPlan(planValue);
+  const approval = recordValue(
+    approvalValue,
+  ) as AffiliateTrainingAcquisitionApproval | null;
+  if (
+    !approval
+    || approval.schemaVersion !== 1
+    || approval.acquisitionPlanId !== plan.acquisitionPlanId
+    || approval.planSha256 !== plan.planSha256
+    || approval.repositoryCommit !== plan.repositoryCommit
+    || typeof approval.approvedByUserId !== 'string'
+    || !approval.approvedByUserId.trim()
+    || approval.approvedByUserId.includes('@')
+    || typeof approval.approvedAt !== 'string'
+    || Number.isNaN(Date.parse(approval.approvedAt))
+  ) {
+    throw new Error('Affiliate training acquisition approval does not match the plan.');
+  }
+  const recoveryCandidates = plan.recoveryCandidates.filter(
+    (candidate) => candidate.action !== 'REPLACE_OR_WAIT_FOR_POLICY_EVIDENCE',
+  );
+  if (
+    !plan.readyToCaptureRecovery
+    || !recoveryCandidates.length
+    || recoveryCandidates.length !== plan.recoverySummary.actionableCount
+  ) {
+    throw new Error('Affiliate training acquisition plan has no valid recovery capture scope.');
+  }
+  return {
+    selectionId: plan.acquisitionPlanId,
+    selectionSha256: plan.planSha256,
+    repositoryCommit: plan.repositoryCommit,
+    sourceCapturePlanId: plan.sourceCapturePlanId,
+    sourceCapturePlanSha256: plan.sourceCapturePlanSha256,
+    approvedByUserId: approval.approvedByUserId,
+    recoveryCandidates,
+  };
 };

@@ -10,6 +10,9 @@ import {
 import {
   resolveAffiliateEvidenceCaptureSelection,
 } from '../src/server/affiliateImports/agentEvidenceCapturePlan';
+import {
+  resolveApprovedAffiliateTrainingRecoverySelection,
+} from '../src/server/affiliateImports/agentTrainingAcquisitionPlan';
 
 const execFileAsync = promisify(execFile);
 const tsxPath = path.resolve('node_modules', '.bin', 'tsx');
@@ -87,9 +90,42 @@ const main = async () => {
     proposalSha256: selection.selectionSha256,
     examples: selection.examples,
   };
+  const acquisitionPlanOption = readOption('--acquisition-plan');
+  const acquisitionApprovalOption = readOption('--acquisition-approval');
+  if (acquisitionApprovalOption && !acquisitionPlanOption) {
+    throw new Error('--acquisition-approval requires --acquisition-plan.');
+  }
+  let acquisitionSelection: ReturnType<
+    typeof resolveApprovedAffiliateTrainingRecoverySelection
+  > | null = null;
+  if (acquisitionPlanOption) {
+    const acquisitionPlanPath = path.resolve(acquisitionPlanOption);
+    const acquisitionApprovalPath = path.resolve(
+      acquisitionApprovalOption
+        ?? path.join(path.dirname(acquisitionPlanPath), 'approval.json'),
+    );
+    acquisitionSelection = resolveApprovedAffiliateTrainingRecoverySelection(
+      JSON.parse(await fs.readFile(acquisitionPlanPath, 'utf8')),
+      JSON.parse(await fs.readFile(acquisitionApprovalPath, 'utf8')),
+    );
+    if (
+      acquisitionSelection.sourceCapturePlanId !== selection.selectionId
+      || acquisitionSelection.sourceCapturePlanSha256 !== selection.selectionSha256
+    ) {
+      throw new Error('Approved acquisition scope does not match the evidence capture plan.');
+    }
+  }
+  const approvedRecoverySourceKeys = acquisitionSelection
+    ? new Set(
+      acquisitionSelection.recoveryCandidates.map((candidate) => candidate.sourceKey),
+    )
+    : null;
   const onlySourceKey = readOption('--source-key');
   const sourceLimit = readLimit();
   const examples = proposal.examples
+    .filter((example) => (
+      !approvedRecoverySourceKeys || approvedRecoverySourceKeys.has(example.sourceKey)
+    ))
     .filter((example) => !onlySourceKey || example.sourceKey === onlySourceKey)
     .slice(0, sourceLimit);
   if (!examples.length) throw new Error('No locked cohort source matched the requested selection.');
@@ -102,6 +138,8 @@ const main = async () => {
     schemaVersion: 1,
     cohortId: proposal.cohortId,
     proposalSha256: proposal.proposalSha256,
+    acquisitionPlanId: acquisitionSelection?.selectionId ?? null,
+    acquisitionPlanSha256: acquisitionSelection?.selectionSha256 ?? null,
     startedAt: new Date().toISOString(),
     completedAt: null as string | null,
     mode: operationMode,

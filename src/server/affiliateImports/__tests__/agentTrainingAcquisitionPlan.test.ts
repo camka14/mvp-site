@@ -3,6 +3,7 @@
 import {
   buildAffiliateTrainingAcquisitionPlan,
   assertAffiliateTrainingAcquisitionPlan,
+  resolveApprovedAffiliateTrainingRecoverySelection,
 } from '../agentTrainingAcquisitionPlan';
 import {
   buildAffiliateEvidenceCapturePlan,
@@ -285,5 +286,26 @@ describe('affiliate training acquisition plan', () => {
     tampered.recoveryCandidates[0].sourceKey = 'changed';
     expect(() => assertAffiliateTrainingAcquisitionPlan(tampered))
       .toThrow('hash does not match');
+
+    const selection = resolveApprovedAffiliateTrainingRecoverySelection(plan, {
+      schemaVersion: 1,
+      acquisitionPlanId: plan.acquisitionPlanId,
+      planSha256: plan.planSha256,
+      repositoryCommit: plan.repositoryCommit,
+      approvedByUserId: 'admin-1',
+      approvedAt: '2026-07-30T22:00:00.000Z',
+    });
+    expect(selection.recoveryCandidates.map((row) => row.sourceKey))
+      .toEqual(['recovery-rental']);
+    expect(selection.sourceCapturePlanId).toBe(capturePlan.capturePlanId);
+
+    expect(() => resolveApprovedAffiliateTrainingRecoverySelection(plan, {
+      schemaVersion: 1,
+      acquisitionPlanId: plan.acquisitionPlanId,
+      planSha256: 'wrong',
+      repositoryCommit: plan.repositoryCommit,
+      approvedByUserId: 'admin-1',
+      approvedAt: '2026-07-30T22:00:00.000Z',
+    })).toThrow('approval does not match');
   });
 });
