@@ -44,7 +44,7 @@ import {
 const MAX_CAPTURE_PAGES = 10;
 const MAX_DISCOVERED_URLS = 50;
 const MAX_LOGO_CANDIDATES_PER_PAGE = 5;
-const ROBOTS_MAX_BYTES = 4 * 1024 * 1024;
+const ROBOTS_MAX_BYTES = 512 * 1024;
 const DEFAULT_ROBOTS_TIMEOUT_MS = 30_000;
 
 const robotsTimeoutMs = (): number => {

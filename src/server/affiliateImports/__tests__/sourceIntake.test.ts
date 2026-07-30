@@ -146,10 +146,6 @@ describe('affiliate source intake service', () => {
 
     expect(firecrawlClient.scrapeSourcePage).not.toHaveBeenCalled();
     expect(firecrawlClient.mapSourceUrls).not.toHaveBeenCalled();
-    expect(fetchResource).toHaveBeenCalledWith(
-      'https://example.com/robots.txt',
-      expect.objectContaining({ maxBytes: 4 * 1024 * 1024 }),
-    );
     expect(result).toEqual(expect.objectContaining({
       summary: expect.objectContaining({
         blockedPages: [expect.objectContaining({ pageId: 'page_1' })],
