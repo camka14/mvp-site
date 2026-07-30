@@ -191,7 +191,10 @@ const isTryoutCandidate = (candidate: AffiliateCandidateInput): boolean => {
   return /\btry[\s-]?outs?\b|\bevaluations?\b/.test(haystack);
 };
 
-const candidateImportRejectionReasons = (candidate: AffiliateCandidateInput, now: Date = new Date()): string[] => {
+export const candidateImportRejectionReasons = (
+  candidate: AffiliateCandidateInput,
+  now: Date = new Date(),
+): string[] => {
   if (candidate.listingKind === 'RENTAL' || candidate.listingKind === 'CLUB') return [];
   const reasons: string[] = [];
   const start = candidateStartDate(candidate);
@@ -1794,7 +1797,7 @@ const resolveActiveMapping = async (
   };
 };
 
-const enrichCandidatesWithDetailPages = async (
+export const enrichAffiliateCandidatesWithDetailPages = async (
   candidates: AffiliateCandidateInput[],
   mapping: AffiliateScrapeMapping,
   client: ScrapePageClient,
@@ -1908,7 +1911,11 @@ export const runAffiliateSourceScrape = async (
       waitMs: mapping.waitMs,
     });
     const extractedListCandidates = extractAffiliateCandidatesFromPage(page, mapping);
-    const extractedCandidates = await enrichCandidatesWithDetailPages(extractedListCandidates, mapping, client);
+    const extractedCandidates = await enrichAffiliateCandidatesWithDetailPages(
+      extractedListCandidates,
+      mapping,
+      client,
+    );
     const now = new Date();
     const rejectedCandidates: Array<{ title: string; reasons: string[] }> = [];
     const importableCandidates = extractedCandidates.filter((candidate) => {

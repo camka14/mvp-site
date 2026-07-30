@@ -73,8 +73,8 @@ export const buildAffiliateMappingJobContextFromExports = async (input: {
         'docs/admin-affiliate-scraping-execplan.md',
         'docs/affiliate-source-mapping-slm-execplan.md',
       ],
-      maxArtifactReadBytes: 96 * 1024,
-      maxRepositoryReadBytes: 48 * 1024,
+      maxArtifactReadBytes: 12 * 1024,
+      maxRepositoryReadBytes: 8 * 1024,
     });
     const [manifest, artifacts] = await Promise.all([
       readManifest(evidenceDirectory),
@@ -125,23 +125,39 @@ export const buildAffiliateMappingJobContextFromExports = async (input: {
       row,
     ]),
   ).values());
-  const selectionOrder = ['ROBOTS', 'POLICY_NOTE', 'PAGE_MARKDOWN', 'PAGE_HTML', 'PAGE_LINKS'];
-  const selected = Array.from(new Map(
-    artifacts
-      .filter(({ artifact }) => selectionOrder.includes(artifact.kind))
-      .map((row) => [row.artifact.sha256, row]),
-  ).values())
+  const policyEvidence = artifacts
+    .filter(({ artifact }) => artifact.kind === 'POLICY_NOTE' || artifact.kind === 'ROBOTS')
     .sort((left, right) => (
-      selectionOrder.indexOf(left.artifact.kind) - selectionOrder.indexOf(right.artifact.kind)
+      left.artifact.kind.localeCompare(right.artifact.kind)
       || left.artifact.sha256.localeCompare(right.artifact.sha256)
     ))
-    .slice(0, 8);
+    .slice(0, 2);
+  const contentEvidence = Array.from(new Map(
+    artifacts
+      .filter(({ artifact }) => (
+        artifact.kind === 'PAGE_MARKDOWN' || artifact.kind === 'PAGE_HTML'
+      ))
+      .sort((left, right) => (
+        Number(right.artifact.kind === 'PAGE_HTML') - Number(left.artifact.kind === 'PAGE_HTML')
+        || (left.artifact.sourceUrl ?? left.artifact.finalUrl ?? '').localeCompare(
+          right.artifact.sourceUrl ?? right.artifact.finalUrl ?? '',
+        )
+        || left.artifact.sha256.localeCompare(right.artifact.sha256)
+      ))
+      .map((row) => [
+        row.artifact.sourceUrl ?? row.artifact.finalUrl ?? row.artifact.sha256,
+        row,
+      ]),
+  ).values()).slice(0, 12);
+  const selected = Array.from(new Map(
+    [...policyEvidence, ...contentEvidence].map((row) => [row.artifact.sha256, row]),
+  ).values());
   const evidenceExcerpts = [];
   for (const { artifact, toolbox: artifactToolbox } of selected) {
     try {
       const excerpt = await artifactToolbox.readEvidenceArtifact({
         artifactSha256: artifact.sha256,
-        length: artifact.kind === 'PAGE_HTML' ? 64 * 1024 : 96 * 1024,
+        length: artifact.kind === 'PAGE_HTML' ? 12 * 1024 : 8 * 1024,
       });
       evidenceExcerpts.push({
         kind: artifact.kind,
@@ -165,7 +181,7 @@ export const buildAffiliateMappingJobContextFromExports = async (input: {
     try {
       const excerpt = await toolbox.readRepositoryFile({
         relativePath: repositoryPath,
-        length: 48 * 1024,
+        length: 8 * 1024,
       });
       repositoryExcerpts.push({
         path: repositoryPath,

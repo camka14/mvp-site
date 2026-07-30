@@ -12,6 +12,8 @@ const fixtureManifestSchema = z.object({
     statusCode: z.number().int().min(100).max(599),
     file: z.string().trim().min(1),
     sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+    byteLength: z.number().int().nonnegative().optional(),
+    fetchedAt: z.string().datetime({ offset: true }).optional(),
   }).strict()).min(1),
 }).strict();
 
@@ -59,7 +61,7 @@ export class AffiliateAgentReviewFixtureClient implements ScrapePageClient {
       finalUrl: page.finalUrl,
       statusCode: page.statusCode,
       body,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: page.fetchedAt ?? new Date().toISOString(),
     };
   }
 }

@@ -27,6 +27,7 @@ describe('affiliate agent review fixture client', () => {
         statusCode: 200,
         file,
         sha256: createHash('sha256').update(body).digest('hex'),
+        fetchedAt: '2026-07-29T20:00:00.000Z',
       }],
     }), 'utf8');
   };
@@ -39,6 +40,7 @@ describe('affiliate agent review fixture client', () => {
     })).resolves.toEqual(expect.objectContaining({
       statusCode: 200,
       body: '<main>Fixture</main>',
+      fetchedAt: '2026-07-29T20:00:00.000Z',
     }));
     await expect(client.fetchPage({
       url: 'https://fixture.invalid/other',

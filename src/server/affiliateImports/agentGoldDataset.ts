@@ -95,6 +95,7 @@ const fixturePageSchema = z.object({
   file: nonEmptyStringSchema,
   byteLength: z.number().int().nonnegative(),
   sha256: sha256Schema,
+  fetchedAt: isoDateTimeSchema.optional(),
 }).strict();
 
 const targetSchema = z.union([
