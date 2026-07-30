@@ -1,7 +1,7 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { resolveAffiliateRepositoryCommit } from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -28,10 +28,10 @@ const safeTimestamp = (date: Date) => date.toISOString().replace(/[:.]/g, '-');
 const main = async () => {
   const capturedAt = new Date();
   const environment = useLive ? 'live' : 'local';
-  const repositoryCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-  }).trim();
+  const repositoryCommit = resolveAffiliateRepositoryCommit({
+    explicitCommit: readOption('--repository-commit'),
+    repositoryRoot: process.cwd(),
+  });
   const { prisma } = await import('../src/lib/prisma');
   const {
     buildAffiliateHistoricalDatasetInventory,
