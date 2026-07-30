@@ -1,5 +1,22 @@
 import { execFileSync } from 'node:child_process';
 
+export type AffiliateDatasetEnvironment = 'local' | 'live';
+
+export const resolveAffiliateDatasetEnvironment = (input: {
+  explicitEnvironment?: string;
+  useLiveDatabase: boolean;
+}): AffiliateDatasetEnvironment => {
+  const explicitEnvironment = input.explicitEnvironment?.trim();
+  if (
+    explicitEnvironment
+    && explicitEnvironment !== 'local'
+    && explicitEnvironment !== 'live'
+  ) {
+    throw new Error('Dataset environment must be "local" or "live".');
+  }
+  return explicitEnvironment ?? (input.useLiveDatabase ? 'live' : 'local');
+};
+
 export const resolveAffiliateRepositoryCommit = (input: {
   explicitCommit?: string;
   repositoryRoot?: string;

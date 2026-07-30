@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import { resolveAffiliateRepositoryCommit } from '../src/server/affiliateImports/agentRepository';
+import {
+  resolveAffiliateDatasetEnvironment,
+  resolveAffiliateRepositoryCommit,
+} from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -27,7 +30,10 @@ const safeTimestamp = (date: Date) => date.toISOString().replace(/[:.]/g, '-');
 
 const main = async () => {
   const capturedAt = new Date();
-  const environment = useLive ? 'live' : 'local';
+  const environment = resolveAffiliateDatasetEnvironment({
+    explicitEnvironment: readOption('--environment'),
+    useLiveDatabase: useLive,
+  });
   const repositoryCommit = resolveAffiliateRepositoryCommit({
     explicitCommit: readOption('--repository-commit'),
     repositoryRoot: process.cwd(),
