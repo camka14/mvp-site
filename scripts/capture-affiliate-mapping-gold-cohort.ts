@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import {
   planGoldCaptureBatches,
+  resolveGoldCaptureOperationMode,
   resolveGoldCaptureMaxAttempts,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
 import {
@@ -46,7 +47,9 @@ const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => 
 });
 
 const main = async () => {
-  const shouldApply = process.argv.includes('--apply');
+  const operationMode = resolveGoldCaptureOperationMode(process.argv.slice(2));
+  const shouldApply = operationMode === 'apply';
+  const auditOnly = operationMode === 'audit-only';
   const approveExisting = process.argv.includes('--approve-existing');
   const exportCurrentDatabase = process.argv.includes('--export-current-database');
   const evidenceEnvironment = readOption('--evidence-environment');
@@ -101,7 +104,7 @@ const main = async () => {
     proposalSha256: proposal.proposalSha256,
     startedAt: new Date().toISOString(),
     completedAt: null as string | null,
-    mode: shouldApply ? 'apply' : 'dry-run',
+    mode: operationMode,
     maximumAttempts,
     sourceCount: examples.length,
     sources: [] as Array<Record<string, any>>,
@@ -145,12 +148,13 @@ const main = async () => {
               `--source-key=${example.sourceKey}`,
               `--batch=${batchIndex + 1}`,
               ...(shouldApply ? ['--apply', '--queue'] : []),
+              ...(auditOnly ? ['--audit-only'] : []),
               ...(approveExisting ? ['--approve-existing'] : []),
             ],
           );
           batchResult.prepareAttempts.push(prepare);
           const queueStatus = String(prepare.queueStatus ?? '');
-          if (!shouldApply) {
+          if (operationMode === 'dry-run') {
             batchResult.status = 'DRY_RUN_COMPLETE';
             break;
           }
@@ -159,6 +163,10 @@ const main = async () => {
             'BLOCKED_SOURCE_RECORDED',
           ].includes(queueStatus)) {
             batchResult.status = queueStatus;
+            break;
+          }
+          if (auditOnly) {
+            batchResult.status = queueStatus || 'AUDIT_INCOMPLETE';
             break;
           }
           if (queueStatus === 'COMPLIANCE_REVIEW_REQUIRED') {

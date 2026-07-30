@@ -5,6 +5,7 @@ import {
   goldCapturePageNeedsRobotsReview,
   pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
+  resolveGoldCaptureOperationMode,
   type GoldCaptureEvidenceArtifact,
   type GoldCaptureEvidencePage,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
@@ -20,7 +21,9 @@ import {
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
-const shouldApply = process.argv.includes('--apply');
+const operationMode = resolveGoldCaptureOperationMode(process.argv.slice(2));
+const shouldApply = operationMode === 'apply';
+const auditOnly = operationMode === 'audit-only';
 const shouldQueue = process.argv.includes('--queue');
 const approveExisting = process.argv.includes('--approve-existing');
 if (shouldQueue && !shouldApply) throw new Error('--queue requires --apply.');
@@ -162,13 +165,37 @@ const main = async () => {
         pages: [example.requiredCapturePages[0]],
       }, lock.approvedByUserId);
     }
+    if (!intake && auditOnly) {
+      console.log(JSON.stringify({
+        cohortId: proposal.cohortId,
+        proposalSha256: proposal.proposalSha256,
+        sourceKey,
+        scenarioIntent: example.scenarioIntent,
+        mode: operationMode,
+        batch: batchNumber,
+        batchCount: batches.length,
+        requiredPageCount: example.requiredCapturePages.length,
+        requestedPageCount: requestedBatch.length,
+        intakeId: null,
+        intakeSourceKey: expectedIntakeKey,
+        complianceStatus: 'UNREVIEWED',
+        pagesAdded: 0,
+        pagesReusedFromOtherIntakes: [],
+        queueStatus: 'INTAKE_MISSING',
+        runId: null,
+        queuedIntakeId: null,
+        queuedIntakeSourceKey: null,
+        publicCaptureRequestsQueued: 0,
+      }, null, 2));
+      return;
+    }
 
     const summary = {
       cohortId: proposal.cohortId,
       proposalSha256: proposal.proposalSha256,
       sourceKey,
       scenarioIntent: example.scenarioIntent,
-      mode: shouldApply ? 'apply' : 'dry-run',
+      mode: operationMode,
       batch: batchNumber,
       batchCount: batches.length,
       requiredPageCount: example.requiredCapturePages.length,
@@ -184,45 +211,47 @@ const main = async () => {
       queuedIntakeSourceKey: null as string | null,
       publicCaptureRequestsQueued: 0,
     };
-    if (!shouldApply) {
+    if (operationMode === 'dry-run') {
       console.log(JSON.stringify(summary, null, 2));
       return;
     }
     if (!intake) throw new Error('Failed to create or locate an intake.');
 
-    if (!intake.affiliateSourceId) {
-      intake = await db.affiliateSourceIntakes.update({
-        where: { id: intake.id },
-        data: {
-          affiliateSourceId: source.id,
-          organizationId: source.organizationId,
-          notes: `Required evidence for locked cohort ${proposal.cohortId} (${proposal.proposalSha256}).`,
-        },
-      });
-    }
-    for (const page of example.requiredCapturePages) {
-      const urlKey = affiliateIntakeUrlKey(canonicalizeAffiliateIntakeUrl(page.url));
-      const existingPage = await db.affiliateSourceIntakePages.findUnique({
-        where: { urlKey },
-        select: { intakeId: true },
-      });
-      if (existingPage && existingPage.intakeId !== intake.id) {
-        summary.pagesReusedFromOtherIntakes.push({
-          url: page.url,
-          intakeId: existingPage.intakeId,
+    if (shouldApply) {
+      if (!intake.affiliateSourceId) {
+        intake = await db.affiliateSourceIntakes.update({
+          where: { id: intake.id },
+          data: {
+            affiliateSourceId: source.id,
+            organizationId: source.organizationId,
+            notes: `Required evidence for locked cohort ${proposal.cohortId} (${proposal.proposalSha256}).`,
+          },
         });
-        continue;
       }
-      if (!existingPage) summary.pagesAdded += 1;
-      await intakeService.addAffiliateSourceIntakePage(intake.id, {
-        ...page,
-        targetKindHints: [String(source.targetKind).toUpperCase()],
-        discoverySource: 'GOLD_COHORT',
-      });
+      for (const page of example.requiredCapturePages) {
+        const urlKey = affiliateIntakeUrlKey(canonicalizeAffiliateIntakeUrl(page.url));
+        const existingPage = await db.affiliateSourceIntakePages.findUnique({
+          where: { urlKey },
+          select: { intakeId: true },
+        });
+        if (existingPage && existingPage.intakeId !== intake.id) {
+          summary.pagesReusedFromOtherIntakes.push({
+            url: page.url,
+            intakeId: existingPage.intakeId,
+          });
+          continue;
+        }
+        if (!existingPage) summary.pagesAdded += 1;
+        await intakeService.addAffiliateSourceIntakePage(intake.id, {
+          ...page,
+          targetKindHints: [String(source.targetKind).toUpperCase()],
+          discoverySource: 'GOLD_COHORT',
+        });
+      }
     }
 
     if (isExplicitlyBlocked(source)) {
-      if (intake.complianceStatus !== 'BLOCKED') {
+      if (shouldApply && intake.complianceStatus !== 'BLOCKED') {
         await intakeService.reviewAffiliateSourceIntakePolicy(intake.id, {
           complianceStatus: 'BLOCKED',
           notes: `Inherited explicit policy block while preparing locked cohort ${proposal.cohortId}. No capture queued.`,
@@ -262,7 +291,7 @@ const main = async () => {
       select: { complianceStatus: true },
     });
     summary.complianceStatus = refreshedIntake?.complianceStatus ?? 'UNREVIEWED';
-    if (!shouldQueue) {
+    if (!shouldQueue && !auditOnly) {
       console.log(JSON.stringify(summary, null, 2));
       return;
     }
@@ -367,6 +396,14 @@ const main = async () => {
         ...summary,
         robotsReviewPageId: robotsReviewPage.id,
         robotsReviewNotes: robotsReviewPage.robotsNotes,
+      }, null, 2));
+      return;
+    }
+    if (auditOnly) {
+      summary.queueStatus = 'EVIDENCE_MISSING';
+      console.log(JSON.stringify({
+        ...summary,
+        missingPageIds: missingPages.map((page) => page.id),
       }, null, 2));
       return;
     }

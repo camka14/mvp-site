@@ -20,6 +20,7 @@ import {
   goldCapturePageNeedsRobotsReview,
   pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
+  resolveGoldCaptureOperationMode,
   resolveGoldCaptureMaxAttempts,
 } from '../agentGoldCaptureCohort';
 
@@ -548,6 +549,14 @@ describe('affiliate mapping gold cohort planning', () => {
     expect(() => resolveGoldCaptureMaxAttempts('2.5')).toThrow(
       'Gold capture maximum attempts must be a positive integer.',
     );
+  });
+
+  it('keeps evidence audit mode mutually exclusive from capture writes', () => {
+    expect(resolveGoldCaptureOperationMode([])).toBe('dry-run');
+    expect(resolveGoldCaptureOperationMode(['--audit-only'])).toBe('audit-only');
+    expect(resolveGoldCaptureOperationMode(['--apply'])).toBe('apply');
+    expect(() => resolveGoldCaptureOperationMode(['--apply', '--audit-only']))
+      .toThrow('mutually exclusive');
   });
 
   it('requires non-empty ScrapingDog content from a successful or partial run', () => {

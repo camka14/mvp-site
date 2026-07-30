@@ -179,6 +179,21 @@ export const planGoldCaptureBatches = (
 
 export const DEFAULT_GOLD_CAPTURE_MAX_ATTEMPTS = 3;
 
+export type GoldCaptureOperationMode = 'dry-run' | 'audit-only' | 'apply';
+
+export const resolveGoldCaptureOperationMode = (
+  args: string[],
+): GoldCaptureOperationMode => {
+  const shouldApply = args.includes('--apply');
+  const auditOnly = args.includes('--audit-only');
+  if (shouldApply && auditOnly) {
+    throw new Error('Gold capture --apply and --audit-only modes are mutually exclusive.');
+  }
+  if (shouldApply) return 'apply';
+  if (auditOnly) return 'audit-only';
+  return 'dry-run';
+};
+
 export const resolveGoldCaptureMaxAttempts = (
   value?: string,
 ): number => {
