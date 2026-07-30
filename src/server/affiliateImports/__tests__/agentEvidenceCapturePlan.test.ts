@@ -49,7 +49,7 @@ const heldOutProposal = () => planAffiliateGoldTestCohort({
     `test-${index}.example`,
     {
       targetKind: index === 0 || index === 1
-        ? 'TEAM'
+        ? 'CLUB'
         : index < 8
           ? 'CLUB'
           : index < 15
@@ -86,7 +86,10 @@ describe('affiliate evidence capture plan', () => {
             role: 'REGISTRATION',
           }],
         }),
-        candidate('safe-team', 'safe-team.example', { targetKind: 'TEAM' }),
+        {
+          ...candidate('legacy-team', 'legacy-team.example'),
+          targetKind: 'TEAM',
+        } as unknown as AffiliateGoldCohortCandidate,
         candidate('safe-rental', 'safe-rental.example', { targetKind: 'RENTAL' }),
       ],
       heldOutProposal: heldOut,
@@ -94,11 +97,12 @@ describe('affiliate evidence capture plan', () => {
       inventorySha256: 'inventory-hash',
     });
 
-    expect(plan.examples.map((example) => example.sourceKey)).toEqual([
-      'safe-rental',
-      'safe-team',
-    ]);
+    expect(plan.examples.map((example) => example.sourceKey)).toEqual(['safe-rental']);
     expect(plan.excluded).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceKey: 'legacy-team',
+        reason: 'UNSUPPORTED_TARGET_KIND',
+      }),
       expect.objectContaining({ sourceKey: 'held-domain', reason: 'HELD_OUT_DOMAIN' }),
       expect.objectContaining({ sourceKey: 'held-platform', reason: 'HELD_OUT_PLATFORM_FAMILY' }),
       expect.objectContaining({
@@ -114,9 +118,9 @@ describe('affiliate evidence capture plan', () => {
     expect(plan.readyForMinimumCorpus).toBe(false);
     expect(plan.deficits).toEqual(expect.arrayContaining([
       expect.stringContaining('real executable examples: required 95'),
-      expect.stringContaining('TEAM examples across train and validation: required 2'),
       expect.stringContaining('RENTAL examples across train and validation: required 11'),
     ]));
+    expect(plan.deficits.some((deficit) => deficit.includes('TEAM'))).toBe(false);
   });
 
   it('detects plan tampering and resolves an approved training selection', () => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  affiliateAgentTargetKindSchema,
   affiliateSourceDraftSchema,
   stableAgentArtifactSha256,
   type AffiliateCandidateAssertion,
@@ -20,7 +21,7 @@ const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/i, 'Expected a SHA-256 has
 const nonEmptyStringSchema = z.string().trim().min(1);
 const isoDateTimeSchema = z.string().datetime({ offset: true });
 const splitSchema = z.enum(['train', 'validation', 'test']);
-const listingKindSchema = z.enum(['EVENT', 'RENTAL', 'TEAM', 'CLUB']);
+const listingKindSchema = affiliateAgentTargetKindSchema;
 const implementationModeSchema = z.enum([
   'GENERIC_MAPPING',
   'MANUAL_CANDIDATES',

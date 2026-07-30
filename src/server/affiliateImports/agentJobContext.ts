@@ -2,6 +2,9 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { AffiliateAgentToolbox } from './agentTooling';
 import type { AffiliateMappingJobContext } from './agentModelClient';
+import {
+  isAffiliateAgentTargetKind,
+} from './agentContracts';
 
 type ExportManifest = {
   sourceEvidence?: {
@@ -17,8 +20,6 @@ type ExportManifest = {
     targetKindHints?: string[];
   };
 };
-
-const targetKinds = new Set(['EVENT', 'RENTAL', 'TEAM', 'CLUB']);
 
 const reviewedPolicy = (
   value: string | null | undefined,
@@ -128,7 +129,7 @@ export const buildAffiliateMappingJobContextFromExport = async (input: {
         sourceEvidence.complianceStatus ?? intake.complianceStatus,
       ),
       targetKindHints: (intake.targetKindHints ?? [])
-        .filter((kind): kind is 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB' => targetKinds.has(kind)),
+        .filter(isAffiliateAgentTargetKind),
       artifacts: artifacts.map((artifact) => ({
         kind: artifact.kind,
         sha256: artifact.sha256,

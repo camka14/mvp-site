@@ -414,13 +414,11 @@ const cohortCandidate = (
   index: number,
   overrides: Partial<AffiliateGoldCohortCandidate> = {},
 ): AffiliateGoldCohortCandidate => {
-  const targetKind = index < 2
-    ? 'TEAM'
-    : index < 8
-      ? 'CLUB'
-      : index < 15
-        ? 'RENTAL'
-        : 'EVENT';
+  const targetKind = index < 7
+    ? 'CLUB'
+    : index < 14
+      ? 'RENTAL'
+      : 'EVENT';
   return {
     sourceId: `source_${index}`,
     sourceKey: `source-${index}`,
@@ -714,23 +712,23 @@ describe('affiliate mapping gold cohort planning', () => {
     expect(first.summary.detailOrJavascriptCount).toBeGreaterThanOrEqual(4);
   });
 
-  it('uses one scarce TEAM domain for test and reserves the other outside the split', () => {
+  it('excludes legacy TEAM candidates from the replacement cohort', () => {
+    const legacyTeam = {
+      ...cohortCandidate(100),
+      targetKind: 'TEAM',
+    } as unknown as AffiliateGoldCohortCandidate;
     const proposal = planAffiliateGoldTestCohort({
-      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      candidates: [
+        ...Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+        legacyTeam,
+      ],
       repositoryCommit: 'abc123',
     });
-    const selectedTeams = proposal.examples.filter((example) => example.targetKind === 'TEAM');
-    expect(selectedTeams).toHaveLength(1);
-    expect(proposal.reservedForLater).toHaveLength(1);
-    expect(proposal.reservedForLater[0]).toEqual(expect.objectContaining({
-      reason: expect.stringContaining('TEAM coverage has only two known domains'),
-    }));
+    expect(proposal.examples.some((example) => example.targetKind === ('TEAM' as never)))
+      .toBe(false);
+    expect(proposal.reservedForLater).toEqual([]);
     expect(proposal.lockedDomainAssignments).not.toContainEqual({
-      registrableDomain: proposal.reservedForLater[0].registrableDomain,
-      split: 'test',
-    });
-    expect(proposal.lockedDomainAssignments).toContainEqual({
-      registrableDomain: selectedTeams[0].registrableDomain,
+      registrableDomain: legacyTeam.registrableDomain,
       split: 'test',
     });
   });

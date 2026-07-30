@@ -46,7 +46,7 @@ describe('affiliate mapping job context builder', () => {
         intake: {
           id: 'intake_1',
           sourceKey: 'river-city',
-          targetKindHints: ['EVENT', 'INVALID'],
+          targetKindHints: ['EVENT', 'TEAM', 'INVALID'],
         },
         artifacts: [
           {

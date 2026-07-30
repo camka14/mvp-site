@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  affiliateAgentTargetKindSchema,
   affiliateMappingTrainingExampleSchema,
   affiliateSourceDraftSchema,
   stableAgentArtifactSha256,
@@ -20,7 +21,7 @@ const mappingJobContextSchema = z.object({
   sourceKey: nonEmptyStringSchema,
   runId: nonEmptyStringSchema,
   policyDisposition: z.enum(['ALLOWED', 'BLOCKED', 'NEEDS_REVIEW']),
-  targetKindHints: z.array(z.enum(['EVENT', 'RENTAL', 'TEAM', 'CLUB'])),
+  targetKindHints: z.array(affiliateAgentTargetKindSchema),
   artifacts: z.array(z.object({
     kind: nonEmptyStringSchema,
     sha256: sha256Schema,

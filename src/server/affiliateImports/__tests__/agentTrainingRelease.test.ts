@@ -152,4 +152,13 @@ describe('affiliate mapping SFT release', () => {
       createdAt: new Date(),
     })).toThrow('leaks across');
   });
+
+  it('rejects legacy TEAM target hints before release construction', () => {
+    const withTeamHint = envelope();
+    withTeamHint.context.targetKindHints = ['TEAM'] as never;
+    expect(() => buildAffiliateMappingSftRelease([withTeamHint], {
+      releaseId: 'bad',
+      createdAt: new Date(),
+    })).toThrow();
+  });
 });

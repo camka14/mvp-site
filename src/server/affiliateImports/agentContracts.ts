@@ -9,7 +9,19 @@ const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/i, 'Expected a SHA-256 has
 const nonEmptyStringSchema = z.string().trim().min(1);
 const nullableNonEmptyStringSchema = nonEmptyStringSchema.nullable();
 const isoDateTimeSchema = z.string().datetime({ offset: true });
-const listingKindSchema = z.enum(['EVENT', 'RENTAL', 'TEAM', 'CLUB']);
+export const AFFILIATE_AGENT_TARGET_KINDS = ['EVENT', 'RENTAL', 'CLUB'] as const;
+export type AffiliateAgentTargetKind = typeof AFFILIATE_AGENT_TARGET_KINDS[number];
+export const affiliateAgentTargetKindSchema = z.enum(AFFILIATE_AGENT_TARGET_KINDS);
+
+const affiliateAgentTargetKindSet = new Set<string>(AFFILIATE_AGENT_TARGET_KINDS);
+
+export const isAffiliateAgentTargetKind = (
+  value: unknown,
+): value is AffiliateAgentTargetKind => (
+  typeof value === 'string' && affiliateAgentTargetKindSet.has(value)
+);
+
+const listingKindSchema = affiliateAgentTargetKindSchema;
 
 const internalActionHosts = new Set([
   'bracket-iq.com',
@@ -228,6 +240,20 @@ export const affiliateSourceDraftSchema = z.object({
       code: 'custom',
       path: ['mapping'],
       message: 'Executable implementation modes require a mapping.',
+    });
+  }
+  if (executableMode && !draft.listingKind) {
+    context.addIssue({
+      code: 'custom',
+      path: ['listingKind'],
+      message: 'Executable implementation modes require an EVENT, RENTAL, or CLUB listing kind.',
+    });
+  }
+  if (draft.mapping?.kind === 'TEAM') {
+    context.addIssue({
+      code: 'custom',
+      path: ['mapping', 'kind'],
+      message: 'Affiliate mapping agents cannot create TEAM mappings; represent clubs as CLUB.',
     });
   }
   if (executableMode && draft.evidence.length === 0) {

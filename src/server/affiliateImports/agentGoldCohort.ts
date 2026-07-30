@@ -6,7 +6,11 @@ import {
   type HistoricalDatasetInventoryRow,
   type HistoricalSourceRow,
 } from './agentDataset';
-import { stableAgentArtifactSha256 } from './agentContracts';
+import {
+  isAffiliateAgentTargetKind,
+  stableAgentArtifactSha256,
+  type AffiliateAgentTargetKind,
+} from './agentContracts';
 import { affiliateScrapeMappingSchema, type AffiliateScrapeMapping } from './types';
 
 export type AffiliateGoldCohortMappingMode =
@@ -26,7 +30,7 @@ export type AffiliateGoldCohortCandidate = {
   sourceKey: string;
   sourceName: string;
   sourceUrl: string;
-  targetKind: 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB';
+  targetKind: AffiliateAgentTargetKind;
   sourceStatus: string;
   registrableDomain: string;
   platformFamily: string | null;
@@ -356,7 +360,7 @@ export const buildAffiliateGoldCohortCandidates = (
       .map((row) => [row.sourceId, row]),
   );
   return input.sources.flatMap((source): AffiliateGoldCohortCandidate[] => {
-    if (!['EVENT', 'RENTAL', 'TEAM', 'CLUB'].includes(source.targetKind)) return [];
+    if (!isAffiliateAgentTargetKind(source.targetKind)) return [];
     if (source.status === 'REPLACED' || source.status === 'ARCHIVED') return [];
     const row = inventoryBySourceId.get(source.id);
     if (!row || row.registrableDomain.startsWith('invalid:')) return [];
@@ -440,7 +444,6 @@ const countBy = (values: string[]): Record<string, number> => (
 );
 
 type CoverageState = {
-  team: number;
   club: number;
   rental: number;
   selector: number;
@@ -454,7 +457,6 @@ type CoverageState = {
 const coverageState = (
   candidates: AffiliateGoldCohortCandidate[],
 ): CoverageState => ({
-  team: candidates.filter((candidate) => candidate.targetKind === 'TEAM').length,
   club: candidates.filter((candidate) => candidate.targetKind === 'CLUB').length,
   rental: candidates.filter((candidate) => candidate.targetKind === 'RENTAL').length,
   selector: candidates.filter((candidate) => candidate.mappingMode === 'SELECTOR').length,
@@ -474,7 +476,6 @@ const coverageState = (
 });
 
 const requiredCoverage: CoverageState = {
-  team: 1,
   club: 5,
   rental: 5,
   selector: 12,
@@ -490,7 +491,6 @@ const coverageContribution = (
   current: CoverageState,
 ): number => {
   let contribution = 0;
-  if (current.team < requiredCoverage.team && candidate.targetKind === 'TEAM') contribution += 30;
   if (current.club < requiredCoverage.club && candidate.targetKind === 'CLUB') contribution += 12;
   if (current.rental < requiredCoverage.rental && candidate.targetKind === 'RENTAL') contribution += 12;
   if (current.selector < requiredCoverage.selector && candidate.mappingMode === 'SELECTOR') {
@@ -575,19 +575,11 @@ export const planAffiliateGoldTestCohort = (input: {
 }): AffiliateGoldCohortProposal => {
   const repositoryCommit = input.repositoryCommit.trim();
   if (!repositoryCommit) throw new Error('Repository commit is required for a cohort proposal.');
-  const candidates = [...input.candidates].sort(stableCandidateOrder);
-  const teamCandidates = candidates.filter((candidate) => candidate.targetKind === 'TEAM');
-  const selectedTeam = teamCandidates[0] ?? null;
-  const reservedTeams = teamCandidates.slice(1);
-  const reservedTeamDomains = new Set(
-    reservedTeams.map((candidate) => candidate.registrableDomain),
-  );
-  const selectable = candidates.filter((candidate) => (
-    candidate.sourceId === selectedTeam?.sourceId
-    || !reservedTeamDomains.has(candidate.registrableDomain)
-  ));
+  const candidates = input.candidates
+    .filter((candidate) => isAffiliateAgentTargetKind(candidate.targetKind))
+    .sort(stableCandidateOrder);
+  const selectable = candidates;
   const selected = new Map<string, AffiliateGoldCohortCandidate>();
-  if (selectedTeam) selected.set(selectedTeam.sourceId, selectedTeam);
 
   while (
     selected.size < TARGET_EXAMPLE_COUNT
@@ -641,8 +633,7 @@ export const planAffiliateGoldTestCohort = (input: {
   const customExtractorIds = new Set(
     selectedCandidates
       .filter((candidate) => (
-        candidate.targetKind !== 'TEAM'
-        && candidate.priorEvidenceLabel !== 'BLOCKED'
+        candidate.priorEvidenceLabel !== 'BLOCKED'
         && (candidate.hasDetailPage || candidate.rendersJavascript)
       ))
       .sort(stableCandidateOrder)
@@ -653,7 +644,6 @@ export const planAffiliateGoldTestCohort = (input: {
     selectedCandidates
       .filter((candidate) => (
         candidate.priorEvidenceLabel !== 'BLOCKED'
-        && candidate.targetKind !== 'TEAM'
         && !customExtractorIds.has(candidate.sourceId)
       ))
       .sort((left, right) => (
@@ -721,7 +711,6 @@ export const planAffiliateGoldTestCohort = (input: {
   };
   requireCount('test examples', summary.exampleCount, TARGET_EXAMPLE_COUNT);
   requireCount('registrable domains', summary.registrableDomainCount, MINIMUM_DOMAIN_COUNT);
-  requireCount('TEAM examples', summary.targetKinds.TEAM ?? 0, 1);
   requireCount('CLUB examples', summary.targetKinds.CLUB ?? 0, 5);
   requireCount('RENTAL examples', summary.targetKinds.RENTAL ?? 0, 5);
   requireCount('selector mappings', summary.historicalMappingModes.SELECTOR ?? 0, 12);
@@ -735,7 +724,6 @@ export const planAffiliateGoldTestCohort = (input: {
   requireCount('custom-extractor review cases', summary.customExtractorReviewCount, 2);
   requireCount('evergreen cases', summary.evergreenCount, 1);
   requireCount('scheduled cases', summary.scheduledCount, 1);
-  requireCount('TEAM sources reserved outside test', reservedTeams.length, 1);
 
   const lockedDomainAssignments = Array.from(new Set(
     examples.map((example) => example.registrableDomain),
@@ -754,12 +742,7 @@ export const planAffiliateGoldTestCohort = (input: {
     repositoryCommit,
     inventorySha256,
     examples,
-    reservedForLater: reservedTeams.map((candidate) => ({
-      sourceId: candidate.sourceId,
-      sourceKey: candidate.sourceKey,
-      registrableDomain: candidate.registrableDomain,
-      reason: 'Reserved outside the test split because TEAM coverage has only two known domains.',
-    })),
+    reservedForLater: [],
     lockedDomainAssignments,
     lockedPlatformFamilies,
     summary,

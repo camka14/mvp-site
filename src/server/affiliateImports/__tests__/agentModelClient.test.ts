@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  AFFILIATE_MAPPING_SYSTEM_PROMPT,
   OpenAICompatibleAffiliateMappingModelClient,
 } from '../agentModelClient';
 
@@ -105,6 +106,10 @@ describe('OpenAI-compatible open-weight mapping client', () => {
     expect((requests[0].init?.headers as Record<string, string>).authorization).toBe(
       'Bearer private-token',
     );
+    expect(AFFILIATE_MAPPING_SYSTEM_PROMPT).toContain(
+      'only supported target kinds are EVENT, RENTAL, and CLUB',
+    );
+    expect(AFFILIATE_MAPPING_SYSTEM_PROMPT).toContain('Never create a TEAM mapping');
   });
 
   it('requires operator-supplied authentication and rejects non-JSON output', async () => {

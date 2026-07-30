@@ -11,7 +11,10 @@ import {
   type AffiliateGoldCohortCandidate,
   type AffiliateGoldCohortProposal,
 } from './agentGoldCohort';
-import { stableAgentArtifactSha256 } from './agentContracts';
+import {
+  isAffiliateAgentTargetKind,
+  stableAgentArtifactSha256,
+} from './agentContracts';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -37,7 +40,8 @@ export type AffiliateEvidenceCapturePlan = {
       | 'HELD_OUT_DOMAIN'
       | 'HELD_OUT_PLATFORM_FAMILY'
       | 'HELD_OUT_EVIDENCE_DOMAIN'
-      | 'HELD_OUT_EVIDENCE_PLATFORM_FAMILY';
+      | 'HELD_OUT_EVIDENCE_PLATFORM_FAMILY'
+      | 'UNSUPPORTED_TARGET_KIND';
   }>;
   summary: {
     exampleCount: number;
@@ -111,6 +115,15 @@ export const buildAffiliateEvidenceCapturePlan = (input: {
   const heldOutPlatformFamilies = new Set(input.heldOutProposal.lockedPlatformFamilies);
   const excluded: AffiliateEvidenceCapturePlan['excluded'] = [];
   const examples = input.candidates.flatMap((candidate): AffiliateEvidenceCapturePlanExample[] => {
+    if (!isAffiliateAgentTargetKind(candidate.targetKind)) {
+      excluded.push({
+        sourceId: candidate.sourceId,
+        sourceKey: candidate.sourceKey,
+        registrableDomain: candidate.registrableDomain,
+        reason: 'UNSUPPORTED_TARGET_KIND',
+      });
+      return [];
+    }
     if (heldOutDomains.has(candidate.registrableDomain)) {
       excluded.push({
         sourceId: candidate.sourceId,
@@ -179,7 +192,6 @@ export const buildAffiliateEvidenceCapturePlan = (input: {
     if (actual < required) deficits.push(`${label}: required ${required}, found ${actual}.`);
   };
   requireCount('real executable examples', executable.length, 95);
-  requireCount('TEAM examples across train and validation', targetKinds.TEAM ?? 0, 2);
   requireCount('RENTAL examples across train and validation', targetKinds.RENTAL ?? 0, 11);
   requireCount('CLUB examples across train and validation', targetKinds.CLUB ?? 0, 11);
 

@@ -40,7 +40,9 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-30 20:18Z) Ran all 87 approved non-test capture candidates through the live ScrapingDog intake path with Spaces storage. The final report records 71 complete sources, 12 failed sources, and four review-required sources. To prevent stale URLs and provider failures from monopolizing the queue, the coordinator now permits three total attempts per batch by default, down from as many as 11, and records that limit in the immutable report.
 - [x] (2026-07-30 20:21Z) Pulled the complete live evidence export and verified 297 manifests, 8,148 referenced artifacts, and 440,558,789 bytes with zero missing files, hash mismatches, or size mismatches. Re-exported the already-captured Sherwood run with an explicit `live` evidence label without making another public request.
 - [x] (2026-07-30 20:21Z) Re-exported the live historical dataset at repository commit `c4dfe9b454f1e753714eb8ce2a5fdded0553d5b5`. It contains 203 sources and 199 capture candidates, but still reports `trainEligible: 0`: capture evidence alone does not create a human-approved gold input/output envelope.
-- [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
+- [x] (2026-07-30 20:57Z) Narrowed the mapping-agent target contract to `EVENT`, `RENTAL`, and `CLUB`. The prompt, draft schema, intake hints, cohort planner, capture planner, gold dataset, and SFT release all reject or exclude legacy `TEAM` work while the global importer retains backward-compatible TEAM support. Six focused suites pass 42 tests and `npx tsc --noEmit` exits successfully.
+- [x] (2026-07-30 20:57Z) Completed a read-only live dependency audit for the one published affiliate-created canonical team. Its only reference is source candidate `b29e3db5-c608-40be-8393-516a4a4adeb6`; it has zero memberships, event snapshots, invites, join requests, staff links, chats, bills, documents, finance rows, question rows, or legacy `UserData.teamIds` references. No live row was changed.
+- [ ] Propose, approve, capture, review, and freeze a replacement 35-example no-TEAM test cohort without altering either prior immutable cohort or exposing gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
 - [ ] Run the untouched base-model bakeoff on the real OVH host and preserve immutable reports.
@@ -64,14 +66,14 @@ The first locked test release contains 35 reviewed examples representing at leas
 - Observation: one invented control is useful for infrastructure testing but says nothing about real-site generalization.
   Evidence: `training/affiliate-source-mapping/fixtures/control-job-v1.json` uses the invented River City source and `.invalid` URLs. It can test contracts, generation, isolation, deduplication, and refusal mechanics, but it cannot measure accuracy on real organization HTML or Markdown.
 
-- Observation: TEAM coverage is intrinsically scarce in the current source inventory.
-  Evidence: the local source inventory contains 157 EVENT, 23 CLUB, 20 RENTAL, and only two TEAM sources. The split must reserve one TEAM domain for the locked test set and one for training or validation rather than letting both leak into one split.
+- Historical observation, superseded 2026-07-30: TEAM coverage was intrinsically scarce in the original source inventory.
+  Evidence: the local source inventory contained 157 EVENT, 23 CLUB, 20 RENTAL, and only two TEAM sources. That scarcity drove the original split, but TEAM is no longer an affiliate-agent target and neither source may enter a replacement cohort or training release.
 
 - Observation: the existing draft schema protects model output, but a gold release needs additional safeguards that are not properties of a draft alone.
   Evidence: `agentGoldDataset.ts` now rejects test rows marked for retrieval or training, source evidence outside the frozen context, missing list/detail fixtures, past approved scheduled dates, evergreen rows with invented starts, cross-split domains, duplicate ids, and forbidden data before it computes release hashes.
 
-- Observation: reserving a scarce TEAM source id is not enough to prevent test leakage when another source on the same organization domain is selected.
-  Evidence: the first local dry run reserved `rose-city-futsal-community-teams` but selected a different `rosecityfutsal.com` source. The planner now excludes the entire reserved TEAM registrable domain from test, and the regression test asserts that the reserved domain is absent from locked test assignments.
+- Historical observation, superseded 2026-07-30: reserving a scarce TEAM source id was not enough to prevent test leakage when another source on the same organization domain was selected.
+  Evidence: the first local dry run reserved `rose-city-futsal-community-teams` but selected a different `rosecityfutsal.com` source. Replacement planning now excludes TEAM sources before selection instead of reserving them for another split.
 
 - Observation: structural parsing of a stored release is not enough to prove that its manifest still describes its examples.
   Evidence: `assertAffiliateMappingGoldReleaseIntegrity` now recomputes example ids, source-envelope hashes, row hashes, fixture-manifest paths, fixture-manifest hashes, and total count. The regression test tampers with a row hash and verifies that the release fails before use.
@@ -107,10 +109,13 @@ The first locked test release contains 35 reviewed examples representing at leas
   Evidence: on 2026-07-30 the OVH runtime received HTTP 200 for `https://www.sherwoodsoccer.org/robots.txt`, and the live affiliate source uses the `www` URL for both `baseUrl` and `listUrl`. The exact locked page is the apex `https://sherwoodsoccer.org/`, which still fails certificate verification. Same-domain content at `www` cannot silently satisfy a different locked URL key.
 
 - Observation: the existing non-test mapping inventory is too small and too imbalanced to authorize meaningful adapter training even before capture failures are removed.
-  Evidence: the leakage-safe plan contains 87 executable mappings against a minimum of 95, with only one TEAM and 10 RENTAL examples against minimums of two and 11. After live capture, 71 sources are complete: 51 EVENT, 13 CLUB, seven RENTAL, and zero TEAM. The live dataset therefore correctly remains at zero train-eligible examples.
+  Evidence: the historical leakage-safe plan contains 87 executable mappings, of which 86 have supported no-TEAM target kinds, against a minimum of 95. It contains only 16 CLUB and ten RENTAL examples, and after live capture only 71 supported sources are complete: 51 EVENT, 13 CLUB, and seven RENTAL. The live dataset therefore correctly remains at zero train-eligible examples.
 
 - Observation: retry policy, not normal ScrapingDog latency, caused most of the bulk-capture delay.
   Evidence: the original coordinator allowed `max(5, batch page count + 1)` attempts, so a failed 10-page batch could run 11 times. The live continuation used a tested three-attempt ceiling and completed all 87 source decisions while preserving provider, policy, and storage behavior.
+
+- Observation: one affiliate TEAM candidate was published live, but it has no downstream product use.
+  Evidence: candidate `b29e3db5-c608-40be-8393-516a4a4adeb6` published canonical team `0f9d1b6c-ee99-4e30-ae6a-fff041f20312`. A read-only audit found the candidate as its only reference and zero rows in every direct membership, event, invite, chat, billing, document, finance, question, moderation, and legacy user-array path. A separate `rose-city-futsal-community-teams` source remains active with automatic scraping enabled but has no TEAM candidate. Disabling or archiving either live record remains an explicit cleanup action, not part of data preparation.
 
 ## Decision Log
 
@@ -150,9 +155,13 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: if an untouched base model passes the complete end-to-end gates with bounded retrieval and deterministic generation, keeping the base avoids adapter maintenance and data risk. Training is justified only when the selected safe base has systematic, learnable errors and the approved corpus is ready.
   Date/Author: 2026-07-29 / Codex
 
-- Decision: reserve scarce TEAM coverage by registrable domain, not merely by source row.
+- Decision (superseded 2026-07-30): reserve scarce TEAM coverage by registrable domain, not merely by source row.
   Rationale: multiple source rows can share one organization website. Allowing any row from the held-back TEAM domain into test would prevent that domain from supplying the non-test TEAM example later and would create split leakage.
   Date/Author: 2026-07-29 / Codex
+
+- Decision: the affiliate mapping agent creates only `EVENT`, `RENTAL`, and `CLUB` outputs.
+  Rationale: BracketIQ represents these organizations as clubs in general, so creating affiliate team records adds a second organization-like entity and teaches the wrong product model. TEAM stays in the global importer and database for backward compatibility, but agent schemas, prompts, cohort selection, capture selection, gold validation, and training release construction fail closed against TEAM. Prior cohort files and locks remain immutable historical evidence; a newly hashed no-TEAM cohort requires separate approval.
+  Date/Author: 2026-07-30 / User and Codex
 
 - Decision: live cohort capture may reuse newer OVH intakes, but it must not silently approve an unreviewed domain.
   Rationale: the user authorized public capture requests and provider credits, not an override of site terms or robots policy. The cohort capture command adds exact locked pages and queues only an intake already marked `ALLOWED`; explicit blocked sources are recorded without capture, and unreviewed intakes stop at `COMPLIANCE_REVIEW_REQUIRED`.
@@ -184,7 +193,7 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 ## Outcomes & Retrospective
 
-Milestones 1, the proposal-and-lock portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, preserve an explicitly approved held-out cohort without recomputing it, prepare bounded live capture batches, and write an immutable private release once approved examples exist. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, and records exact capture-page requirements.
+Milestones 1, the original proposal-and-lock portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, preserve explicitly approved held-out cohorts without recomputing them, prepare bounded live capture batches, and write an immutable private release once approved examples exist. The revised planner reports rather than weakens deficits, excludes TEAM work, and records exact capture-page requirements.
 
 The original redacted local proposal remains persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record. Approved revision `affiliate-mapping-test-aa6aa626e3f2367c`, hash `aa6aa626e3f2367c4a62f045067b4dfe24ed6347ae9eb6eb2944941ad3292667`, preserves the same membership, assignments, and coverage while correcting only Sherwood's required page to its canonical `www` endpoint and recording why.
 
@@ -192,7 +201,7 @@ The original test cohort is locked and its remediated ScrapingDog pass is comple
 
 The exported evidence remains internally sound. The latest local verification covers 297 manifests, 8,148 referenced artifacts, and 440,558,789 bytes with zero missing files, hash mismatches, or size mismatches. A direct live object audit found zero unreadable or wrong-provider files among the evidence selected for the locked cohort, and the live database contains zero affiliate-intake artifacts whose backing `File.bucket` is null. No discovery or intake job remains active, and all 44 discovery campaigns are paused.
 
-Capture is no longer the primary blocker, but training is not authorized. The current live dataset still has zero train-eligible gold examples because the approved historical mappings have not yet been converted into exact human-approved input/output envelopes tied to these runs. The leakage-safe non-test plan was already eight executable mappings below the 95-example real-source minimum before capture; only 71 completed, including zero TEAM examples and seven RENTAL examples. The next work is to review and freeze gold outputs for the complete captures, add at least the missing TEAM and RENTAL coverage plus enough new real mappings to reach the split minimums, and run the untouched base-model bakeoff. No model training has started.
+Capture is no longer the primary blocker, but training is not authorized. The current live dataset still has zero train-eligible gold examples because the approved historical mappings have not yet been converted into exact human-approved input/output envelopes tied to these runs. The old leakage-safe non-test plan was eight executable mappings below the 95-example real-source minimum before capture; only 71 no-TEAM sources completed, comprising 51 EVENT, 13 CLUB, and seven RENTAL. A replacement no-TEAM test cohort must be proposed and approved before its held-out domains can be used to regenerate the training capture plan. Then the complete captures need approved gold outputs and enough new CLUB/RENTAL examples to reach the minimum. No model training has started.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -200,7 +209,7 @@ Update this section after each major milestone with the actual cohort counts, re
 
 ## Context and Orientation
 
-Work from `/Users/elesesy/StudioProjects/mvp-site`. This is a Next.js and TypeScript application with Prisma and PostgreSQL. Affiliate scraping code lives under `src/server/affiliateImports`. A source is a public website configured for scraping. A mapping is JSON interpreted by `src/server/affiliateImports/mappingExtractor.ts`. A candidate is a normalized review record persisted by `src/server/affiliateImports/service.ts`. Candidate kinds are `EVENT`, `RENTAL`, `TEAM`, and `CLUB`.
+Work from `/Users/elesesy/StudioProjects/mvp-site`. This is a Next.js and TypeScript application with Prisma and PostgreSQL. Affiliate scraping code lives under `src/server/affiliateImports`. A source is a public website configured for scraping. A mapping is JSON interpreted by `src/server/affiliateImports/mappingExtractor.ts`. A candidate is a normalized review record persisted by `src/server/affiliateImports/service.ts`. The global importer retains legacy candidate kinds `EVENT`, `RENTAL`, `TEAM`, and `CLUB`; the mapping agent may emit only `EVENT`, `RENTAL`, and `CLUB`.
 
 A source intake is a durable capture of public evidence. The relevant database records are `AffiliateSourceIntakes`, `AffiliateSourceIntakePages`, `AffiliateSourceIntakeRuns`, and `AffiliateSourceIntakeArtifacts`. The existing exporter in `scripts/export-affiliate-source-intake.ts` reconstructs a local evidence bundle from stored database and object-storage data without contacting the public site. The bundle includes a manifest, compact source evidence, HTML, Markdown, screenshots, links, images, branding, logo candidates, robots evidence, and provider envelopes when those artifacts were captured.
 
@@ -249,11 +258,11 @@ At the end of this milestone, a small invented release validates deterministical
 
 Add `scripts/plan-affiliate-mapping-gold-cohort.ts` with package command `affiliate:mapping:gold-plan`. It is read-only by default and must make zero public requests and zero database writes. It consumes the same source, mapping, intake, candidate, setup-script, domain, and platform inventory as `agentDataset.ts`.
 
-The planner selects test first. It proposes 35 examples from at least 30 registrable domains. The proposal must reserve one of the two TEAM domains for test, include at least five CLUB and five RENTAL examples, and fill the remainder with representative EVENT and refusal cases. Across the cohort it must include at least 12 selector mappings, eight manual-candidate mappings, four detail-page or JavaScript-rendered sources, five blocked or insufficient-evidence cases, evergreen and scheduled events, and at least two cases whose correct answer is `CUSTOM_EXTRACTOR_REQUIRED` or an equivalent human escalation.
+The planner selects test first. It proposes 35 examples from at least 30 registrable domains, excludes legacy TEAM sources, includes at least five CLUB and five RENTAL examples, and fills the remainder with representative EVENT and refusal cases. Across the cohort it must include at least 12 selector mappings, eight manual-candidate mappings, four detail-page or JavaScript-rendered sources, five blocked or insufficient-evidence cases, evergreen and scheduled events, and at least two cases whose correct answer is `CUSTOM_EXTRACTOR_REQUIRED` or an equivalent human escalation.
 
 The planner prioritizes sources with an existing setup script, reviewed candidate history, and a validated mapping because they reduce gold-review work, but it must still mark them unapproved until a current intake capture matches the output. It excludes stale and replaced rows. It records why each source was selected, which exact pages need capture, which existing mapping may be used as a comparison, and which target-kind or platform quota the source satisfies.
 
-Write only a redacted cohort manifest under ignored `output/affiliate-mapping-agent/gold-cohorts/<cohort-id>/` when `--write` is supplied. Do not queue public captures in this command. Add deterministic selection tests in `src/server/affiliateImports/__tests__/agentGoldDataset.test.ts`, including order independence and scarce TEAM allocation.
+Write only a redacted cohort manifest under ignored `output/affiliate-mapping-agent/gold-cohorts/<cohort-id>/` when `--write` is supplied. Do not queue public captures in this command. Add deterministic selection tests in `src/server/affiliateImports/__tests__/agentGoldDataset.test.ts`, including order independence and legacy TEAM exclusion.
 
 Review the proposed domains before any capture. Once accepted, write a lock manifest with immutable ids and domain assignments. Replacing a source after lock creates a new cohort version and records the reason; it never silently edits the original.
 
@@ -309,7 +318,7 @@ At the end of this milestone, `docs/affiliate-source-mapping-model-bakeoff.md` c
 
 After the test release is locked, run the cohort planner again for training and validation. Keep every locked test domain and platform-family restriction excluded. Target 100 training and 20 validation examples; do not authorize a meaningful adapter run below 80 and 15.
 
-The training split must contain the one non-test TEAM source when it is faithful, at least ten CLUB and ten RENTAL examples, a representative EVENT mix, selector and manual mappings, detail pages, JavaScript rendering, scheduled and evergreen programs, and at least twelve blocked or insufficient-evidence examples. The validation split must include at least one example of each target kind available outside test, at least three refusal examples, and both selector and manual mappings.
+The real executable training-plus-validation pool must contain no TEAM sources. Its minimum 95-example planning target is 60 EVENT, 20 CLUB, and 15 RENTAL examples; the hard readiness floor remains at least eleven CLUB and eleven RENTAL examples if later evidence supports a different safe composition. The training split must include at least ten CLUB and ten RENTAL examples, a representative EVENT mix, selector and manual mappings, detail pages, JavaScript rendering, scheduled and evergreen programs, and at least twelve blocked or insufficient-evidence examples. The validation split must include each supported agent target kind available outside test, at least three refusal examples, and both selector and manual mappings.
 
 Real captures are preferred. Derived evidence-ablation examples may supplement refusal training by removing a required page or artifact from a real capture and approving the resulting insufficient-evidence response. They must retain their origin label and cannot replace the required count of real executable mappings. Invented controls remain pipeline tests and do not count toward the 80/15/30 minimum.
 
@@ -466,7 +475,7 @@ The gold contract is accepted when the same approved envelopes produce byte-iden
 
 The cohort planner is accepted when it deterministically proposes the required 35-example test cohort from unchanged inputs, reports every coverage quota and deficit, assigns each registrable domain to exactly one split, and makes zero public requests and database writes.
 
-The test release is accepted when 35 examples from at least 30 domains have complete real stored evidence and human-approved expected candidates. At least one TEAM, five CLUB, five RENTAL, representative EVENT, selector, manual, detail-page, JavaScript, evergreen, scheduled, blocked, insufficient-evidence, and custom-extractor cases must be present. Derived and invented examples are reported separately and cannot satisfy real-source quotas.
+The replacement test release is accepted when 35 examples from at least 30 domains have complete real stored evidence and human-approved expected candidates. It must contain no TEAM examples and at least five CLUB, five RENTAL, representative EVENT, selector, manual, detail-page, JavaScript, evergreen, scheduled, blocked, insufficient-evidence, and custom-extractor cases. Derived and invented examples are reported separately and cannot satisfy real-source quotas.
 
 End-to-end evaluation is accepted when every applicable model draft is generated in an isolated worktree, reads only hash-approved fixture pages, runs focused tests, performs setup and two review scrapes against disposable PostgreSQL, and compares persisted candidates to gold. A second run must create no duplicate identity. The mapping must remain unvalidated, automation disabled, published count zero, live writes zero, and public requests zero.
 
@@ -535,7 +544,7 @@ The Milestone 1 focused validation reported:
     Tests: 5 passed, 5 total
     npx tsc --noEmit: exited 0
 
-The Milestone 2 focused validation and actual local dry run reported:
+The superseded original Milestone 2 focused validation and actual local dry run reported:
 
     Test Suites: 1 passed, 1 total
     Tests: 9 passed, 9 total
@@ -720,3 +729,5 @@ Revised 2026-07-29 after broader validation to preserve the exact passing affili
 Revised 2026-07-29 after explicit cohort approval and the first OVH capture. The revision records the immutable lock identity, the changed live intake population, the compliance-preserving capture command, both first-example run ids, complete 13-page coverage, and verified private exports without treating captured evidence as human-approved gold output.
 
 Revised 2026-07-29 after completing the locked-cohort ScrapingDog pass and exact URL audit. The revision records current-provider coverage, older Firecrawl-only reuse, policy blocks, five source-level capture issues, the cross-intake false-positive completion, verified export hashes, the user's direction not to fix or substitute failed captures, and the continuing `DO_NOT_TRAIN` state.
+
+Revised 2026-07-30 after the user removed TEAM from affiliate-agent scope. The revision preserves both prior immutable cohorts as historical evidence, records the live read-only TEAM dependency audit, narrows prompt/schema/cohort/capture/gold/SFT boundaries to EVENT, RENTAL, and CLUB, and requires a separately approved no-TEAM replacement cohort before regenerating the training plan.
