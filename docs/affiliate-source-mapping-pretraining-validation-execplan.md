@@ -25,6 +25,10 @@ The first locked test release contains 35 reviewed examples representing at leas
 - [x] (2026-07-29 21:15Z) Implemented the immutable private gold-release writer. It validates approved JSONL before creating a directory, rejects unsafe release ids and tampered hashes, writes split JSONL plus per-example fixture manifests and `release.sha256`, and refuses to overwrite an existing release.
 - [x] (2026-07-29 21:17Z) Re-ran all affiliate-agent suites plus Prisma and TypeScript validation after the data-contract, planner, and release-writer changes: 17 suites and 69 tests passed; `prisma validate`, `tsc --noEmit`, and `git diff --check` exited successfully.
 - [x] (2026-07-29 22:19Z) Started live capture on the verified OVH runtime with the first locked example, `03-international-badminton-programs`. Two bounded runs captured all 13 required pages with zero robots blocks, zero failed pages, and 133 exported artifacts whose local bytes match their recorded hashes. Run `b991b5ad-3474-42b1-ba00-2ef04e27e50c` captured 10 pages and is `PARTIAL` only because nine Squarespace favicon candidates were not images; run `4ad49939-9432-4871-b932-2f589d41f82a` captured the remaining three pages and is `SUCCEEDED`.
+- [x] (2026-07-29 23:31Z) Ran the complete locked 35-source cohort through the existing ScrapingDog intake path on OVH, one source at a time and in batches of at most 10 pages. The immutable run report records 31 terminal-complete source results, four failed source results, 51 processed runs, and no source left queued or running. Team Lillard was recorded as policy-blocked without a public fetch.
+- [x] (2026-07-30 00:02Z) Exported the available intake runs and verified 74 manifests containing 1,306 artifacts and 89,198,851 artifact bytes. Every local artifact exists and matches its recorded SHA-256; there are zero missing files and zero hash mismatches.
+- [x] (2026-07-30 00:02Z) Audited exact locked-URL coverage instead of trusting source-level terminal labels. The unchanged ScrapingDog pass resolved 108 required pages with ScrapingDog content and 15 with robots-block evidence, reused two required pages that only have older Firecrawl content, and left 12 pages unresolved, including the intentionally unfetched Team Lillard home page. Twenty-seven sources have complete current-provider evidence, two otherwise-complete sources rely on older Firecrawl evidence, one source is explicitly policy-blocked, and five sources have capture issues.
+- [ ] Resolve or formally waive the five source-level capture issues and the two older-provider evidence reuses before freezing the 35 real test examples. Do not retry, substitute URLs, alter provider settings, or change capture safeguards without a new explicit user direction.
 - [ ] Re-intake, review, approve, and freeze the first 35 real test examples without exposing their gold outputs to the worker.
 - [ ] Extend model evaluation so every executable result runs from stored fixture pages in an isolated worktree and disposable database, twice.
 - [ ] Add candidate precision, candidate recall, evidence-citation accuracy, duplicate safety, publication safety, and execution success to hard eligibility.
@@ -66,6 +70,18 @@ The first locked test release contains 35 reviewed examples representing at leas
 
 - Observation: a successful page capture can still produce a `PARTIAL` run for harmless artifact warnings.
   Evidence: the first live gold run captured all 10 requested pages with no blocked or failed page. Its only nine warnings were skipped Squarespace default favicon URLs whose responses were not image content. The exported artifact bytes all match their manifest hashes, so this warning is retained for human review rather than treated as missing evidence.
+
+- Observation: source-level completion can overstate locked-page evidence coverage when a required URL belongs to another intake.
+  Evidence: `oregon-youth-soccer-sanctioned-tournaments` was reported complete after six owned pages were captured, but `https://soccerchanceacademy.us/super-cup` was merely recorded as reused from another intake and still has no HTML or Markdown artifact. Exact locked-URL auditing therefore reports six of seven pages, not seven of seven.
+
+- Observation: the unchanged ScrapingDog setup exposed four repeatable capture failures.
+  Evidence: the Gresham-Barlow robots response exceeds the configured 524,288-byte bound for two pages; Lake Oswego's two non-`www` Parks & Recreation URLs return ScrapingDog HTTP 404; five Portland Ultimate registration URLs return ScrapingDog HTTP 400 with a stealth-mode suggestion; and the non-`www` Sherwood Soccer robots check fails because its TLS certificate is expired.
+
+- Observation: existing-evidence reuse does not guarantee that the evidence came from the current provider.
+  Evidence: the Aspire NW Volleyball home page and Union County Youth Soccer detail page have Firecrawl-only content artifacts. The cohort runner did not refresh them because it found existing HTML or Markdown.
+
+- Observation: artifact export integrity is stronger than run success labels.
+  Evidence: 74 exported manifests include successful, partial, blocked, and failed attempts. Across 1,306 referenced artifacts, every local file exists and every SHA-256 matches, even though some source URLs remain unresolved.
 
 ## Decision Log
 
@@ -113,13 +129,21 @@ The first locked test release contains 35 reviewed examples representing at leas
   Rationale: the user authorized public capture requests and provider credits, not an override of site terms or robots policy. The cohort capture command adds exact locked pages and queues only an intake already marked `ALLOWED`; explicit blocked sources are recorded without capture, and unreviewed intakes stop at `COMPLIANCE_REVIEW_REQUIRED`.
   Date/Author: 2026-07-29 / Codex
 
+- Decision: preserve and report current ScrapingDog failures rather than changing the capture path.
+  Rationale: the user explicitly directed this cohort to use the existing ScrapingDog setup and asked for issues to be reported without fixes. A brief post-pass diagnostic change was reverted, an alternate-provider attempt was stopped, and neither is counted in the unchanged-setup coverage totals. The live store retains its append-only diagnostic artifacts, but they are not eligible for the locked release unless the user later accepts them.
+  Date/Author: 2026-07-29 / User and Codex
+
 ## Outcomes & Retrospective
 
 Milestones 1, the proposal-and-lock portion of Milestone 2, and the offline release-writer portion of Milestone 3 are complete. The repository can now validate a private gold example, deterministically construct and verify a release manifest, preserve an explicitly approved held-out cohort without recomputing it, prepare bounded live capture batches, and write an immutable private release once approved examples exist. The planner reports rather than weakens deficits, reserves the second TEAM domain outside test, and records exact capture-page requirements.
 
 The redacted local proposal is persisted as `affiliate-mapping-test-d9de7ef53d2c82d1`, hash `d9de7ef53d2c82d17acd39f65f1b5eeade8d8060231a7ba964cf61bb28e2ba53`, under ignored `output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json`. It calls for 137 stored page captures across the 35 sources; one selected source has an existing intake match, 33 need proposed intakes, and one is an existing blocked-policy record.
 
-The test cohort is now locked, and live evidence collection has started. The first example has 13 of 13 required pages stored in two runs and exported to ignored private evidence directories with 133 verified artifacts. The remaining 34 examples still need complete policy-checked capture and human gold-output review. All 35 rows remain explicitly `UNAPPROVED`, and there are still zero approved real gold examples to pass into the release writer. No paid model training has started.
+The test cohort is locked and the complete first ScrapingDog pass has finished. Under the unchanged current setup, 108 of 137 required pages have ScrapingDog HTML or Markdown, 15 are supported policy blocks, two reuse older Firecrawl-only content, and 12 are unresolved. The unresolved set is two Gresham-Barlow pages, two Lake Oswego pages, one Soccer Chance Academy page reused without evidence, five Portland Ultimate registration pages, the Sherwood Soccer home page, and the intentionally unfetched Team Lillard home page. This means 27 sources have complete current-provider evidence, two otherwise-complete sources rely on older-provider evidence, one source is a terminal policy block, and five sources need an explicit capture disposition.
+
+The exported evidence is internally sound: 74 manifests reference 1,306 artifacts totaling 89,198,851 bytes, with zero missing files and zero hash mismatches. A brief post-pass diagnostic captured the two Gresham-Barlow content pages after changing a robots bound, so the append-only live store now shows 110 ScrapingDog-content pages and 10 missing pages. That code change was reverted at the user's direction and those two pages are excluded from the unchanged-setup baseline. A Firecrawl diagnostic captured no replacement pages and was stopped. No retry or URL substitution remains in progress.
+
+All 35 rows remain explicitly `UNAPPROVED`, and there are still zero approved real gold examples to pass into the release writer. The cohort is not ready to freeze as a 35-example gold test release until the five capture issues and two older-provider reuses are reviewed. No model training has started.
 
 The most important implementation gap is now explicit: the model evaluator must execute generated scrapers for every applicable example and compare persisted candidates to gold output. The existing standalone disposable proof demonstrates the necessary safety boundary, so the work is an extraction and composition task rather than an unproven design.
 
@@ -478,7 +502,30 @@ The persisted redacted proposal records:
     existingIntakeMatches = 1
     proposedIntakes = 33
     blockedRecords = 1
-    locked = false
+    locked = true
+
+The unchanged-setup ScrapingDog cohort pass and exact locked-URL audit reported:
+
+    sources = 35
+    requiredPages = 137
+    scrapingDogContentPages = 108
+    robotsBlockedPages = 15
+    olderFirecrawlOnlyPages = 2
+    unresolvedPages = 12
+    currentProviderCompleteSources = 27
+    olderProviderReuseSources = 2
+    policyBlockedSources = 1
+    captureIssueSources = 5
+    processedRuns = 51
+    reportedRunStatuses = BLOCKED:2, FAILED:23, PARTIAL:17, SUCCEEDED:9
+
+The private export integrity audit reported:
+
+    manifests = 74
+    artifacts = 1306
+    artifactBytes = 89198851
+    missingFiles = 0
+    sha256Mismatches = 0
 
 The broader post-implementation validation reported:
 
@@ -612,3 +659,5 @@ Revised 2026-07-29 after implementing the immutable gold-release writer. The rev
 Revised 2026-07-29 after broader validation to preserve the exact passing affiliate-agent, Prisma, TypeScript, and diff-check evidence at the stopping point before any live intake operation.
 
 Revised 2026-07-29 after explicit cohort approval and the first OVH capture. The revision records the immutable lock identity, the changed live intake population, the compliance-preserving capture command, both first-example run ids, complete 13-page coverage, and verified private exports without treating captured evidence as human-approved gold output.
+
+Revised 2026-07-29 after completing the locked-cohort ScrapingDog pass and exact URL audit. The revision records current-provider coverage, older Firecrawl-only reuse, policy blocks, five source-level capture issues, the cross-intake false-positive completion, verified export hashes, the user's direction not to fix or substitute failed captures, and the continuing `DO_NOT_TRAIN` state.
