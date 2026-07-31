@@ -18,6 +18,7 @@ const nullableFieldNames = [
   'address',
   'startsAt',
   'endsAt',
+  'timeZone',
   'scheduleText',
   'dateDisplayMode',
   'dateDisplayText',
