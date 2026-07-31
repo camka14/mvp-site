@@ -131,6 +131,7 @@
     "affiliate:setup:prodigy-volleyball-academy": "tsx scripts/setup-prodigy-volleyball-academy-affiliate-source.ts",
     "affiliate:setup:five-one-six-elite-volleyball": "tsx scripts/setup-five-one-six-elite-volleyball-affiliate-source.ts",
     "affiliate:setup:new-york-stars-hockey": "tsx scripts/setup-new-york-stars-hockey-affiliate-source.ts",
+    "affiliate:setup:house-of-sports-ny-volleyball": "tsx scripts/setup-house-of-sports-ny-volleyball-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
