@@ -71,7 +71,7 @@ const CREATE_CHOICES: IntentChoice[] = [
   { target: 'event', kind: 'create', title: 'Event', description: 'Create a one-time event, league, tournament, or weekly session.', icon: CalendarPlus },
 ];
 
-const ONBOARDING_COMBOBOX_PROPS = { zIndex: 1501 } as const;
+const ONBOARDING_COMBOBOX_PROPS = { withinPortal: false } as const;
 
 const targetLabel = (target: GuestSearchTarget | GuestCreateTarget): string => (
   target === 'organization' ? 'organization' : target

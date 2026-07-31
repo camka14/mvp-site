@@ -111,14 +111,17 @@ describe('GuestIntentOnboarding', () => {
     expect(requestLocationMock).toHaveBeenCalledTimes(1);
   });
 
-  it('shows the sport options above the onboarding modal', async () => {
+  it('keeps sport options inside the onboarding modal touch boundary', async () => {
     renderWizard();
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
     fireEvent.click(screen.getByText('Events').closest('button') as HTMLButtonElement);
     fireEvent.click(screen.getByPlaceholderText('Any sport'));
 
-    expect(screen.getByRole('option', { name: 'Soccer' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: /bracketiq onboarding/i });
+    const sportOption = screen.getByRole('option', { name: 'Soccer' });
+    expect(sportOption).toBeInTheDocument();
+    expect(dialog).toContainElement(sportOption);
   });
 
   it('dismisses location suggestions when focus leaves the location control', async () => {
