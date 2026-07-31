@@ -102,6 +102,10 @@
   width: 100%;
 }
 
+.locationSearch {
+  position: relative;
+}
+
 .locationResults {
   position: absolute;
   z-index: 10;

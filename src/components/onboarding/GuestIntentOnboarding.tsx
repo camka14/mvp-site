@@ -71,6 +71,8 @@ const CREATE_CHOICES: IntentChoice[] = [
   { target: 'event', kind: 'create', title: 'Event', description: 'Create a one-time event, league, tournament, or weekly session.', icon: CalendarPlus },
 ];
 
+const ONBOARDING_COMBOBOX_PROPS = { zIndex: 1501 } as const;
+
 const targetLabel = (target: GuestSearchTarget | GuestCreateTarget): string => (
   target === 'organization' ? 'organization' : target
 );
@@ -95,6 +97,7 @@ export default function GuestIntentOnboarding() {
   const [selectedLocationInfo, setSelectedLocationInfo] = useState<LocationInfo | null>(null);
   const [predictions, setPredictions] = useState<Array<{ description: string; placeId: string }>>([]);
   const [predictionsLoading, setPredictionsLoading] = useState(false);
+  const [locationResultsOpen, setLocationResultsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const sessionTokenRef = useRef<unknown | null>(null);
@@ -182,6 +185,7 @@ export default function GuestIntentOnboarding() {
       setSelectedLocationInfo(info);
       setLocationQuery([info.city, info.state].filter(Boolean).join(', ') || info.formattedAddress || 'Selected location');
       setPredictions([]);
+      setLocationResultsOpen(false);
       sessionTokenRef.current = null;
     } catch {
       setError('Unable to use that location. Try another search.');
@@ -233,6 +237,11 @@ export default function GuestIntentOnboarding() {
     const next = buildGuestCreateDestination(createTarget, createId());
     markGuestOnboardingComplete(createTarget);
     router.push(buildGuestSignupDestination({ target: createTarget, next }));
+  };
+
+  const handleUseMyLocation = () => {
+    setLocationResultsOpen(false);
+    void requestLocation();
   };
 
   const handleExploreGuest = async () => {
@@ -338,6 +347,7 @@ export default function GuestIntentOnboarding() {
                   clearable
                   disabled={sportsLoading}
                   rightSection={sportsLoading ? <Loader size={16} /> : undefined}
+                  comboboxProps={ONBOARDING_COMBOBOX_PROPS}
                 />
 
                 {searchTarget !== 'rentals' ? (
@@ -350,6 +360,7 @@ export default function GuestIntentOnboarding() {
                     searchable
                     clearable
                     disabled={!selectedSport || skillOptions.length === 0}
+                    comboboxProps={ONBOARDING_COMBOBOX_PROPS}
                   />
                 ) : null}
 
@@ -361,12 +372,20 @@ export default function GuestIntentOnboarding() {
                       size="compact-sm"
                       leftSection={<LocateFixed size={15} />}
                       loading={locationLoading}
-                      onClick={() => void requestLocation()}
+                      onClick={handleUseMyLocation}
                     >
                       Use my location
                     </Button>
                   </Group>
-                  <div style={{ position: 'relative' }}>
+                  <div
+                    className={styles.locationSearch}
+                    onFocusCapture={() => setLocationResultsOpen(true)}
+                    onBlurCapture={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setLocationResultsOpen(false);
+                      }
+                    }}
+                  >
                     <TextInput
                       aria-label="Location"
                       leftSection={<MapPin size={17} />}
@@ -375,9 +394,10 @@ export default function GuestIntentOnboarding() {
                       onChange={(event) => {
                         setLocationQuery(event.currentTarget.value);
                         setSelectedLocationInfo(null);
+                        setLocationResultsOpen(true);
                       }}
                     />
-                    {predictionsLoading || predictions.length > 0 ? (
+                    {locationResultsOpen && (predictionsLoading || predictions.length > 0) ? (
                       <div className={styles.locationResults}>
                         {predictionsLoading ? <Text size="sm" c="dimmed" p="xs">Finding locations...</Text> : null}
                         {predictions.map((prediction) => (

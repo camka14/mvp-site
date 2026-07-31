@@ -109,6 +109,36 @@ describe('GuestIntentOnboarding', () => {
     expect(requestLocationMock).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the sport options above the onboarding modal', async () => {
+    renderWizard();
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
+    fireEvent.click(screen.getByText('Events').closest('button') as HTMLButtonElement);
+    fireEvent.click(screen.getByPlaceholderText('Any sport'));
+
+    expect(screen.getByRole('option', { name: 'Soccer' })).toBeInTheDocument();
+  });
+
+  it('dismisses location suggestions when focus leaves the location control', async () => {
+    getPlacePredictionsMock.mockResolvedValue([
+      { description: 'Washougal, WA 98671, USA', placeId: 'washougal' },
+    ]);
+    renderWizard();
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
+    fireEvent.click(screen.getByText('Events').closest('button') as HTMLButtonElement);
+    const locationInput = screen.getByLabelText('Location');
+    const sportInput = screen.getByPlaceholderText('Any sport');
+    fireEvent.focus(locationInput);
+    fireEvent.change(locationInput, { target: { value: '98671' } });
+
+    expect(await screen.findByRole('button', { name: 'Washougal, WA 98671, USA' })).toBeInTheDocument();
+
+    fireEvent.blur(locationInput, { relatedTarget: sportInput });
+
+    expect(screen.queryByRole('button', { name: 'Washougal, WA 98671, USA' })).not.toBeInTheDocument();
+  });
+
   it('does not show an unsupported skill filter for rentals', async () => {
     renderWizard();
 
