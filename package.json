@@ -141,6 +141,7 @@
     "affiliate:setup:eastern-new-york-youth-soccer": "tsx scripts/setup-eastern-new-york-youth-soccer-affiliate-source.ts",
     "affiliate:setup:columbia-summer-tennis-camp": "tsx scripts/setup-columbia-summer-tennis-camp-affiliate-source.ts",
     "affiliate:setup:commonpoint-turf-court-rentals": "tsx scripts/setup-commonpoint-turf-court-rentals-affiliate-source.ts",
+    "affiliate:setup:harvey-hockey-camp": "tsx scripts/setup-harvey-hockey-camp-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
