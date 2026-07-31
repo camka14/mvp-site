@@ -97,6 +97,7 @@
     "affiliate:setup:zogsports-san-francisco": "tsx scripts/setup-zog-sports-san-francisco-affiliate-source.ts",
     "affiliate:setup:socceroof-new-york": "tsx scripts/setup-socceroof-new-york-affiliate-source.ts",
     "affiliate:setup:discny-all-events": "tsx scripts/setup-discny-all-events-affiliate-source.ts",
+    "affiliate:setup:aptcnyc-pickleball-rentals": "tsx scripts/setup-aptcnyc-pickleball-rentals-affiliate-source.ts",
     "affiliate:setup:new-york-soccer-club": "tsx scripts/setup-new-york-soccer-club-affiliate-source.ts",
     "affiliate:setup:nyc-footy": "tsx scripts/setup-nyc-footy-affiliate-source.ts",
     "affiliate:setup:503-baseball": "tsx scripts/setup-503-baseball-affiliate-source.ts",
