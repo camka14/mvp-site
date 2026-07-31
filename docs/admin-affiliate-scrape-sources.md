@@ -315,6 +315,10 @@ Live intake `new-york-new-york-metropolitan-area-boys-soccer-tryouts-faeuro-com`
 
 Live intake `new-york-new-york-metropolitan-area-fox-soccer-academy-new-york-foxsoccer-academy`, run `0c286431-9533-410b-9029-59fe46ff6331`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official New York tryouts page supports one ongoing `CLUB` candidate for Fox Soccer Academy New York with Soccer, academy, and 2026/2027 program context. Displayed June tryout dates lack a year and are withheld rather than inferred as events; no TEAM candidate is created. The official fox crest from stored page branding is normalized to an opaque 1024px PNG. Local key `fox-soccer-academy-new-york` owns `affiliate_org_fox_soccer_academy_new_york` and `affiliate_mapping_fox_soccer_academy_new_york_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
 
+### 2026-07-31 Gotham Soccer New York City intake
+
+Live intake `new-york-new-york-metropolitan-area-new-york-city-gothamsoccer-com`, run `ad0cbe2a-cf97-41d4-b09b-1b22c84c9960`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored New York City listing supports one ongoing `CLUB` candidate for Gotham Soccer with adult men\'s, women\'s, and coed soccer league context, pickup, tournaments, and a public player dashboard. No current dated league, tournament, or rental row is present in the capture, and no TEAM candidate is created. The official Gotham mark from stored page branding is normalized to an opaque 1024px PNG. Local key `gotham-soccer-new-york-city` owns `affiliate_org_gotham_soccer_new_york_city` and `affiliate_mapping_gotham_soccer_new_york_city_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had

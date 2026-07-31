@@ -78,6 +78,7 @@
     "affiliate:setup:asphalt-green-soccer-club": "tsx scripts/setup-asphalt-green-soccer-club-affiliate-source.ts",
     "affiliate:setup:fa-euro-new-york": "tsx scripts/setup-fa-euro-new-york-affiliate-source.ts",
     "affiliate:setup:fox-soccer-academy-new-york": "tsx scripts/setup-fox-soccer-academy-new-york-affiliate-source.ts",
+    "affiliate:setup:gotham-soccer-new-york-city": "tsx scripts/setup-gotham-soccer-new-york-city-affiliate-source.ts",
     "affiliate:setup:503-baseball": "tsx scripts/setup-503-baseball-affiliate-source.ts",
     "affiliate:setup:cascade-athletic-clubs-gresham": "tsx scripts/setup-cascade-athletic-clubs-gresham-affiliate-source.ts",
     "affiliate:setup:nw-futures-baseball": "tsx scripts/setup-nw-futures-baseball-affiliate-source.ts",
