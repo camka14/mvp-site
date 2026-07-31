@@ -92,6 +92,7 @@
     "affiliate:setup:the-nyc-volleyball-club": "tsx scripts/setup-the-nyc-volleyball-club-affiliate-source.ts",
     "affiliate:setup:nyc-volleyverse": "tsx scripts/setup-nyc-volleyverse-affiliate-source.ts",
     "affiliate:setup:pro-skills-basketball-nyc": "tsx scripts/setup-pro-skills-basketball-new-york-city-affiliate-source.ts",
+    "affiliate:setup:new-york-empire-baseball": "tsx scripts/setup-new-york-empire-baseball-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
