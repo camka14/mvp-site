@@ -14,11 +14,11 @@ The new path is an explicitly invoked developer command. It is not imported by t
 
 - [x] (2026-07-30 22:00Z) Reviewed the existing intake queue, open-weight mapping runner, generated setup boundary, rollout goal document, Codex CLI model/configuration documentation, and current dirty worktree.
 - [x] (2026-07-30 22:00Z) Created branch `codex/affiliate-codex-luna-goal` without staging unrelated deployment or legacy-source work.
-- [ ] Add a repository-local `ingest-affiliate-intakes` skill and validate its metadata.
-- [ ] Add a deterministic Codex CLI goal command using `gpt-5.6-luna`, `xhigh`, workspace-write sandboxing, persisted goals, and an authentication preflight.
-- [ ] Add a read-only queue status command whose zero-claimable result is the goal's verifiable stopping condition.
-- [ ] Update the rollout goal and operator documentation with the exact intake, logo, organization, validation, failure, and publication boundaries.
-- [ ] Add focused tests, run skill validation, focused Jest, TypeScript, and diff checks.
+- [x] (2026-07-31 00:55Z) Added and validated the repository-local `ingest-affiliate-intakes` skill and its strict completion contract.
+- [x] (2026-07-31 00:55Z) Added the deterministic Codex CLI launcher using `gpt-5.6-luna`, `xhigh`, workspace-write sandboxing, goal-tool creation, and authentication/TTY preflight.
+- [x] (2026-07-31 00:55Z) Added read-only queue status and strict terminal result commands, including malformed-lease detection.
+- [x] (2026-07-31 00:55Z) Updated the rollout goal with the exact intake, logo, organization, validation, failure, and publication boundaries.
+- [x] (2026-07-31 00:55Z) Passed skill validation, 10 focused Jest tests, `npx tsc --noEmit`, local/live launcher dry runs, and `git diff --check`.
 - [ ] Commit the implementation in scoped commits and push `codex/affiliate-codex-luna-goal` for VM testing.
 
 ## Surprises & Discoveries
@@ -29,6 +29,9 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - Observation: persisted goals are a stable Codex feature and are enabled by `features.goals`; `/goal` is an interactive CLI command with automatic continuation and a verifiable stopping-condition contract.
   Evidence: current official Codex documentation describes `features.goals`, `/goal <objective>`, and `codex login status`.
 
+- Observation: a positional initial prompt passed to interactive `codex` is submitted as a normal user message and is not parsed through the slash-command input path.
+  Evidence: the current Codex source sends `initial_prompt` through `submit_initial_user_message_if_pending()` and `submit_user_message`, while slash commands are parsed through `QueuedInputAction::ParseSlash`. The launcher therefore must instruct the goal-enabled agent to call `create_goal`; a positional string beginning with `/goal` would not create a persisted goal.
+
 - Observation: the current generated mapping setup already creates a private unlisted organization, disabled scrape source, inactive/unvalidated mapping, focused test, and registry fragment, but official logo normalization remains a manual gate.
   Evidence: `src/server/affiliateImports/agentTemplates/sourceFiles.ts` explicitly leaves `logoId` null and says that normalized-logo review remains manual.
 
@@ -38,8 +41,8 @@ The new path is an explicitly invoked developer command. It is not imported by t
   Rationale: the exact workflow must travel with the branch to the VM and be automatically discoverable by every Codex invocation from this repository.
   Date/Author: 2026-07-30 / Codex
 
-- Decision: launch an interactive Codex goal rather than pretending that one `codex exec` turn is a durable goal.
-  Rationale: `/goal` and automatic continuation are interactive Codex features. The launcher will require a terminal, attach one concise objective, and leave the goal/session persisted for status, pause, resume, and recovery.
+- Decision: launch interactive Codex with goals enabled and make the initial agent message call the `create_goal` tool before doing any work.
+  Rationale: the CLI does not parse a positional initial prompt as a slash command. Calling the installed goal tool creates the persisted objective while retaining the interactive terminal for status, pause, resume, and recovery.
   Date/Author: 2026-07-30 / Codex
 
 - Decision: use `gpt-5.6-luna` with `model_reasoning_effort=xhigh` exactly as an invocation override.
@@ -56,7 +59,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 
 ## Outcomes & Retrospective
 
-Implementation is in progress. The expected outcome is a pushed, VM-testable branch with no change to the website runtime and one operator command that either reports the exact missing Codex authentication step or starts the Luna x-high ingestion goal.
+The implementation is complete and validated locally. It adds a repository-discovered ingestion skill, a Luna x-high interactive launcher that creates a persisted goal before claiming work, a read-only queue-exhaustion report, and a strict terminal-result boundary. No application route, component, Prisma schema, migration, deployment file, or scheduled website process is changed by this work. The remaining step is the scoped commit and branch push for VM installation/login testing.
 
 ## Context and Orientation
 
@@ -70,13 +73,13 @@ The repository-local skill will be `.agents/skills/ingest-affiliate-intakes/SKIL
 
 The launcher will live in `scripts/run-affiliate-intake-codex-goal.ts`, with pure argument and prompt construction in `src/server/affiliateImports/codexCliGoal.ts`. Separating the pure module permits focused tests without contacting OpenAI or starting a nested agent. The launcher checks for the Codex executable and calls `codex login status`. A missing login exits before claiming or changing any intake and prints `codex login --device-auth` as the operator action.
 
-The read-only queue report will live in `scripts/report-affiliate-mapping-queue.ts`, backed by a pure summary function in `src/server/affiliateImports/sourceMappingQueueStatus.ts`. It will support local data by default and `--live` only when `DATABASE_URL_LIVE` is supplied. Its compact JSON will include claimable jobs, eligible ready intakes, active leases, review-required jobs, failed jobs, and status totals. The goal is complete only when `claimableJobs` and `eligibleReadyIntakesWithoutJob` are both zero. Failed and blocked rows remain visible but do not prevent completion.
+The read-only queue report will live in `scripts/report-affiliate-mapping-queue.ts`, backed by a pure summary function in `src/server/affiliateImports/sourceMappingQueueStatus.ts`. It will support local data by default and `--live` only when `DATABASE_URL_LIVE` is supplied. Its compact JSON will include claimable jobs, eligible ready intakes, active leases, malformed claims without leases, review-required jobs, failed jobs, and status totals. The goal is complete only when `claimableJobs`, `eligibleReadyIntakesWithoutJob`, and `claimedWithoutLease` are all zero. Failed and blocked rows remain visible but do not prevent completion.
 
 ## Plan of Work
 
 First create the repository-local skill using the standard skill initializer. Keep `SKILL.md` concise and put the exact per-intake completion contract in one referenced file. Generate `agents/openai.yaml` from the finished skill and validate the folder with the standard skill validator. The skill must forbid public-site requests when stored evidence is sufficient, forbid `TEAM` mappings, forbid invented dates or generated logos, require official logo evidence, and require source-specific validation against stored fixtures.
 
-Next add the pure Codex goal module. Define constants for the requested model and reasoning effort, build one stable goal objective under Codex's 4,000-character goal limit, and construct the interactive CLI arguments without shell interpolation. Use `--cd`, `--model gpt-5.6-luna`, `--config model_reasoning_effort=\"xhigh\"`, `--enable goals`, `--sandbox workspace-write`, and `--ask-for-approval never`. The launcher must use `spawn` or `execFile` with argument arrays, never a shell command string. It must preserve the interactive terminal so `/goal`, `/status`, pause, resume, and login flows remain usable.
+Next add the pure Codex goal module. Define constants for the requested model and reasoning effort, build one stable goal objective under Codex's 4,000-character goal limit, and construct the interactive CLI arguments without shell interpolation. Use `--cd`, `--model gpt-5.6-luna`, `--config model_reasoning_effort=\"xhigh\"`, `--enable goals`, `--sandbox workspace-write`, and `--ask-for-approval never`. The positional initial message must instruct the agent to call `create_goal` with the exact objective before doing any work. The launcher must use `spawn` or `execFile` with argument arrays, never a shell command string. It must preserve the interactive terminal so `/goal`, `/status`, pause, resume, and login flows remain usable.
 
 Then add the read-only queue report. Query status groups from `AffiliateSourceIntakes` and `AffiliateSourceMappingJobs`, count old queued or expired leased jobs as claimable, count ready intakes that do not yet have an active or finished mapping job, and print stable JSON. Do not claim, release, or finish jobs from the report.
 
@@ -128,11 +131,11 @@ The launcher starts Codex in the repository. The operator can use `/goal` to vie
 
 The pure launcher tests must prove that the requested model, x-high effort, goal feature, repository directory, workspace-write sandbox, and no-approval mode are passed as separate safe arguments. They must prove the goal text requires the repository skill, excludes failed/blocked/held-out/TEAM sources, requires mappings, organizations, logos, tests, review status, source-scoped commits, and stops only at the read-only queue exhaustion condition.
 
-The queue status tests must cover a queued job, an expired lease, an active lease, a ready intake without a mapping job, review-required and failed jobs, and stable zero-work completion.
+The queue status tests must cover a queued job, an expired lease, an active lease, a claimed job without a lease, a ready intake without a mapping job, review-required and failed jobs, and stable zero-work completion.
 
 The skill validator must accept the repo-local skill. Focused Jest and TypeScript must pass. `git diff --check` must report no whitespace errors. The final staged diff must contain no application route, React component, Prisma schema, migration, production compose, or deployment-script change.
 
-On the VM, `codex login status` must pass before the launcher starts. A launcher dry run must not write the database, claim a job, contact a public source, or launch an agent. The real launcher must visibly report `gpt-5.6-luna` and `xhigh`; `/goal` must show the ingestion objective. The goal is done only when the queue report returns both completion counts as zero and the progress log lists all review-ready and skipped intakes.
+On the VM, `codex login status` must pass before the launcher starts. A launcher dry run must not write the database, claim a job, contact a public source, or launch an agent. The real launcher must visibly report `gpt-5.6-luna` and `xhigh`; `/goal` must show the ingestion objective. The goal is done only when the queue report returns all three completion counts as zero and the progress log lists all review-ready and skipped intakes.
 
 ## Idempotence and Recovery
 
@@ -184,3 +187,5 @@ The script may query Prisma rows, but the summary function must not import Prism
 `scripts/report-affiliate-mapping-queue.ts` must configure `DATABASE_URL` from `DATABASE_URL_LIVE` only when `--live` is explicitly present and must execute read-only Prisma queries.
 
 Revision note (2026-07-30): Created this plan to add the user-requested Codex Luna x-high ingestion option as a durable VM goal while preserving the existing evidence, review, publication, and training-data boundaries.
+
+Revision note (2026-07-31): Recorded the CLI positional-prompt discovery, switched durable goal creation to the `create_goal` tool, added malformed-lease handling to the stop condition, and recorded successful local validation.
