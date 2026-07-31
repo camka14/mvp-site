@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
 
 dotenv.config({ quiet: true });
@@ -16,11 +17,7 @@ const readOption = (name: string): string | undefined => {
 
 const useLive = process.argv.includes('--live');
 if (useLive) {
-  if (!process.env.DATABASE_URL_LIVE?.trim()) {
-    throw new Error('DATABASE_URL_LIVE is required with --live.');
-  }
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
 }
 
 const main = async () => {

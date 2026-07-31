@@ -11,6 +11,7 @@ import {
   selectAffiliateSourceIntakeExportRun,
 } from '../src/server/affiliateImports/sourceIntakeExport';
 import {
+  configureAffiliateLiveDatabaseEnvironment,
   resolveAffiliateDatasetEnvironment,
 } from '../src/server/affiliateImports/agentRepository';
 
@@ -24,9 +25,10 @@ if (useLive) {
   }
   const isCurrentProductionDatabase = process.env.NODE_ENV === 'production'
     && process.env.DATABASE_URL?.trim() === process.env.DATABASE_URL_LIVE.trim();
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  if (!isCurrentProductionDatabase) {
-    process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  if (isCurrentProductionDatabase) {
+    process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
+  } else {
+    configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   }
   process.env.STORAGE_PROVIDER = 'spaces';
 }

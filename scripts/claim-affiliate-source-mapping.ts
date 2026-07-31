@@ -1,15 +1,14 @@
 import dotenv from 'dotenv';
 import { execFileSync } from 'child_process';
 import path from 'path';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 const useLive = process.argv.includes('--live');
 if (useLive) {
-  if (!process.env.DATABASE_URL_LIVE?.trim()) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 
