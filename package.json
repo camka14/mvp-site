@@ -81,6 +81,7 @@
     "affiliate:setup:gotham-soccer-new-york-city": "tsx scripts/setup-gotham-soccer-new-york-city-affiliate-source.ts",
     "affiliate:setup:manhattan-soccer-club": "tsx scripts/setup-manhattan-soccer-club-affiliate-source.ts",
     "affiliate:setup:new-york-diamond-girls": "tsx scripts/setup-new-york-diamond-girls-affiliate-source.ts",
+    "affiliate:setup:neaau-new-york-city": "tsx scripts/setup-neaau-new-york-city-affiliate-source.ts",
     "affiliate:setup:503-baseball": "tsx scripts/setup-503-baseball-affiliate-source.ts",
     "affiliate:setup:cascade-athletic-clubs-gresham": "tsx scripts/setup-cascade-athletic-clubs-gresham-affiliate-source.ts",
     "affiliate:setup:nw-futures-baseball": "tsx scripts/setup-nw-futures-baseball-affiliate-source.ts",

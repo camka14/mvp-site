@@ -327,6 +327,10 @@ Live intake `new-york-new-york-metropolitan-area-manhattan-soccer-club-nyc-s-lar
 
 Live intake `new-york-new-york-metropolitan-area-tryouts-newyorkdiamondgirls-com`, run `5a75a085-3c8f-4dc5-acb6-b644084e2876`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official pages support one ongoing `CLUB` candidate for New York Diamond Girls Softball in Western New York and Southern Ontario, with softball, training, development, recruiting, camps, clinics, and college showcase tournament context. The source announces 2026-2027 tryouts but the stored tryouts page has no complete current date/time/venue/price/action row; the 2026 clinic and tournaments are past as of review, so all dated rows are withheld and no TEAM candidate is created. The first-party New York Diamond Girls logo is normalized to an opaque 1024px PNG. Local key `new-york-diamond-girls` owns `affiliate_org_new_york_diamond_girls` and `affiliate_mapping_new_york_diamond_girls_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
 
+### 2026-07-31 NEAAU New York City intake
+
+Live intake `new-york-new-york-metropolitan-area-new-york-city-neaauvolleyball-org`, run `7811f4f1-3dcb-4055-9ded-2c01b78c3d9b`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official New York City listing supports one future `EVENT` candidate for NEAAU Volleyball: March 12-14, 2027 at Javits on the Hudson, girls 12-18 and boys 14-18, a seven-game guarantee, $995 per team, and the stored SportWrench registration URL. Individual game times are not published and are not invented. Stored logo candidates are NYC Tourism, SportsEngine, and AAU marks rather than a supportable NEAAU organization mark, so the organization logo is explicitly `MANUAL_REVIEW`. Local key `neaau-new-york-city` owns `affiliate_org_neaau_volleyball` and `affiliate_mapping_neaau_new_york_city_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had
