@@ -761,7 +761,11 @@ class OrganizationService {
 
   async listOrganizationsWithFields(
     limit: number = 100,
-    options: { includeAffiliateRentals?: boolean; tagSlugs?: string[] } = {},
+    options: {
+      includeAffiliateRentals?: boolean;
+      hydrateRelations?: boolean;
+      tagSlugs?: string[];
+    } = {},
   ): Promise<Organization[]> {
     const page = await this.listOrganizationsWithFieldsPage(limit, 0, options);
     return page.organizations;
