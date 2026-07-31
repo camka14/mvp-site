@@ -323,6 +323,10 @@ Live intake `new-york-new-york-metropolitan-area-new-york-city-gothamsoccer-com`
 
 Live intake `new-york-new-york-metropolitan-area-manhattan-soccer-club-nyc-s-largest-soccer-club-manhattansc-org`, run `e8726ad7-7415-41fa-8e54-4b02e160cc14`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored Manhattan Soccer Club homepage supports one ongoing `CLUB` candidate in New York City with youth soccer, camps, clinics, and training context. Linked Summer Camp 2026 and tryout pages were not captured with complete current event rows, so they remain withheld; no TEAM candidate is created. The official Manhattan SC crest is normalized to an opaque 1024px PNG. Local key `manhattan-soccer-club` owns `affiliate_org_manhattan_soccer_club` and `affiliate_mapping_manhattan_soccer_club_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
 
+### 2026-07-31 New York Diamond Girls Softball intake
+
+Live intake `new-york-new-york-metropolitan-area-tryouts-newyorkdiamondgirls-com`, run `5a75a085-3c8f-4dc5-acb6-b644084e2876`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official pages support one ongoing `CLUB` candidate for New York Diamond Girls Softball in Western New York and Southern Ontario, with softball, training, development, recruiting, camps, clinics, and college showcase tournament context. The source announces 2026-2027 tryouts but the stored tryouts page has no complete current date/time/venue/price/action row; the 2026 clinic and tournaments are past as of review, so all dated rows are withheld and no TEAM candidate is created. The first-party New York Diamond Girls logo is normalized to an opaque 1024px PNG. Local key `new-york-diamond-girls` owns `affiliate_org_new_york_diamond_girls` and `affiliate_mapping_new_york_diamond_girls_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had
