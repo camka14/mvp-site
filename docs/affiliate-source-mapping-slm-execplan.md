@@ -214,7 +214,7 @@ Work from `/Users/elesesy/StudioProjects/mvp-site`. This is a Next.js App Router
 
 A source intake is a durable, policy-reviewed capture of a proposed website. The relevant Prisma records are `AffiliateSourceIntakes`, `AffiliateSourceIntakePages`, `AffiliateSourceIntakeRuns`, and `AffiliateSourceIntakeArtifacts`. The exporter in `scripts/export-affiliate-source-intake.ts` writes a reproducible bundle under `output/affiliate-intakes/<source-key>/<run-id>/`. That ignored directory includes `manifest.json`, `source-evidence.json`, `SOURCE-EVIDENCE.md`, and stored HTML, Markdown, screenshots, links, images, branding, logo candidates, robots evidence, and provider envelopes.
 
-An approved scrape source is an `AffiliateScrapeSources` row associated with a versioned `AffiliateScrapeMappings` row. The mapping is parsed by `affiliateScrapeMappingSchema` in `src/server/affiliateImports/types.ts`. Ordinary mappings describe a repeated `itemSelector`, field selectors, extraction modes, transforms, optional detail-page rules, dedupe fields, or `manualCandidates`. The importer converts the mapped rows to unpublished review candidates of kind `EVENT`, `RENTAL`, `TEAM`, or `CLUB`.
+An approved scrape source is an `AffiliateScrapeSources` row associated with a versioned `AffiliateScrapeMappings` row. The mapping is parsed by `affiliateScrapeMappingSchema` in `src/server/affiliateImports/types.ts`. Ordinary mappings describe a repeated `itemSelector`, field selectors, extraction modes, transforms, optional detail-page rules, dedupe fields, or `manualCandidates`. The global importer retains `TEAM` support for legacy records and non-agent workflows, but the mapping agent is deliberately narrower: it may create only unpublished `EVENT`, `RENTAL`, or `CLUB` review candidates. A club's teams or programs must be represented by the club and its evidence-backed events rather than new affiliate team records.
 
 The mapping queue is already present. `AffiliateSourceMappingJobs` stores the intake, status, lease, worker, attempt count, optional branch and commit, a JSON result summary, errors, and timestamps. `src/server/affiliateImports/sourceMappingQueue.ts` owns claim, release, and finish behavior. `npm run affiliate:mapping:claim -- --worker=<name>` claims an eligible intake and exports its evidence. The new system must reuse this queue and may initially store worker, model, evaluation, Sol-review, and dataset eligibility details inside the existing `resultSummary` JSON. Do not add schema fields unless implementation proves that a value needs indexed querying or relational integrity.
 
@@ -259,7 +259,7 @@ For an unmatched permitted source, the report proposes a new intake and the mini
 
 Export versioned JSONL beneath ignored `output/affiliate-mapping-agent/datasets/<dataset-id>/`. Commit only schemas, small invented fixtures, manifests without source content, and scripts. Store durable private dataset objects in BracketIQ-controlled object storage under a versioned prefix. The manifest records repository commit, database environment, query timestamp, example IDs, evidence labels, registrable domains, detected platforms, artifact hashes, redaction version, and train/validation/test assignment.
 
-Split whole registrable domains, and where practical whole hosted platforms or CMS template families, across train, validation, and test sets. Never place pages from one organization in both train and test. Keep at least 30 diverse sources in the initial test suite, including every target kind, selector mappings, manual candidates, detail-page mappings, JavaScript-rendered pages, blocked pages, insufficient evidence, and two custom-extractor-required cases.
+Split whole registrable domains, and where practical whole hosted platforms or CMS template families, across train, validation, and test sets. Never place pages from one organization in both train and test. Keep at least 30 diverse sources in the initial test suite, including every agent target kind (`EVENT`, `RENTAL`, and `CLUB`), selector mappings, manual candidates, detail-page mappings, JavaScript-rendered pages, blocked pages, insufficient evidence, and two custom-extractor-required cases.
 
 Sol may help reconstruct a proposed gold result, but a human must approve a row before it becomes `FAITHFUL`. Historical existence and `validatedAt` alone are not approval for model training.
 
@@ -641,7 +641,7 @@ The central draft shape must expose at least:
         | 'CUSTOM_EXTRACTOR_REQUIRED'
         | 'BLOCKED'
         | 'INSUFFICIENT_EVIDENCE';
-      listingKind: 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB' | null;
+      listingKind: 'EVENT' | 'RENTAL' | 'CLUB' | null;
       evidence: Array<{
         artifactKind: string;
         artifactSha256: string;

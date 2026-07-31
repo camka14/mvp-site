@@ -3,9 +3,16 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import {
-  assertLockedGoldCaptureCohort,
   planGoldCaptureBatches,
+  resolveGoldCaptureOperationMode,
+  resolveGoldCaptureMaxAttempts,
 } from '../src/server/affiliateImports/agentGoldCaptureCohort';
+import {
+  resolveAffiliateEvidenceCaptureSelection,
+} from '../src/server/affiliateImports/agentEvidenceCapturePlan';
+import {
+  resolveApprovedAffiliateTrainingRecoverySelection,
+} from '../src/server/affiliateImports/agentTrainingAcquisitionPlan';
 
 const execFileAsync = promisify(execFile);
 const tsxPath = path.resolve('node_modules', '.bin', 'tsx');
@@ -43,44 +50,100 @@ const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => 
 });
 
 const main = async () => {
-  const shouldApply = process.argv.includes('--apply');
+  const operationMode = resolveGoldCaptureOperationMode(process.argv.slice(2));
+  const shouldApply = operationMode === 'apply';
+  const auditOnly = operationMode === 'audit-only';
   const approveExisting = process.argv.includes('--approve-existing');
   const exportCurrentDatabase = process.argv.includes('--export-current-database');
+  const evidenceEnvironment = readOption('--evidence-environment');
+  if (
+    evidenceEnvironment
+    && evidenceEnvironment !== 'local'
+    && evidenceEnvironment !== 'live'
+  ) {
+    throw new Error('--evidence-environment must be local or live.');
+  }
   const storageProvider = readOption('--storage-provider');
+  const maximumAttempts = resolveGoldCaptureMaxAttempts(readOption('--max-attempts'));
   if (storageProvider && storageProvider !== 'local' && storageProvider !== 'spaces') {
     throw new Error('--storage-provider must be local or spaces.');
   }
   if (storageProvider) process.env.STORAGE_PROVIDER = storageProvider;
   if (approveExisting && !shouldApply) throw new Error('--approve-existing requires --apply.');
-  const proposalPath = path.resolve(
-    readOption('--proposal')
+  const capturePlanOption = readOption('--capture-plan');
+  const selectionPath = path.resolve(
+    capturePlanOption
+      ?? readOption('--proposal')
       ?? 'output/affiliate-mapping-agent/gold-cohorts/affiliate-mapping-test-d9de7ef53d2c82d1/proposal.json',
   );
-  const lockPath = path.resolve(
-    readOption('--lock') ?? path.join(path.dirname(proposalPath), 'lock.json'),
+  const approvalPath = path.resolve(
+    capturePlanOption
+      ? readOption('--capture-approval') ?? path.join(path.dirname(selectionPath), 'approval.json')
+      : readOption('--lock') ?? path.join(path.dirname(selectionPath), 'lock.json'),
   );
-  const { proposal } = assertLockedGoldCaptureCohort(
-    JSON.parse(await fs.readFile(proposalPath, 'utf8')),
-    JSON.parse(await fs.readFile(lockPath, 'utf8')),
+  const selection = resolveAffiliateEvidenceCaptureSelection(
+    JSON.parse(await fs.readFile(selectionPath, 'utf8')),
+    JSON.parse(await fs.readFile(approvalPath, 'utf8')),
   );
+  const proposal = {
+    cohortId: selection.selectionId,
+    proposalSha256: selection.selectionSha256,
+    examples: selection.examples,
+  };
+  const acquisitionPlanOption = readOption('--acquisition-plan');
+  const acquisitionApprovalOption = readOption('--acquisition-approval');
+  if (acquisitionApprovalOption && !acquisitionPlanOption) {
+    throw new Error('--acquisition-approval requires --acquisition-plan.');
+  }
+  let acquisitionSelection: ReturnType<
+    typeof resolveApprovedAffiliateTrainingRecoverySelection
+  > | null = null;
+  if (acquisitionPlanOption) {
+    const acquisitionPlanPath = path.resolve(acquisitionPlanOption);
+    const acquisitionApprovalPath = path.resolve(
+      acquisitionApprovalOption
+        ?? path.join(path.dirname(acquisitionPlanPath), 'approval.json'),
+    );
+    acquisitionSelection = resolveApprovedAffiliateTrainingRecoverySelection(
+      JSON.parse(await fs.readFile(acquisitionPlanPath, 'utf8')),
+      JSON.parse(await fs.readFile(acquisitionApprovalPath, 'utf8')),
+    );
+    if (
+      acquisitionSelection.sourceCapturePlanId !== selection.selectionId
+      || acquisitionSelection.sourceCapturePlanSha256 !== selection.selectionSha256
+    ) {
+      throw new Error('Approved acquisition scope does not match the evidence capture plan.');
+    }
+  }
+  const approvedRecoverySourceKeys = acquisitionSelection
+    ? new Set(
+      acquisitionSelection.recoveryCandidates.map((candidate) => candidate.sourceKey),
+    )
+    : null;
   const onlySourceKey = readOption('--source-key');
   const sourceLimit = readLimit();
   const examples = proposal.examples
+    .filter((example) => (
+      !approvedRecoverySourceKeys || approvedRecoverySourceKeys.has(example.sourceKey)
+    ))
     .filter((example) => !onlySourceKey || example.sourceKey === onlySourceKey)
     .slice(0, sourceLimit);
   if (!examples.length) throw new Error('No locked cohort source matched the requested selection.');
 
   const reportPath = path.resolve(
     readOption('--report')
-      ?? path.join(path.dirname(proposalPath), 'capture-progress.json'),
+      ?? path.join(path.dirname(selectionPath), 'capture-progress.json'),
   );
   const report = {
     schemaVersion: 1,
     cohortId: proposal.cohortId,
     proposalSha256: proposal.proposalSha256,
+    acquisitionPlanId: acquisitionSelection?.selectionId ?? null,
+    acquisitionPlanSha256: acquisitionSelection?.selectionSha256 ?? null,
     startedAt: new Date().toISOString(),
     completedAt: null as string | null,
-    mode: shouldApply ? 'apply' : 'dry-run',
+    mode: operationMode,
+    maximumAttempts,
     sourceCount: examples.length,
     sources: [] as Array<Record<string, any>>,
   };
@@ -107,21 +170,29 @@ const main = async () => {
       };
       sourceResult.batches.push(batchResult);
       try {
-        for (let attempt = 0; attempt < Math.max(5, batches[batchIndex].length + 1); attempt += 1) {
+        for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
           const prepare = await runJsonCommand(
             'scripts/prepare-affiliate-mapping-gold-capture.ts',
             [
-              `--proposal=${proposalPath}`,
-              `--lock=${lockPath}`,
+              ...(capturePlanOption
+                ? [
+                    `--capture-plan=${selectionPath}`,
+                    `--capture-approval=${approvalPath}`,
+                  ]
+                : [
+                    `--proposal=${selectionPath}`,
+                    `--lock=${approvalPath}`,
+                  ]),
               `--source-key=${example.sourceKey}`,
               `--batch=${batchIndex + 1}`,
               ...(shouldApply ? ['--apply', '--queue'] : []),
+              ...(auditOnly ? ['--audit-only'] : []),
               ...(approveExisting ? ['--approve-existing'] : []),
             ],
           );
           batchResult.prepareAttempts.push(prepare);
           const queueStatus = String(prepare.queueStatus ?? '');
-          if (!shouldApply) {
+          if (operationMode === 'dry-run') {
             batchResult.status = 'DRY_RUN_COMPLETE';
             break;
           }
@@ -130,6 +201,10 @@ const main = async () => {
             'BLOCKED_SOURCE_RECORDED',
           ].includes(queueStatus)) {
             batchResult.status = queueStatus;
+            break;
+          }
+          if (auditOnly) {
+            batchResult.status = queueStatus || 'AUDIT_INCOMPLETE';
             break;
           }
           if (queueStatus === 'COMPLIANCE_REVIEW_REQUIRED') {
@@ -164,6 +239,9 @@ const main = async () => {
               'scripts/export-affiliate-source-intake.ts',
               [
                 ...(!exportCurrentDatabase ? ['--live'] : []),
+                ...(evidenceEnvironment
+                  ? [`--environment=${evidenceEnvironment}`]
+                  : []),
                 `--source-key=${prepare.queuedIntakeSourceKey ?? prepare.intakeSourceKey}`,
                 `--run-id=${processedRun.runId}`,
               ],
@@ -174,7 +252,9 @@ const main = async () => {
           }
         }
         if (batchResult.status === 'IN_PROGRESS') {
-          throw new Error('Capture batch did not reach a terminal evidence state after five attempts.');
+          throw new Error(
+            `Capture batch did not reach a terminal evidence state after ${maximumAttempts} attempts.`,
+          );
         }
       } catch (error) {
         batchResult.status = 'FAILED';

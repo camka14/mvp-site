@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  assertAffiliateMappingSftReleaseIntegrity,
   buildAffiliateMappingSftRelease,
 } from '../agentTrainingRelease';
 import { stableAgentArtifactSha256 } from '../agentContracts';
@@ -151,5 +152,25 @@ describe('affiliate mapping SFT release', () => {
       releaseId: 'bad',
       createdAt: new Date(),
     })).toThrow('leaks across');
+  });
+
+  it('rejects legacy TEAM target hints before release construction', () => {
+    const withTeamHint = envelope();
+    withTeamHint.context.targetKindHints = ['TEAM'] as never;
+    expect(() => buildAffiliateMappingSftRelease([withTeamHint], {
+      releaseId: 'bad',
+      createdAt: new Date(),
+    })).toThrow();
+  });
+
+  it('detects SFT manifest tampering', () => {
+    const release = buildAffiliateMappingSftRelease([envelope()], {
+      releaseId: 'release-v1',
+      createdAt: new Date('2026-07-29T20:10:00.000Z'),
+    });
+    release.manifest.counts.train = 0;
+
+    expect(() => assertAffiliateMappingSftReleaseIntegrity(release))
+      .toThrow('counts do not match');
   });
 });

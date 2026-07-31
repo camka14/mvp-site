@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  affiliateAgentTargetKindSchema,
   affiliateMappingTrainingExampleSchema,
   affiliateSourceDraftSchema,
   stableAgentArtifactSha256,
@@ -19,13 +20,16 @@ const mappingJobContextSchema = z.object({
   intakeId: nonEmptyStringSchema,
   sourceKey: nonEmptyStringSchema,
   runId: nonEmptyStringSchema,
+  evidenceRunIds: z.array(nonEmptyStringSchema).min(1).optional(),
   policyDisposition: z.enum(['ALLOWED', 'BLOCKED', 'NEEDS_REVIEW']),
-  targetKindHints: z.array(z.enum(['EVENT', 'RENTAL', 'TEAM', 'CLUB'])),
+  targetKindHints: z.array(affiliateAgentTargetKindSchema),
   artifacts: z.array(z.object({
     kind: nonEmptyStringSchema,
     sha256: sha256Schema,
     pageUrl: z.string().url(),
     byteLength: z.number().int().nonnegative().optional(),
+    intakeId: nonEmptyStringSchema.optional(),
+    runId: nonEmptyStringSchema.optional(),
   }).strict()).min(1),
   evidenceExcerpts: z.array(z.object({
     kind: nonEmptyStringSchema,
@@ -80,6 +84,43 @@ export type AffiliateMappingSftRelease = {
   };
   rows: AffiliateMappingSftRow[];
 };
+
+const affiliateMappingSftRowSchema = z.object({
+  schemaVersion: z.literal(1),
+  exampleId: nonEmptyStringSchema,
+  split: z.enum(['train', 'validation', 'test']),
+  registrableDomain: nonEmptyStringSchema,
+  evidenceLabel: z.enum(['FAITHFUL', 'BLOCKED']),
+  sourceEnvelopeSha256: sha256Schema,
+  messages: z.array(z.object({
+    role: z.enum(['system', 'user', 'assistant']),
+    content: z.string(),
+  }).strict()).length(3),
+}).strict();
+
+export const affiliateMappingSftReleaseSchema = z.object({
+  manifest: z.object({
+    schemaVersion: z.literal(1),
+    releaseId: nonEmptyStringSchema,
+    createdAt: z.string().datetime({ offset: true }),
+    promptContractVersion: z.literal(1),
+    systemPromptSha256: sha256Schema,
+    sourceEnvelopeSha256s: z.array(sha256Schema),
+    rowSha256s: z.array(sha256Schema),
+    counts: z.object({
+      train: z.number().int().nonnegative(),
+      validation: z.number().int().nonnegative(),
+      test: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    }).strict(),
+    registrableDomains: z.object({
+      train: z.array(nonEmptyStringSchema),
+      validation: z.array(nonEmptyStringSchema),
+      test: z.array(nonEmptyStringSchema),
+    }).strict(),
+  }).strict(),
+  rows: z.array(affiliateMappingSftRowSchema),
+}).strict();
 
 const forbiddenTrainingDataPatterns: Array<{ label: string; pattern: RegExp }> = [
   { label: 'private key', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/i },
@@ -207,7 +248,7 @@ export const buildAffiliateMappingSftRelease = (
   const domainsForSplit = (split: AffiliateMappingSftRow['split']) => Array.from(new Set(
     forSplit(split).map((row) => row.registrableDomain),
   )).sort();
-  return {
+  return assertAffiliateMappingSftReleaseIntegrity({
     manifest: {
       schemaVersion: 1,
       releaseId,
@@ -229,7 +270,88 @@ export const buildAffiliateMappingSftRelease = (
       },
     },
     rows,
+  });
+};
+
+export const assertAffiliateMappingSftReleaseIntegrity = (
+  value: unknown,
+): AffiliateMappingSftRelease => {
+  const release = affiliateMappingSftReleaseSchema.parse(value) as AffiliateMappingSftRelease;
+  const rows = release.rows;
+  const expectedSourceEnvelopeSha256s = rows.map((row) => row.sourceEnvelopeSha256);
+  const expectedRowSha256s = rows.map((row) => stableAgentArtifactSha256(row));
+  const expectedCounts = {
+    train: rows.filter((row) => row.split === 'train').length,
+    validation: rows.filter((row) => row.split === 'validation').length,
+    test: rows.filter((row) => row.split === 'test').length,
+    total: rows.length,
   };
+  const domainsForSplit = (split: AffiliateMappingSftRow['split']) => Array.from(new Set(
+    rows.filter((row) => row.split === split).map((row) => row.registrableDomain),
+  )).sort();
+  const expectedDomains = {
+    train: domainsForSplit('train'),
+    validation: domainsForSplit('validation'),
+    test: domainsForSplit('test'),
+  };
+  const assertArrayMatches = (
+    label: string,
+    actual: string[],
+    expected: string[],
+  ) => {
+    if (
+      actual.length !== expected.length
+      || actual.some((item, index) => item !== expected[index])
+    ) {
+      throw new Error(`SFT release ${label} do not match its rows.`);
+    }
+  };
+  assertArrayMatches(
+    'source envelope hashes',
+    release.manifest.sourceEnvelopeSha256s,
+    expectedSourceEnvelopeSha256s,
+  );
+  assertArrayMatches('row hashes', release.manifest.rowSha256s, expectedRowSha256s);
+  for (const split of ['train', 'validation', 'test'] as const) {
+    assertArrayMatches(
+      `${split} domains`,
+      release.manifest.registrableDomains[split],
+      expectedDomains[split],
+    );
+  }
+  if (JSON.stringify(release.manifest.counts) !== JSON.stringify(expectedCounts)) {
+    throw new Error('SFT release counts do not match its rows.');
+  }
+  if (
+    release.manifest.systemPromptSha256
+    !== stableAgentArtifactSha256(AFFILIATE_MAPPING_SYSTEM_PROMPT)
+  ) {
+    throw new Error('SFT release system prompt hash does not match the current contract.');
+  }
+  const ids = new Set<string>();
+  const domainSplits = new Map<string, AffiliateMappingSftRow['split']>();
+  for (const row of rows) {
+    if (
+      row.messages[0]?.role !== 'system'
+      || row.messages[0].content !== AFFILIATE_MAPPING_SYSTEM_PROMPT
+      || row.messages[1]?.role !== 'user'
+      || row.messages[2]?.role !== 'assistant'
+    ) {
+      throw new Error(`${row.exampleId} does not use the frozen system/user/assistant message order.`);
+    }
+    if (ids.has(row.exampleId)) {
+      throw new Error(`Duplicate training example id: ${row.exampleId}.`);
+    }
+    ids.add(row.exampleId);
+    const existingSplit = domainSplits.get(row.registrableDomain);
+    if (existingSplit && existingSplit !== row.split) {
+      throw new Error(
+        `Domain ${row.registrableDomain} leaks across ${existingSplit} and ${row.split}.`,
+      );
+    }
+    domainSplits.set(row.registrableDomain, row.split);
+  }
+  return release;
 };
 
 export const renderAffiliateMappingSftJsonLines = (

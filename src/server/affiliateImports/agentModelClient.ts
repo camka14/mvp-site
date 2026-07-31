@@ -1,4 +1,5 @@
 import type {
+  AffiliateAgentTargetKind,
   AffiliateSourceDraft,
   ModelRevision,
 } from './agentContracts';
@@ -10,6 +11,8 @@ export type AffiliateMappingJobArtifact = {
   sha256: string;
   pageUrl: string;
   byteLength?: number;
+  intakeId?: string;
+  runId?: string;
 };
 
 export type AffiliateMappingJobContext = {
@@ -17,8 +20,9 @@ export type AffiliateMappingJobContext = {
   intakeId: string;
   sourceKey: string;
   runId: string;
+  evidenceRunIds?: string[];
   policyDisposition: 'ALLOWED' | 'BLOCKED' | 'NEEDS_REVIEW';
-  targetKindHints: Array<'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB'>;
+  targetKindHints: AffiliateAgentTargetKind[];
   artifacts: AffiliateMappingJobArtifact[];
   evidenceExcerpts?: Array<{
     kind: string;
@@ -71,6 +75,8 @@ export const AFFILIATE_MAPPING_SYSTEM_PROMPT = [
   'Return exactly one JSON AffiliateSourceDraft matching the supplied schema.',
   'Use only supplied artifact and repository excerpts.',
   'Cite exact artifact SHA-256 values for every supported claim.',
+  'The only supported target kinds are EVENT, RENTAL, and CLUB.',
+  'Never create a TEAM mapping or TEAM candidate; represent an organization or its programs as CLUB or EVENT as supported by evidence.',
   'Never invent dates, action URLs, locations, prices, divisions, tags, or logos.',
   'For BLOCKED policy return BLOCKED with no mapping.',
   'For missing evidence return INSUFFICIENT_EVIDENCE with no mapping.',

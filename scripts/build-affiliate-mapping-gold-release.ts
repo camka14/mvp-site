@@ -3,8 +3,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
   affiliateMappingGoldFixtureManifest,
+  assertAffiliateMappingGoldReleaseIntegrity,
   buildAffiliateMappingGoldRelease,
   renderAffiliateMappingGoldJsonLines,
+  type AffiliateMappingGoldRelease,
 } from '../src/server/affiliateImports/agentGoldDataset';
 import { stableAgentArtifactSha256 } from '../src/server/affiliateImports/agentContracts';
 
@@ -29,6 +31,38 @@ const readJsonLines = async (filePath: string): Promise<unknown[]> => (
     })
 );
 
+const releaseDirectoryFor = (inputPath: string): string => {
+  const resolved = path.resolve(inputPath);
+  return path.basename(resolved) === 'manifest.json' ? path.dirname(resolved) : resolved;
+};
+
+const readGoldRelease = async (inputPath: string): Promise<{
+  release: AffiliateMappingGoldRelease;
+  releaseSha256: string;
+}> => {
+  const directory = releaseDirectoryFor(inputPath);
+  const examples = (
+    await Promise.all((['train', 'validation', 'test'] as const).map(
+      (split) => readJsonLines(path.join(directory, `${split}.jsonl`)),
+    ))
+  ).flat().sort((left, right) => (
+    String((left as { exampleId?: unknown }).exampleId)
+      .localeCompare(String((right as { exampleId?: unknown }).exampleId))
+  ));
+  const release = assertAffiliateMappingGoldReleaseIntegrity({
+    manifest: JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8')),
+    examples,
+  });
+  const releaseSha256 = stableAgentArtifactSha256(release);
+  const recordedReleaseSha256 = (
+    await fs.readFile(path.join(directory, 'release.sha256'), 'utf8')
+  ).trim();
+  if (recordedReleaseSha256 !== releaseSha256) {
+    throw new Error(`Gold release hash mismatch for ${release.manifest.releaseId}.`);
+  }
+  return { release, releaseSha256 };
+};
+
 const main = async () => {
   const inputOption = readOption('--input');
   const releaseId = readOption('--release') ?? '';
@@ -44,7 +78,12 @@ const main = async () => {
     cwd: process.cwd(),
     encoding: 'utf8',
   }).trim();
-  const release = buildAffiliateMappingGoldRelease(await readJsonLines(inputPath), {
+  const baseGoldOption = readOption('--base-gold-release');
+  const baseGold = baseGoldOption ? await readGoldRelease(baseGoldOption) : null;
+  const release = buildAffiliateMappingGoldRelease([
+    ...(baseGold?.release.examples ?? []),
+    ...await readJsonLines(inputPath),
+  ], {
     releaseId,
     createdAt: new Date(),
     repositoryCommit,
@@ -89,6 +128,8 @@ const main = async () => {
   console.log(JSON.stringify({
     releaseDirectory,
     releaseSha256,
+    baseGoldReleaseId: baseGold?.release.manifest.releaseId ?? null,
+    baseGoldReleaseSha256: baseGold?.releaseSha256 ?? null,
     manifest: release.manifest,
     databaseWrites: 0,
     publicRequests: 0,

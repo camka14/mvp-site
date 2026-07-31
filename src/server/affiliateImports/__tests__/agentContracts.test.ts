@@ -241,6 +241,37 @@ describe('affiliate mapping agent contracts', () => {
     expect(result.error?.issues.some((issue) => issue.path.join('.') === 'mapping.kind')).toBe(true);
   });
 
+  it('rejects TEAM output and executable drafts without an allowed listing kind', () => {
+    const teamResult = affiliateSourceDraftSchema.safeParse({
+      ...allowedDraft,
+      listingKind: null,
+      mapping: {
+        ...genericMapping,
+        kind: 'TEAM',
+      },
+    });
+    expect(teamResult.success).toBe(false);
+    expect(teamResult.error?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        path: ['listingKind'],
+        message: expect.stringContaining('EVENT, RENTAL, or CLUB'),
+      }),
+      expect.objectContaining({
+        path: ['mapping', 'kind'],
+        message: expect.stringContaining('cannot create TEAM mappings'),
+      }),
+    ]));
+
+    const missingKindResult = affiliateSourceDraftSchema.safeParse({
+      ...allowedDraft,
+      listingKind: null,
+    });
+    expect(missingKindResult.success).toBe(false);
+    expect(missingKindResult.error?.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ['listingKind'] }),
+    ]));
+  });
+
   it('requires open-weight permissions and an offline cold start for promotion', () => {
     expect(openWeightModelManifestSchema.parse(modelManifest)).toEqual(modelManifest);
     expect(assertOpenWeightModelEligible(modelManifest, {

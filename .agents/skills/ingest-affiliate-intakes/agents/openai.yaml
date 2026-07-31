@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ingest Affiliate Intakes"
+  short_description: "Build reviewed org packages from intakes"
+  default_prompt: "Use $ingest-affiliate-intakes to process eligible BracketIQ affiliate intakes until the mapping queue is exhausted."

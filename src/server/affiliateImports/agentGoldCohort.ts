@@ -6,7 +6,11 @@ import {
   type HistoricalDatasetInventoryRow,
   type HistoricalSourceRow,
 } from './agentDataset';
-import { stableAgentArtifactSha256 } from './agentContracts';
+import {
+  isAffiliateAgentTargetKind,
+  stableAgentArtifactSha256,
+  type AffiliateAgentTargetKind,
+} from './agentContracts';
 import { affiliateScrapeMappingSchema, type AffiliateScrapeMapping } from './types';
 
 export type AffiliateGoldCohortMappingMode =
@@ -26,7 +30,7 @@ export type AffiliateGoldCohortCandidate = {
   sourceKey: string;
   sourceName: string;
   sourceUrl: string;
-  targetKind: 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB';
+  targetKind: AffiliateAgentTargetKind;
   sourceStatus: string;
   registrableDomain: string;
   platformFamily: string | null;
@@ -47,6 +51,7 @@ export type AffiliateGoldCohortCandidate = {
     | 'PROPOSE_INTAKE'
     | 'RECORD_BLOCKED';
   requiredCapturePages: Array<{ url: string; role: string }>;
+  preservedSelectionReasons?: string[];
 };
 
 export type AffiliateGoldCohortProposalExample = AffiliateGoldCohortCandidate & {
@@ -118,9 +123,9 @@ const affiliateGoldCohortProposalBody = (
   deficits: proposal.deficits,
 });
 
-export const assertAffiliateGoldCohortProposalIntegrity = (
+export function assertAffiliateGoldCohortProposalIntegrity(
   value: unknown,
-): asserts value is AffiliateGoldCohortProposal => {
+): asserts value is AffiliateGoldCohortProposal {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Cohort proposal must be a JSON object.');
   }
@@ -160,6 +165,181 @@ export const assertAffiliateGoldCohortProposalIntegrity = (
   if (proposal.readyToLock !== (proposal.deficits.length === 0)) {
     throw new Error('Cohort proposal readiness does not match its recorded deficits.');
   }
+}
+
+const proposalExampleAsCandidate = (
+  example: AffiliateGoldCohortProposalExample,
+): AffiliateGoldCohortCandidate => {
+  const {
+    scenarioIntent: _scenarioIntent,
+    approvalStatus: _approvalStatus,
+    selectionReasons,
+    ...candidate
+  } = example;
+  return {
+    ...candidate,
+    preservedSelectionReasons: selectionReasons,
+  };
+};
+
+export const buildAffiliateGoldCohortRevisionCandidates = (input: {
+  proposal: AffiliateGoldCohortProposal;
+  currentCandidates: AffiliateGoldCohortCandidate[];
+  removeSourceKeys: string[];
+  replacementSourceKeys: string[];
+}): AffiliateGoldCohortCandidate[] => {
+  assertAffiliateGoldCohortProposalIntegrity(input.proposal);
+  const removeSourceKeys = Array.from(new Set(
+    input.removeSourceKeys.map((sourceKey) => sourceKey.trim()).filter(Boolean),
+  )).sort();
+  const replacementSourceKeys = Array.from(new Set(
+    input.replacementSourceKeys.map((sourceKey) => sourceKey.trim()).filter(Boolean),
+  )).sort();
+  if (!removeSourceKeys.length) {
+    throw new Error('Cohort membership revision requires at least one removed source key.');
+  }
+  if (removeSourceKeys.length !== replacementSourceKeys.length) {
+    throw new Error('Cohort membership revision requires one replacement per removed source.');
+  }
+  const priorSourceKeys = new Set(input.proposal.examples.map((example) => example.sourceKey));
+  const missingRemovedSource = removeSourceKeys.find((sourceKey) => !priorSourceKeys.has(sourceKey));
+  if (missingRemovedSource) {
+    throw new Error(`Cohort membership revision source was not found: ${missingRemovedSource}`);
+  }
+  const removed = new Set(removeSourceKeys);
+  const preserved = input.proposal.examples
+    .filter((example) => !removed.has(example.sourceKey))
+    .map(proposalExampleAsCandidate);
+  const unsupportedPreserved = preserved.find(
+    (candidate) => !isAffiliateAgentTargetKind(candidate.targetKind),
+  );
+  if (unsupportedPreserved) {
+    throw new Error(
+      `Cohort membership revision still contains unsupported target kind ${unsupportedPreserved.targetKind} for ${unsupportedPreserved.sourceKey}.`,
+    );
+  }
+  const currentBySourceKey = new Map(
+    input.currentCandidates.map((candidate) => [candidate.sourceKey, candidate]),
+  );
+  const preservedSourceKeys = new Set(preserved.map((candidate) => candidate.sourceKey));
+  const replacements = replacementSourceKeys.map((sourceKey) => {
+    if (preservedSourceKeys.has(sourceKey)) {
+      throw new Error(`Cohort membership replacement is already preserved: ${sourceKey}`);
+    }
+    const replacement = currentBySourceKey.get(sourceKey);
+    if (!replacement) {
+      throw new Error(`Cohort membership replacement was not found: ${sourceKey}`);
+    }
+    return replacement;
+  });
+  const revised = [...preserved, ...replacements];
+  if (revised.length !== input.proposal.examples.length) {
+    throw new Error(
+      `Cohort membership revision changed example count from ${input.proposal.examples.length} to ${revised.length}.`,
+    );
+  }
+  return revised;
+};
+
+const validatedCohortRevisionUrl = (value: string, label: string): URL => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label} must be an absolute URL.`);
+  }
+  if (
+    url.protocol !== 'https:'
+    || url.username
+    || url.password
+    || url.hash
+  ) {
+    throw new Error(`${label} must be a public HTTPS URL without credentials or a fragment.`);
+  }
+  return url;
+};
+
+const cohortRevisionHostIdentity = (url: URL): string => (
+  url.hostname.toLowerCase().replace(/^www\./, '')
+);
+
+export const reviseAffiliateGoldCohortRequiredPage = (input: {
+  proposal: AffiliateGoldCohortProposal;
+  sourceKey: string;
+  fromUrl: string;
+  toUrl: string;
+  reason: string;
+  repositoryCommit: string;
+}): AffiliateGoldCohortProposal => {
+  assertAffiliateGoldCohortProposalIntegrity(input.proposal);
+  const sourceKey = input.sourceKey.trim();
+  const reason = input.reason.trim();
+  const repositoryCommit = input.repositoryCommit.trim();
+  if (!sourceKey) throw new Error('Cohort revision source key is required.');
+  if (!reason) throw new Error('Cohort revision reason is required.');
+  if (!repositoryCommit) throw new Error('Cohort revision repository commit is required.');
+
+  const fromUrl = validatedCohortRevisionUrl(input.fromUrl, 'Cohort revision source URL');
+  const toUrl = validatedCohortRevisionUrl(input.toUrl, 'Cohort revision replacement URL');
+  if (fromUrl.toString() === toUrl.toString()) {
+    throw new Error('Cohort revision replacement URL must differ from the source URL.');
+  }
+  if (cohortRevisionHostIdentity(fromUrl) !== cohortRevisionHostIdentity(toUrl)) {
+    throw new Error('Cohort revision URLs must remain on the same registrable host.');
+  }
+
+  const exampleIndex = input.proposal.examples.findIndex(
+    (example) => example.sourceKey === sourceKey,
+  );
+  if (exampleIndex < 0) {
+    throw new Error(`Cohort revision source was not found: ${sourceKey}`);
+  }
+  const example = input.proposal.examples[exampleIndex];
+  const matchingPageIndexes = example.requiredCapturePages.flatMap((page, index) => (
+    new URL(page.url).toString() === fromUrl.toString() ? [index] : []
+  ));
+  if (matchingPageIndexes.length !== 1) {
+    throw new Error(
+      `Cohort revision expected exactly one required page ${fromUrl.toString()} for ${sourceKey}; found ${matchingPageIndexes.length}.`,
+    );
+  }
+  if (example.requiredCapturePages.some((page, index) => (
+    index !== matchingPageIndexes[0]
+    && new URL(page.url).toString() === toUrl.toString()
+  ))) {
+    throw new Error(`Cohort revision replacement page already exists for ${sourceKey}.`);
+  }
+
+  const examples = input.proposal.examples.map((candidate, index) => {
+    if (index !== exampleIndex) return candidate;
+    return {
+      ...candidate,
+      requiredCapturePages: candidate.requiredCapturePages.map((page, pageIndex) => (
+        pageIndex === matchingPageIndexes[0]
+          ? { ...page, url: toUrl.toString() }
+          : page
+      )),
+      selectionReasons: [
+        ...candidate.selectionReasons,
+        `Cohort revision: ${reason}`,
+      ],
+    };
+  });
+  const proposalBody = affiliateGoldCohortProposalBody({
+    ...input.proposal,
+    repositoryCommit,
+    examples,
+  });
+  const proposalSha256 = stableAgentArtifactSha256(proposalBody);
+  const revisedProposal: AffiliateGoldCohortProposal = {
+    schemaVersion: 1,
+    cohortId: `affiliate-mapping-test-${proposalSha256.slice(0, 16)}`,
+    ...proposalBody,
+    proposalSha256,
+    readyToLock: proposalBody.deficits.length === 0,
+  };
+  assertAffiliateGoldCohortProposalIntegrity(revisedProposal);
+  return revisedProposal;
 };
 
 const TARGET_EXAMPLE_COUNT = 35;
@@ -255,7 +435,7 @@ export const buildAffiliateGoldCohortCandidates = (
       .map((row) => [row.sourceId, row]),
   );
   return input.sources.flatMap((source): AffiliateGoldCohortCandidate[] => {
-    if (!['EVENT', 'RENTAL', 'TEAM', 'CLUB'].includes(source.targetKind)) return [];
+    if (!isAffiliateAgentTargetKind(source.targetKind)) return [];
     if (source.status === 'REPLACED' || source.status === 'ARCHIVED') return [];
     const row = inventoryBySourceId.get(source.id);
     if (!row || row.registrableDomain.startsWith('invalid:')) return [];
@@ -339,7 +519,6 @@ const countBy = (values: string[]): Record<string, number> => (
 );
 
 type CoverageState = {
-  team: number;
   club: number;
   rental: number;
   selector: number;
@@ -353,7 +532,6 @@ type CoverageState = {
 const coverageState = (
   candidates: AffiliateGoldCohortCandidate[],
 ): CoverageState => ({
-  team: candidates.filter((candidate) => candidate.targetKind === 'TEAM').length,
   club: candidates.filter((candidate) => candidate.targetKind === 'CLUB').length,
   rental: candidates.filter((candidate) => candidate.targetKind === 'RENTAL').length,
   selector: candidates.filter((candidate) => candidate.mappingMode === 'SELECTOR').length,
@@ -373,7 +551,6 @@ const coverageState = (
 });
 
 const requiredCoverage: CoverageState = {
-  team: 1,
   club: 5,
   rental: 5,
   selector: 12,
@@ -389,7 +566,6 @@ const coverageContribution = (
   current: CoverageState,
 ): number => {
   let contribution = 0;
-  if (current.team < requiredCoverage.team && candidate.targetKind === 'TEAM') contribution += 30;
   if (current.club < requiredCoverage.club && candidate.targetKind === 'CLUB') contribution += 12;
   if (current.rental < requiredCoverage.rental && candidate.targetKind === 'RENTAL') contribution += 12;
   if (current.selector < requiredCoverage.selector && candidate.mappingMode === 'SELECTOR') {
@@ -474,19 +650,11 @@ export const planAffiliateGoldTestCohort = (input: {
 }): AffiliateGoldCohortProposal => {
   const repositoryCommit = input.repositoryCommit.trim();
   if (!repositoryCommit) throw new Error('Repository commit is required for a cohort proposal.');
-  const candidates = [...input.candidates].sort(stableCandidateOrder);
-  const teamCandidates = candidates.filter((candidate) => candidate.targetKind === 'TEAM');
-  const selectedTeam = teamCandidates[0] ?? null;
-  const reservedTeams = teamCandidates.slice(1);
-  const reservedTeamDomains = new Set(
-    reservedTeams.map((candidate) => candidate.registrableDomain),
-  );
-  const selectable = candidates.filter((candidate) => (
-    candidate.sourceId === selectedTeam?.sourceId
-    || !reservedTeamDomains.has(candidate.registrableDomain)
-  ));
+  const candidates = input.candidates
+    .filter((candidate) => isAffiliateAgentTargetKind(candidate.targetKind))
+    .sort(stableCandidateOrder);
+  const selectable = candidates;
   const selected = new Map<string, AffiliateGoldCohortCandidate>();
-  if (selectedTeam) selected.set(selectedTeam.sourceId, selectedTeam);
 
   while (
     selected.size < TARGET_EXAMPLE_COUNT
@@ -540,8 +708,7 @@ export const planAffiliateGoldTestCohort = (input: {
   const customExtractorIds = new Set(
     selectedCandidates
       .filter((candidate) => (
-        candidate.targetKind !== 'TEAM'
-        && candidate.priorEvidenceLabel !== 'BLOCKED'
+        candidate.priorEvidenceLabel !== 'BLOCKED'
         && (candidate.hasDetailPage || candidate.rendersJavascript)
       ))
       .sort(stableCandidateOrder)
@@ -552,7 +719,6 @@ export const planAffiliateGoldTestCohort = (input: {
     selectedCandidates
       .filter((candidate) => (
         candidate.priorEvidenceLabel !== 'BLOCKED'
-        && candidate.targetKind !== 'TEAM'
         && !customExtractorIds.has(candidate.sourceId)
       ))
       .sort((left, right) => (
@@ -580,11 +746,15 @@ export const planAffiliateGoldTestCohort = (input: {
         : insufficientIds.has(candidate.sourceId)
           ? 'INSUFFICIENT_EVIDENCE_REVIEW'
           : 'EXECUTABLE_MAPPING';
+    const {
+      preservedSelectionReasons,
+      ...proposalCandidate
+    } = candidate;
     return {
-      ...candidate,
+      ...proposalCandidate,
       scenarioIntent,
       approvalStatus: 'UNAPPROVED',
-      selectionReasons: reasonsFor(candidate, scenarioIntent),
+      selectionReasons: preservedSelectionReasons ?? reasonsFor(candidate, scenarioIntent),
     };
   });
   const summary = {
@@ -620,7 +790,6 @@ export const planAffiliateGoldTestCohort = (input: {
   };
   requireCount('test examples', summary.exampleCount, TARGET_EXAMPLE_COUNT);
   requireCount('registrable domains', summary.registrableDomainCount, MINIMUM_DOMAIN_COUNT);
-  requireCount('TEAM examples', summary.targetKinds.TEAM ?? 0, 1);
   requireCount('CLUB examples', summary.targetKinds.CLUB ?? 0, 5);
   requireCount('RENTAL examples', summary.targetKinds.RENTAL ?? 0, 5);
   requireCount('selector mappings', summary.historicalMappingModes.SELECTOR ?? 0, 12);
@@ -634,7 +803,6 @@ export const planAffiliateGoldTestCohort = (input: {
   requireCount('custom-extractor review cases', summary.customExtractorReviewCount, 2);
   requireCount('evergreen cases', summary.evergreenCount, 1);
   requireCount('scheduled cases', summary.scheduledCount, 1);
-  requireCount('TEAM sources reserved outside test', reservedTeams.length, 1);
 
   const lockedDomainAssignments = Array.from(new Set(
     examples.map((example) => example.registrableDomain),
@@ -653,12 +821,7 @@ export const planAffiliateGoldTestCohort = (input: {
     repositoryCommit,
     inventorySha256,
     examples,
-    reservedForLater: reservedTeams.map((candidate) => ({
-      sourceId: candidate.sourceId,
-      sourceKey: candidate.sourceKey,
-      registrableDomain: candidate.registrableDomain,
-      reason: 'Reserved outside the test split because TEAM coverage has only two known domains.',
-    })),
+    reservedForLater: [],
     lockedDomainAssignments,
     lockedPlatformFamilies,
     summary,

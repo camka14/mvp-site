@@ -177,6 +177,38 @@ export const planGoldCaptureBatches = (
   return batches;
 };
 
+export const DEFAULT_GOLD_CAPTURE_MAX_ATTEMPTS = 3;
+
+export type GoldCaptureOperationMode = 'dry-run' | 'audit-only' | 'apply';
+
+export const resolveGoldCaptureOperationMode = (
+  args: string[],
+): GoldCaptureOperationMode => {
+  const shouldApply = args.includes('--apply');
+  const auditOnly = args.includes('--audit-only');
+  if (shouldApply && auditOnly) {
+    throw new Error('Gold capture --apply and --audit-only modes are mutually exclusive.');
+  }
+  if (shouldApply) return 'apply';
+  if (auditOnly) return 'audit-only';
+  return 'dry-run';
+};
+
+export const resolveGoldCaptureMaxAttempts = (
+  value?: string,
+): number => {
+  if (value === undefined) return DEFAULT_GOLD_CAPTURE_MAX_ATTEMPTS;
+  const maximumAttempts = Number.parseInt(value, 10);
+  if (
+    !Number.isInteger(maximumAttempts)
+    || maximumAttempts < 1
+    || String(maximumAttempts) !== value.trim()
+  ) {
+    throw new Error('Gold capture maximum attempts must be a positive integer.');
+  }
+  return maximumAttempts;
+};
+
 export const pageHasCurrentGoldCaptureEvidence = (
   page: GoldCaptureEvidencePage,
   artifacts: GoldCaptureEvidenceArtifact[],

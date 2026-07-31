@@ -3,6 +3,7 @@
 import {
   affiliateMappingGoldFixtureManifest,
   affiliateMappingGoldExampleSchema,
+  affiliateMappingTeachingEnvelopeFromGoldExample,
   assertAffiliateMappingGoldReleaseIntegrity,
   buildAffiliateMappingGoldRelease,
   buildAffiliateMappingTrainingReadinessReport,
@@ -10,7 +11,9 @@ import {
 } from '../agentGoldDataset';
 import {
   assertAffiliateGoldCohortProposalIntegrity,
+  buildAffiliateGoldCohortRevisionCandidates,
   planAffiliateGoldTestCohort,
+  reviseAffiliateGoldCohortRequiredPage,
   type AffiliateGoldCohortCandidate,
 } from '../agentGoldCohort';
 import {
@@ -18,6 +21,8 @@ import {
   goldCapturePageNeedsRobotsReview,
   pageHasCurrentGoldCaptureEvidence,
   planGoldCaptureBatches,
+  resolveGoldCaptureOperationMode,
+  resolveGoldCaptureMaxAttempts,
 } from '../agentGoldCaptureCohort';
 
 const HASH_HTML = 'a'.repeat(64);
@@ -278,6 +283,22 @@ describe('affiliate mapping gold dataset contracts', () => {
     });
   });
 
+  it('converts approved gold rows into hash-linked SFT teaching envelopes', () => {
+    const envelope = affiliateMappingTeachingEnvelopeFromGoldExample(blockedExample());
+
+    expect(envelope.trainingExample).toEqual(expect.objectContaining({
+      exampleId: 'blocked-policy',
+      evidenceLabel: 'BLOCKED',
+      split: 'train',
+      humanApproval: {
+        approvedByUserId: 'admin_1',
+        approvedAt: '2026-07-29T20:00:00.000Z',
+      },
+    }));
+    expect(envelope.trainingExample.output?.approvedMappingHash).toBeNull();
+    expect(envelope.approvedDraft.implementationMode).toBe('BLOCKED');
+  });
+
   it('rejects unsafe release paths and detects manifest tampering', () => {
     expect(() => buildAffiliateMappingGoldRelease([realExample()], {
       releaseId: '../escape',
@@ -406,19 +427,58 @@ describe('affiliate mapping gold dataset contracts', () => {
     expect(report.realApprovedCounts.train).toBe(0);
     expect(report.blockingReasons).toContain('Fewer than 80 real approved training examples.');
   });
+
+  it('reports executable target, refusal, and implementation-mode coverage separately', () => {
+    const release = buildAffiliateMappingGoldRelease([
+      realExample({
+        exampleId: 'real-train-event',
+        split: 'train',
+        includedInTraining: true,
+        includedInRetrieval: true,
+      }),
+      blockedExample(),
+    ], {
+      releaseId: 'coverage-v1',
+      createdAt: new Date('2026-07-29T21:00:00.000Z'),
+      repositoryCommit: 'abc123',
+    });
+    const report = buildAffiliateMappingTrainingReadinessReport({
+      goldRelease: release,
+      sftManifest: null,
+      baseEvaluation: null,
+      runtimeObservation: null,
+    });
+
+    expect(report.coverage.realExecutable).toEqual({
+      train: 1,
+      validation: 0,
+      test: 0,
+      trainAndValidation: 1,
+    });
+    expect(report.coverage.realRefusals.train).toBe(1);
+    expect(report.coverage.executableTargetKinds.train).toEqual({
+      EVENT: 1,
+      CLUB: 0,
+      RENTAL: 0,
+    });
+    expect(report.coverage.executableImplementationModes.train).toEqual({
+      GENERIC_MAPPING: 1,
+    });
+    expect(report.blockingReasons).toContain(
+      'Fewer than 95 real approved executable training-plus-validation examples.',
+    );
+  });
 });
 
 const cohortCandidate = (
   index: number,
   overrides: Partial<AffiliateGoldCohortCandidate> = {},
 ): AffiliateGoldCohortCandidate => {
-  const targetKind = index < 2
-    ? 'TEAM'
-    : index < 8
-      ? 'CLUB'
-      : index < 15
-        ? 'RENTAL'
-        : 'EVENT';
+  const targetKind = index < 7
+    ? 'CLUB'
+    : index < 14
+      ? 'RENTAL'
+      : 'EVENT';
   return {
     sourceId: `source_${index}`,
     sourceKey: `source-${index}`,
@@ -459,6 +519,51 @@ const cohortCandidate = (
 };
 
 describe('affiliate mapping gold cohort planning', () => {
+  it('creates a newly hashed proposal when one approved capture URL is revised', () => {
+    const proposal = planAffiliateGoldTestCohort({
+      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      repositoryCommit: 'historical-commit',
+    });
+    const example = proposal.examples[0];
+    const originalPage = example.requiredCapturePages[0];
+    const originalUrl = new URL(originalPage.url);
+    const replacementUrl = new URL(originalPage.url);
+    replacementUrl.hostname = `www.${originalUrl.hostname}`;
+
+    const revised = reviseAffiliateGoldCohortRequiredPage({
+      proposal,
+      sourceKey: example.sourceKey,
+      fromUrl: originalUrl.toString(),
+      toUrl: replacementUrl.toString(),
+      reason: 'The canonical www endpoint has valid TLS while the apex endpoint does not.',
+      repositoryCommit: 'revision-commit',
+    });
+
+    expect(revised.cohortId).not.toBe(proposal.cohortId);
+    expect(revised.proposalSha256).not.toBe(proposal.proposalSha256);
+    expect(revised.repositoryCommit).toBe('revision-commit');
+    expect(revised.examples.find((candidate) => candidate.sourceKey === example.sourceKey))
+      .toEqual(expect.objectContaining({
+        requiredCapturePages: [{
+          ...originalPage,
+          url: replacementUrl.toString(),
+        }],
+        selectionReasons: expect.arrayContaining([
+          'Cohort revision: The canonical www endpoint has valid TLS while the apex endpoint does not.',
+        ]),
+      }));
+    expect(proposal.examples[0].requiredCapturePages[0].url).toBe(originalPage.url);
+    expect(() => assertAffiliateGoldCohortProposalIntegrity(revised)).not.toThrow();
+    expect(() => reviseAffiliateGoldCohortRequiredPage({
+      proposal,
+      sourceKey: example.sourceKey,
+      fromUrl: originalUrl.toString(),
+      toUrl: 'https://different.example/',
+      reason: 'Unsafe cross-domain replacement.',
+      repositoryCommit: 'revision-commit',
+    })).toThrow('same registrable host');
+  });
+
   it('requires a matching immutable lock before planning live capture batches', () => {
     const proposal = planAffiliateGoldTestCohort({
       candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
@@ -490,6 +595,26 @@ describe('affiliate mapping gold cohort planning', () => {
 
     expect(planGoldCaptureBatches(pages).map((batch) => batch.length))
       .toEqual([10, 10, 3]);
+  });
+
+  it('uses three capture attempts by default and permits an explicit override', () => {
+    expect(resolveGoldCaptureMaxAttempts()).toBe(3);
+    expect(resolveGoldCaptureMaxAttempts('1')).toBe(1);
+    expect(resolveGoldCaptureMaxAttempts('4')).toBe(4);
+    expect(() => resolveGoldCaptureMaxAttempts('0')).toThrow(
+      'Gold capture maximum attempts must be a positive integer.',
+    );
+    expect(() => resolveGoldCaptureMaxAttempts('2.5')).toThrow(
+      'Gold capture maximum attempts must be a positive integer.',
+    );
+  });
+
+  it('keeps evidence audit mode mutually exclusive from capture writes', () => {
+    expect(resolveGoldCaptureOperationMode([])).toBe('dry-run');
+    expect(resolveGoldCaptureOperationMode(['--audit-only'])).toBe('audit-only');
+    expect(resolveGoldCaptureOperationMode(['--apply'])).toBe('apply');
+    expect(() => resolveGoldCaptureOperationMode(['--apply', '--audit-only']))
+      .toThrow('mutually exclusive');
   });
 
   it('requires non-empty ScrapingDog content from a successful or partial run', () => {
@@ -655,25 +780,67 @@ describe('affiliate mapping gold cohort planning', () => {
     expect(first.summary.detailOrJavascriptCount).toBeGreaterThanOrEqual(4);
   });
 
-  it('uses one scarce TEAM domain for test and reserves the other outside the split', () => {
+  it('excludes legacy TEAM candidates from the replacement cohort', () => {
+    const legacyTeam = {
+      ...cohortCandidate(100),
+      targetKind: 'TEAM',
+    } as unknown as AffiliateGoldCohortCandidate;
     const proposal = planAffiliateGoldTestCohort({
-      candidates: Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+      candidates: [
+        ...Array.from({ length: 45 }, (_, index) => cohortCandidate(index)),
+        legacyTeam,
+      ],
       repositoryCommit: 'abc123',
     });
-    const selectedTeams = proposal.examples.filter((example) => example.targetKind === 'TEAM');
-    expect(selectedTeams).toHaveLength(1);
-    expect(proposal.reservedForLater).toHaveLength(1);
-    expect(proposal.reservedForLater[0]).toEqual(expect.objectContaining({
-      reason: expect.stringContaining('TEAM coverage has only two known domains'),
-    }));
+    expect(proposal.examples.some((example) => example.targetKind === ('TEAM' as never)))
+      .toBe(false);
+    expect(proposal.reservedForLater).toEqual([]);
     expect(proposal.lockedDomainAssignments).not.toContainEqual({
-      registrableDomain: proposal.reservedForLater[0].registrableDomain,
+      registrableDomain: legacyTeam.registrableDomain,
       split: 'test',
     });
-    expect(proposal.lockedDomainAssignments).toContainEqual({
-      registrableDomain: selectedTeams[0].registrableDomain,
-      split: 'test',
+  });
+
+  it('preserves an immutable cohort while replacing exactly one source', () => {
+    const originalCandidates = Array.from(
+      { length: 45 },
+      (_, index) => cohortCandidate(index),
+    );
+    const original = planAffiliateGoldTestCohort({
+      candidates: originalCandidates,
+      repositoryCommit: 'abc123',
     });
+    const removed = original.examples[0];
+    const replacement = cohortCandidate(100);
+    const revisionCandidates = buildAffiliateGoldCohortRevisionCandidates({
+      proposal: original,
+      currentCandidates: [...originalCandidates, replacement],
+      removeSourceKeys: [removed.sourceKey],
+      replacementSourceKeys: [replacement.sourceKey],
+    });
+    const revised = planAffiliateGoldTestCohort({
+      candidates: revisionCandidates,
+      repositoryCommit: 'def456',
+    });
+
+    expect(revised.readyToLock).toBe(true);
+    expect(revised.examples.map((example) => example.sourceKey)).not.toContain(removed.sourceKey);
+    expect(revised.examples.map((example) => example.sourceKey)).toContain(replacement.sourceKey);
+    expect(revised.examples.filter((example) => (
+      original.examples.some((prior) => prior.sourceKey === example.sourceKey)
+    ))).toHaveLength(34);
+    expect(revised.examples.filter((example) => (
+      original.examples.some((prior) => (
+        prior.sourceKey === example.sourceKey
+        && JSON.stringify(prior) !== JSON.stringify(example)
+      ))
+    ))).toEqual([]);
+    expect(() => buildAffiliateGoldCohortRevisionCandidates({
+      proposal: original,
+      currentCandidates: originalCandidates,
+      removeSourceKeys: [removed.sourceKey],
+      replacementSourceKeys: [],
+    })).toThrow('one replacement per removed source');
   });
 
   it('reports deficits instead of silently weakening a small inventory', () => {

@@ -4,6 +4,14 @@ import {
   buildAffiliateMappingSftRelease,
   renderAffiliateMappingSftJsonLines,
 } from '../src/server/affiliateImports/agentTrainingRelease';
+import {
+  assertAffiliateMappingGoldReleaseIntegrity,
+  affiliateMappingGoldExampleSchema,
+  affiliateMappingTeachingEnvelopeFromGoldExample,
+} from '../src/server/affiliateImports/agentGoldDataset';
+import {
+  stableAgentArtifactSha256,
+} from '../src/server/affiliateImports/agentContracts';
 
 const readOption = (name: string): string | undefined => {
   const equals = process.argv.find((argument) => argument.startsWith(`${name}=`));
@@ -26,18 +34,55 @@ const readJsonLines = async (filePath: string): Promise<unknown[]> => (
     })
 );
 
+const releaseDirectoryFor = (inputPath: string): string => {
+  const resolved = path.resolve(inputPath);
+  return path.basename(resolved) === 'manifest.json' ? path.dirname(resolved) : resolved;
+};
+
+const readGoldReleaseExamples = async (inputPath: string): Promise<unknown[]> => {
+  const directory = releaseDirectoryFor(inputPath);
+  const examples = (
+    await Promise.all((['train', 'validation', 'test'] as const).map(
+      (split) => readJsonLines(path.join(directory, `${split}.jsonl`)),
+    ))
+  ).flat().sort((left, right) => (
+    String((left as { exampleId?: unknown }).exampleId)
+      .localeCompare(String((right as { exampleId?: unknown }).exampleId))
+  ));
+  const release = assertAffiliateMappingGoldReleaseIntegrity({
+    manifest: JSON.parse(await fs.readFile(path.join(directory, 'manifest.json'), 'utf8')),
+    examples,
+  });
+  const releaseSha256 = stableAgentArtifactSha256(release);
+  const recordedReleaseSha256 = (
+    await fs.readFile(path.join(directory, 'release.sha256'), 'utf8')
+  ).trim();
+  if (recordedReleaseSha256 !== releaseSha256) {
+    throw new Error(`Gold release hash mismatch for ${release.manifest.releaseId}.`);
+  }
+  return release.examples;
+};
+
 const main = async () => {
   const inputOption = readOption('--input');
+  const goldReleaseOption = readOption('--gold-release');
   const outputRoot = path.resolve(
     readOption('--output-dir')
       ?? path.join('output', 'affiliate-mapping-agent', 'training-releases'),
   );
   const releaseId = readOption('--release') ?? '';
-  if (!inputOption || !releaseId) {
-    throw new Error('--input and --release are required.');
+  if ((!inputOption && !goldReleaseOption) || (inputOption && goldReleaseOption) || !releaseId) {
+    throw new Error('Exactly one of --input or --gold-release, plus --release, is required.');
   }
-  const inputPath = path.resolve(inputOption);
-  const release = buildAffiliateMappingSftRelease(await readJsonLines(inputPath), {
+  const inputRows = goldReleaseOption
+    ? await readGoldReleaseExamples(goldReleaseOption)
+    : await readJsonLines(path.resolve(inputOption as string));
+  const envelopes = inputRows.map((row) => (
+    affiliateMappingGoldExampleSchema.safeParse(row).success
+      ? affiliateMappingTeachingEnvelopeFromGoldExample(row)
+      : row
+  ));
+  const release = buildAffiliateMappingSftRelease(envelopes, {
     releaseId,
     createdAt: new Date(),
   });

@@ -1,7 +1,10 @@
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import {
+  resolveAffiliateDatasetEnvironment,
+  resolveAffiliateRepositoryCommit,
+} from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -27,17 +30,23 @@ const safeTimestamp = (date: Date) => date.toISOString().replace(/[:.]/g, '-');
 
 const main = async () => {
   const capturedAt = new Date();
-  const environment = useLive ? 'live' : 'local';
-  const repositoryCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-  }).trim();
+  const environment = resolveAffiliateDatasetEnvironment({
+    explicitEnvironment: readOption('--environment'),
+    useLiveDatabase: useLive,
+  });
+  const repositoryCommit = resolveAffiliateRepositoryCommit({
+    explicitCommit: readOption('--repository-commit'),
+    repositoryRoot: process.cwd(),
+  });
   const { prisma } = await import('../src/lib/prisma');
   const {
     buildAffiliateHistoricalDatasetInventory,
     collectAffiliateHistoricalDatasetInput,
     renderJsonLines,
   } = await import('../src/server/affiliateImports/agentDataset');
+  const {
+    buildAffiliateGoldCohortCandidates,
+  } = await import('../src/server/affiliateImports/agentGoldCohort');
 
   try {
     const datasetInput = await collectAffiliateHistoricalDatasetInput({
@@ -47,6 +56,7 @@ const main = async () => {
       capturedAt,
     });
     const dataset = buildAffiliateHistoricalDatasetInventory(datasetInput);
+    const captureCandidates = buildAffiliateGoldCohortCandidates(datasetInput);
     const datasetId = `dataset-${safeTimestamp(capturedAt)}-${repositoryCommit.slice(0, 12)}`;
     const outputRoot = path.resolve(
       readOption('--output-dir')
@@ -67,6 +77,10 @@ const main = async () => {
       trainingExamplesSha256: (
         await import('../src/server/affiliateImports/agentContracts')
       ).stableAgentArtifactSha256(dataset.trainingExamples),
+      captureCandidateCount: captureCandidates.length,
+      captureCandidatesSha256: (
+        await import('../src/server/affiliateImports/agentContracts')
+      ).stableAgentArtifactSha256(captureCandidates),
       databaseWrites: 0,
       publicRequests: 0,
     };
@@ -90,6 +104,11 @@ const main = async () => {
         fs.writeFile(
           path.join(outputDirectory, 'training.jsonl'),
           renderJsonLines(dataset.trainingExamples),
+          'utf8',
+        ),
+        fs.writeFile(
+          path.join(outputDirectory, 'capture-candidates.jsonl'),
+          renderJsonLines(captureCandidates),
           'utf8',
         ),
       ]);

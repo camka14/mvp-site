@@ -10,6 +10,10 @@ import {
   renderAffiliateSourceEvidenceMarkdown,
   selectAffiliateSourceIntakeExportRun,
 } from '../src/server/affiliateImports/sourceIntakeExport';
+import {
+  configureAffiliateLiveDatabaseEnvironment,
+  resolveAffiliateDatasetEnvironment,
+} from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -21,9 +25,10 @@ if (useLive) {
   }
   const isCurrentProductionDatabase = process.env.NODE_ENV === 'production'
     && process.env.DATABASE_URL?.trim() === process.env.DATABASE_URL_LIVE.trim();
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  if (!isCurrentProductionDatabase) {
-    process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  if (isCurrentProductionDatabase) {
+    process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
+  } else {
+    configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   }
   process.env.STORAGE_PROVIDER = 'spaces';
 }
@@ -34,6 +39,11 @@ const readOption = (name: string): string | undefined => {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1]?.trim() || undefined : undefined;
 };
+
+const environment = resolveAffiliateDatasetEnvironment({
+  explicitEnvironment: readOption('--environment'),
+  useLiveDatabase: useLive,
+});
 
 const safeName = (value: string): string => value
   .toLowerCase()
@@ -132,7 +142,7 @@ const main = async () => {
   try {
     if (process.argv.includes('--list')) {
       console.log(JSON.stringify({
-        environment: useLive ? 'live' : 'local',
+        environment,
         intakes: await listIntakes(db, readOption('--search')),
       }, null, 2));
       return;
@@ -180,7 +190,7 @@ const main = async () => {
     }
 
     const sourceEvidence = buildAffiliateSourceEvidence({
-      environment: useLive ? 'live' : 'local',
+      environment,
       intake: context.intake,
       run,
       pages: context.pages,
