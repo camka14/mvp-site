@@ -311,6 +311,10 @@ Live intake `new-york-new-york-metropolitan-area-asphalt-green-soccer-club-agsoc
 
 Live intake `new-york-new-york-metropolitan-area-boys-soccer-tryouts-faeuro-com`, run `4160a98f-6f8c-4efe-b152-648269d93610`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official tryouts page supports one ongoing `CLUB` candidate for FA Euro New York in Brooklyn and Staten Island, with Soccer and MLS NEXT program context. The July 27-29 goalkeeper camp is past as of the review date, the 2026/27 row is registration-only, and the NYC Cup row has no date/time, so those rows are withheld; no TEAM candidate is created. The official FA Euro crest from stored page branding is normalized to an opaque 1024px PNG. Local key `fa-euro-new-york` owns `affiliate_org_fa_euro_new_york` and `affiliate_mapping_fa_euro_new_york_v1`; the source remains disabled for automatic scraping and the mapping remains unvalidated pending review.
 
+### 2026-07-31 Fox Soccer Academy New York intake
+
+Live intake `new-york-new-york-metropolitan-area-fox-soccer-academy-new-york-foxsoccer-academy`, run `0c286431-9533-410b-9029-59fe46ff6331`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official New York tryouts page supports one ongoing `CLUB` candidate for Fox Soccer Academy New York with Soccer, academy, and 2026/2027 program context. Displayed June tryout dates lack a year and are withheld rather than inferred as events; no TEAM candidate is created. The official fox crest from stored page branding is normalized to an opaque 1024px PNG. Local key `fox-soccer-academy-new-york` owns `affiliate_org_fox_soccer_academy_new_york` and `affiliate_mapping_fox_soccer_academy_new_york_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had
