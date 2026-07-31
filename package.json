@@ -129,6 +129,7 @@
     "affiliate:setup:northwell-health-ice-center": "tsx scripts/setup-northwell-health-ice-center-affiliate-source.ts",
     "affiliate:setup:majestic-pickleball": "tsx scripts/setup-majestic-pickleball-affiliate-source.ts",
     "affiliate:setup:prodigy-volleyball-academy": "tsx scripts/setup-prodigy-volleyball-academy-affiliate-source.ts",
+    "affiliate:setup:five-one-six-elite-volleyball": "tsx scripts/setup-five-one-six-elite-volleyball-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
