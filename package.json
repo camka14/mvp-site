@@ -87,6 +87,7 @@
     "affiliate:setup:nyc-pickleball-leagues": "tsx scripts/setup-nyc-pickleball-leagues-affiliate-source.ts",
     "affiliate:setup:ny-urban-volleyball": "tsx scripts/setup-ny-urban-volleyball-affiliate-source.ts",
     "affiliate:setup:prospect-park-tennis-center": "tsx scripts/setup-prospect-park-tennis-center-affiliate-source.ts",
+    "affiliate:setup:soccer-friends-usa": "tsx scripts/setup-soccer-friends-usa-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
