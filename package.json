@@ -125,6 +125,7 @@
     "affiliate:setup:soccer-coliseum": "tsx scripts/setup-soccer-coliseum-affiliate-source.ts",
     "affiliate:setup:cross-court-pickleball": "tsx scripts/setup-cross-court-pickleball-affiliate-source.ts",
     "affiliate:setup:nyc-muslim-center-sports-rental": "tsx scripts/setup-nyc-muslim-center-sports-rental-affiliate-source.ts",
+    "affiliate:setup:east-coast-mavericks": "tsx scripts/setup-east-coast-mavericks-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
