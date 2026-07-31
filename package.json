@@ -84,6 +84,7 @@
     "affiliate:setup:neaau-new-york-city": "tsx scripts/setup-neaau-new-york-city-affiliate-source.ts",
     "affiliate:setup:new-york-elite-volleyball": "tsx scripts/setup-new-york-elite-volleyball-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
+    "affiliate:setup:new-york-soccer-club": "tsx scripts/setup-new-york-soccer-club-affiliate-source.ts",
     "affiliate:setup:503-baseball": "tsx scripts/setup-503-baseball-affiliate-source.ts",
     "affiliate:setup:cascade-athletic-clubs-gresham": "tsx scripts/setup-cascade-athletic-clubs-gresham-affiliate-source.ts",
     "affiliate:setup:nw-futures-baseball": "tsx scripts/setup-nw-futures-baseball-affiliate-source.ts",
