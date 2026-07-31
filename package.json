@@ -136,6 +136,7 @@
     "affiliate:setup:long-island-volleyball-association": "tsx scripts/setup-long-island-volleyball-association-affiliate-source.ts",
     "affiliate:setup:pickleball-heaven": "tsx scripts/setup-pickleball-heaven-affiliate-source.ts",
     "affiliate:setup:island-fastpitch": "tsx scripts/setup-island-fastpitch-affiliate-source.ts",
+    "affiliate:setup:never-too-late-basketball": "tsx scripts/setup-never-too-late-basketball-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
