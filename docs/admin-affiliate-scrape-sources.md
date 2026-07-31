@@ -307,6 +307,10 @@ City, school, and parks sites remain strong inventory sources, but they are more
 
 Live intake `new-york-new-york-metropolitan-area-asphalt-green-soccer-club-agsoccerclub-com`, run `073d1ff4-18d4-4c5d-b015-d1c8f619bb75`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored homepage provides enough evidence for one ongoing `CLUB` candidate for Asphalt Green Soccer Club in New York City, with Soccer and U6-U18/19 context. Discovered program, tryout, and registration URLs were not captured as detail pages and are withheld; no dated EVENT or TEAM candidate is created. Stored logo candidates are third-party Adidas, EDP, USYS, NAL, and WPSL marks, so the organization logo is explicitly `MANUAL_REVIEW`. The source package is local-only, monthly/weekly intended cadence is disabled, and its mapping remains unvalidated until an independent reviewer captures the missing detail pages and official logo.
 
+### 2026-07-31 FA Euro New York intake
+
+Live intake `new-york-new-york-metropolitan-area-boys-soccer-tryouts-faeuro-com`, run `4160a98f-6f8c-4efe-b152-648269d93610`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored official tryouts page supports one ongoing `CLUB` candidate for FA Euro New York in Brooklyn and Staten Island, with Soccer and MLS NEXT program context. The July 27-29 goalkeeper camp is past as of the review date, the 2026/27 row is registration-only, and the NYC Cup row has no date/time, so those rows are withheld; no TEAM candidate is created. The official FA Euro crest from stored page branding is normalized to an opaque 1024px PNG. Local key `fa-euro-new-york` owns `affiliate_org_fa_euro_new_york` and `affiliate_mapping_fa_euro_new_york_v1`; the source remains disabled for automatic scraping and the mapping remains unvalidated pending review.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had
