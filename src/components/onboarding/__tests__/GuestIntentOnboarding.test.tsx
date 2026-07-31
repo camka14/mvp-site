@@ -3,6 +3,7 @@ import { MantineProvider } from '@mantine/core';
 import GuestIntentOnboarding from '../GuestIntentOnboarding';
 
 const pushMock = jest.fn();
+const replaceMock = jest.fn();
 const startGuestSessionMock = jest.fn();
 const setLocationFromInfoMock = jest.fn();
 const requestLocationMock = jest.fn();
@@ -10,7 +11,7 @@ const geocodeLocationMock = jest.fn();
 const getPlacePredictionsMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 
 jest.mock('@/app/providers', () => ({
@@ -55,6 +56,7 @@ const renderWizard = () => render(
 describe('GuestIntentOnboarding', () => {
   beforeEach(() => {
     pushMock.mockReset();
+    replaceMock.mockReset();
     startGuestSessionMock.mockReset().mockResolvedValue(undefined);
     setLocationFromInfoMock.mockReset();
     requestLocationMock.mockReset().mockResolvedValue(undefined);
@@ -149,6 +151,15 @@ describe('GuestIntentOnboarding', () => {
     expect(screen.queryByLabelText('Skill level')).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Any sport')).toBeInTheDocument();
     expect(screen.getByLabelText('Location')).toBeInTheDocument();
+  });
+
+  it('lets visitors skip onboarding and open the website', async () => {
+    renderWizard();
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
+    fireEvent.click(screen.getByRole('button', { name: /skip onboarding/i }));
+
+    expect(replaceMock).toHaveBeenCalledWith('/info');
   });
 
   it('gates club creation behind signup and preserves the club creation preset', async () => {

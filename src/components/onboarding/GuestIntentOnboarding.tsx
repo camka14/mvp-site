@@ -265,6 +265,10 @@ export default function GuestIntentOnboarding() {
     setError('');
   };
 
+  const handleSkipOnboarding = () => {
+    router.replace('/info');
+  };
+
   return (
     <Modal
       opened
@@ -459,6 +463,15 @@ export default function GuestIntentOnboarding() {
               </Stack>
           </div>
         ) : null}
+
+        <>
+          <Divider mt="xl" />
+          <Group justify="center" mt="md">
+            <Button variant="subtle" onClick={handleSkipOnboarding}>
+              Skip onboarding
+            </Button>
+          </Group>
+        </>
       </section>
     </Modal>
   );
