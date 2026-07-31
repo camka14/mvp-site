@@ -319,6 +319,10 @@ Live intake `new-york-new-york-metropolitan-area-fox-soccer-academy-new-york-fox
 
 Live intake `new-york-new-york-metropolitan-area-new-york-city-gothamsoccer-com`, run `ad0cbe2a-cf97-41d4-b09b-1b22c84c9960`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored New York City listing supports one ongoing `CLUB` candidate for Gotham Soccer with adult men\'s, women\'s, and coed soccer league context, pickup, tournaments, and a public player dashboard. No current dated league, tournament, or rental row is present in the capture, and no TEAM candidate is created. The official Gotham mark from stored page branding is normalized to an opaque 1024px PNG. Local key `gotham-soccer-new-york-city` owns `affiliate_org_gotham_soccer_new_york_city` and `affiliate_mapping_gotham_soccer_new_york_city_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
 
+### 2026-07-31 Manhattan Soccer Club intake
+
+Live intake `new-york-new-york-metropolitan-area-manhattan-soccer-club-nyc-s-largest-soccer-club-manhattansc-org`, run `e8726ad7-7415-41fa-8e54-4b02e160cc14`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored Manhattan Soccer Club homepage supports one ongoing `CLUB` candidate in New York City with youth soccer, camps, clinics, and training context. Linked Summer Camp 2026 and tryout pages were not captured with complete current event rows, so they remain withheld; no TEAM candidate is created. The official Manhattan SC crest is normalized to an opaque 1024px PNG. Local key `manhattan-soccer-club` owns `affiliate_org_manhattan_soccer_club` and `affiliate_mapping_manhattan_soccer_club_v1`; automatic scraping is disabled and the mapping remains unvalidated pending review.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had
