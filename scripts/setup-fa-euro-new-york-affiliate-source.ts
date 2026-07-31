@@ -6,6 +6,7 @@
  * when their evidence is stale, registration-only, or undated.
  */
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -24,10 +25,7 @@ dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
 
 if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 

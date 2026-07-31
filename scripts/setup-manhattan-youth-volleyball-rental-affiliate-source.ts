@@ -1,5 +1,6 @@
 /** Operator-approved setup for the Manhattan Youth Pier 25 volleyball rental package. */
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -7,10 +8,7 @@ import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/type
 import { MANHATTAN_YOUTH_LOGO_SOURCE_URL, MANHATTAN_YOUTH_MAPPING, MANHATTAN_YOUTH_ORG_DESCRIPTION, MANHATTAN_YOUTH_PIER25_URL, MANHATTAN_YOUTH_SOURCE_EVIDENCE, MANHATTAN_YOUTH_STATIC_PAGE_CLIENT, MANHATTAN_YOUTH_VOLLEYBALL_BOOKING_URL, MANHATTAN_YOUTH_VOLLEYBALL_URL } from '../src/server/affiliateImports/manhattanYouthVolleyballRentalSource';
 
 dotenv.config({ quiet: true }); dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true }); if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 const OWNER_EMAIL = 'samuel.r@razumly.com'; const ORG_ID = 'affiliate_org_manhattan_youth_volleyball'; const SOURCE_ID = 'affiliate_source_manhattan_youth_volleyball'; const SOURCE_KEY = 'new-york-new-york-metropolitan-area-volleyball-manhattanyouth-org'; const MAPPING_ID = 'affiliate_mapping_manhattan_youth_volleyball_v1'; const LOGO_FILE_ID = 'affiliate_file_manhattan_youth_volleyball_logo'; const LOGO_PATH = path.join(process.cwd(), 'src/server/affiliateImports/fixtures/manhattanYouthVolleyballRentalLogo.png');

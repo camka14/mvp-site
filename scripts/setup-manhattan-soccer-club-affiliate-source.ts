@@ -1,11 +1,9 @@
 /** Operator-approved setup for the Manhattan Soccer Club stored-intake package. */
-import dotenv from 'dotenv'; import fs from 'node:fs/promises'; import path from 'node:path'; import sharp from 'sharp'; import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
+import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository'; import fs from 'node:fs/promises'; import path from 'node:path'; import sharp from 'sharp'; import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
 import { MANHATTAN_SOCCER_CLUB_HOME_URL, MANHATTAN_SOCCER_CLUB_LOGO_SOURCE_URL, MANHATTAN_SOCCER_CLUB_MAPPING, MANHATTAN_SOCCER_CLUB_ORG_DESCRIPTION, MANHATTAN_SOCCER_CLUB_SOURCE_EVIDENCE, MANHATTAN_SOCCER_CLUB_STATIC_PAGE_CLIENT } from '../src/server/affiliateImports/manhattanSoccerClubSource';
 dotenv.config({ quiet: true }); dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true }); if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 const OWNER_EMAIL='samuel.r@razumly.com', ORG_ID='affiliate_org_manhattan_soccer_club', SOURCE_ID='affiliate_source_manhattan_soccer_club', SOURCE_KEY='manhattan-soccer-club', MAPPING_ID='affiliate_mapping_manhattan_soccer_club_v1', ORGANIZATION_NAME='Manhattan Soccer Club', LOGO_FILE_ID='affiliate_file_manhattan_soccer_club_logo', LOGO_PATH=path.join(process.cwd(),'src/server/affiliateImports/fixtures/manhattanSoccerClubLogo.png');

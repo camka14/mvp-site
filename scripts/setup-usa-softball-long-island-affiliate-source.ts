@@ -1,5 +1,6 @@
 /** Operator-approved setup for the USA Softball Long Island stored-intake CLUB package. */
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import path from 'node:path';
 import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
 import { USA_SOFTBALL_LI_HOME_URL, USA_SOFTBALL_LI_MAPPING, USA_SOFTBALL_LI_ORG_DESCRIPTION, USA_SOFTBALL_LI_REGISTRATION_URL, USA_SOFTBALL_LI_SOURCE_EVIDENCE, USA_SOFTBALL_LI_STATIC_PAGE_CLIENT } from '../src/server/affiliateImports/usaSoftballLongIslandSource';
@@ -7,10 +8,7 @@ import { USA_SOFTBALL_LI_HOME_URL, USA_SOFTBALL_LI_MAPPING, USA_SOFTBALL_LI_ORG_
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
 if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 

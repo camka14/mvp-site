@@ -1,11 +1,9 @@
 /** Operator-approved setup for the Sports Zone Academy softball stored-intake package. */
-import dotenv from 'dotenv'; import fs from 'node:fs/promises'; import path from 'node:path'; import sharp from 'sharp'; import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
+import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository'; import fs from 'node:fs/promises'; import path from 'node:path'; import sharp from 'sharp'; import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
 import { SPORTS_ZONE_SOFTBALL_HOME_URL, SPORTS_ZONE_SOFTBALL_LOGO_SOURCE_URL, SPORTS_ZONE_SOFTBALL_MAPPING, SPORTS_ZONE_SOFTBALL_ORG_DESCRIPTION, SPORTS_ZONE_SOFTBALL_SOURCE_EVIDENCE, SPORTS_ZONE_SOFTBALL_STATIC_PAGE_CLIENT } from '../src/server/affiliateImports/sportsZoneAcademySoftballSource';
 dotenv.config({ quiet: true }); dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true }); if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 const OWNER_EMAIL = 'samuel.r@razumly.com'; const ORG_ID = 'affiliate_org_sports_zone_academy_softball'; const SOURCE_ID = 'affiliate_source_sports_zone_academy_softball'; const SOURCE_KEY = 'sports-zone-academy-softball'; const MAPPING_ID = 'affiliate_mapping_sports_zone_academy_softball_v1'; const LOGO_FILE_ID = 'affiliate_file_sports_zone_academy_softball_logo'; const LOGO_PATH = path.join(process.cwd(), 'src/server/affiliateImports/fixtures/sportsZoneAcademySoftballLogo.png');

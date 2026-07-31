@@ -1,14 +1,12 @@
 /** Operator-approved setup for the NYC Parks stored-intake pickleball facility package. */
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import path from 'node:path';
 import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
 import { NYC_PARKS_HOME_URL, NYC_PARKS_PICKLEBALL_MAPPING, NYC_PARKS_PICKLEBALL_ORG_DESCRIPTION, NYC_PARKS_PICKLEBALL_URL, NYC_PARKS_PROGRAM_URL, NYC_PARKS_PICKLEBALL_SOURCE_EVIDENCE, NYC_PARKS_PICKLEBALL_STATIC_PAGE_CLIENT } from '../src/server/affiliateImports/nycParksPickleballCourtsSource';
 
 dotenv.config({ quiet: true }); dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true }); if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 const OWNER_EMAIL = 'samuel.r@razumly.com'; const ORG_ID = 'affiliate_org_nyc_parks_pickleball'; const SOURCE_ID = 'affiliate_source_nyc_parks_pickleball'; const SOURCE_KEY = 'new-york-new-york-metropolitan-area-pickleball-courts-nycgovparks-org'; const MAPPING_ID = 'affiliate_mapping_nyc_parks_pickleball_v1';

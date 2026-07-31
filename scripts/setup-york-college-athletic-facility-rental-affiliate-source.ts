@@ -1,5 +1,6 @@
 /** Operator-approved setup for the York College Athletics stored-intake rental package. */
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -7,10 +8,7 @@ import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/type
 import { YORK_COLLEGE_FACILITIES_URL, YORK_COLLEGE_HOME_URL, YORK_COLLEGE_LOGO_SOURCE_URL, YORK_COLLEGE_MAPPING, YORK_COLLEGE_ORG_DESCRIPTION, YORK_COLLEGE_RENTAL_FORM_URL, YORK_COLLEGE_SOURCE_EVIDENCE, YORK_COLLEGE_STATIC_PAGE_CLIENT } from '../src/server/affiliateImports/yorkCollegeAthleticFacilityRentalSource';
 
 dotenv.config({ quiet: true }); dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true }); if (process.argv.includes('--live')) {
-  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
-  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
-  process.env.DATABASE_URL = liveDatabaseUrl;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
 }
 const OWNER_EMAIL = 'samuel.r@razumly.com'; const ORG_ID = 'affiliate_org_york_college_athletics'; const SOURCE_ID = 'affiliate_source_york_college_athletics_rentals'; const SOURCE_KEY = 'new-york-new-york-metropolitan-area-application-for-athletic-facility-rental-yorkathletics-com'; const MAPPING_ID = 'affiliate_mapping_york_college_athletics_rentals_v1'; const LOGO_FILE_ID = 'affiliate_file_york_college_athletics_logo'; const LOGO_PATH = path.join(process.cwd(), 'src/server/affiliateImports/fixtures/yorkCollegeAthleticFacilityRentalLogo.png');
