@@ -4,6 +4,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import {
+  affiliateSourceMatchesIntakeEvidence,
   resolveApprovedAffiliateSetupScript,
   selectAffiliateMappingLiveApprovalCandidates,
 } from '../src/server/affiliateImports/codexIngestionApproval';
@@ -36,21 +37,6 @@ if (apply && !approvedBy) {
 const requestedJobId = readOption('--job');
 const parsedLimit = Number.parseInt(readOption('--limit') ?? '', 10);
 const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
-
-const recordValue = (value: unknown): Record<string, unknown> => (
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-);
-
-const sourceEvidenceMatches = (
-  metadata: unknown,
-  input: { intakeId: string; intakeSourceKey: string },
-): boolean => {
-  const sourceEvidence = recordValue(recordValue(metadata).sourceEvidence);
-  return sourceEvidence.intakeId === input.intakeId
-    || sourceEvidence.intakeSourceKey === input.intakeSourceKey;
-};
 
 const main = async () => {
   const { prisma } = await import('../src/lib/prisma');
@@ -119,8 +105,7 @@ const main = async () => {
         );
       }
 
-      const source = await db.affiliateScrapeSources.findUnique({
-        where: { sourceKey: candidate.result.sourceKey },
+      const sources = await db.affiliateScrapeSources.findMany({
         select: {
           id: true,
           sourceKey: true,
@@ -130,14 +115,18 @@ const main = async () => {
           metadata: true,
         },
       });
-      if (!source || !sourceEvidenceMatches(
-        source.metadata,
-        { intakeId: candidate.intakeId, intakeSourceKey: candidate.result.sourceKey },
-      )) {
+      const matchedSources = sources.filter((source: any) => (
+        affiliateSourceMatchesIntakeEvidence(
+          source.metadata,
+          { intakeId: candidate.intakeId, intakeSourceKey: candidate.result.sourceKey },
+        )
+      ));
+      if (matchedSources.length !== 1) {
         throw new Error(
-          `Expected one evidence-matched live source for ${candidate.result.sourceKey}.`,
+          `Expected one evidence-matched live source for ${candidate.result.sourceKey}; found ${matchedSources.length}.`,
         );
       }
+      const source = matchedSources[0];
       if (!source.organizationId || !source.activeMappingId) {
         throw new Error(`Live source ${source.id} is missing its organization or active mapping.`);
       }

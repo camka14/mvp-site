@@ -1,4 +1,5 @@
 import {
+  affiliateSourceMatchesIntakeEvidence,
   resolveApprovedAffiliateSetupScript,
   selectAffiliateMappingLiveApprovalCandidates,
 } from '../codexIngestionApproval';
@@ -66,5 +67,25 @@ describe('Codex ingestion live approval', () => {
     expect(() => resolveApprovedAffiliateSetupScript('/repo', '../outside.ts')).toThrow(
       'escapes the repository',
     );
+  });
+
+  it('matches a generated source by intake evidence when its operational key differs', () => {
+    expect(affiliateSourceMatchesIntakeEvidence(
+      {
+        sourceEvidence: {
+          intakeId: 'intake-1',
+          intakeSourceKey: 'new-york-long-intake-key',
+        },
+      },
+      {
+        intakeId: 'intake-1',
+        intakeSourceKey: 'new-york-long-intake-key',
+      },
+    )).toBe(true);
+
+    expect(affiliateSourceMatchesIntakeEvidence(
+      { sourceEvidence: { intakeSourceKey: 'new-york-long-intake-key' } },
+      { intakeId: 'intake-1', intakeSourceKey: 'different-key' },
+    )).toBe(false);
   });
 });

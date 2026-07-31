@@ -25,6 +25,15 @@ const recordValue = (value: unknown): Record<string, unknown> => (
     : {}
 );
 
+export const affiliateSourceMatchesIntakeEvidence = (
+  metadata: unknown,
+  input: { intakeId: string; intakeSourceKey: string },
+): boolean => {
+  const sourceEvidence = recordValue(recordValue(metadata).sourceEvidence);
+  return sourceEvidence.intakeId === input.intakeId
+    || sourceEvidence.intakeSourceKey === input.intakeSourceKey;
+};
+
 export const selectAffiliateMappingLiveApprovalCandidates = (
   jobs: AffiliateMappingApprovalJob[],
 ): {
