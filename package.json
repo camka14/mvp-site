@@ -96,6 +96,7 @@
     "affiliate:setup:manhattan-youth-volleyball-rental": "tsx scripts/setup-manhattan-youth-volleyball-rental-affiliate-source.ts",
     "affiliate:setup:york-college-athletics-rentals": "tsx scripts/setup-york-college-athletic-facility-rental-affiliate-source.ts",
     "affiliate:setup:nyc-parks-pickleball": "tsx scripts/setup-nyc-parks-pickleball-courts-affiliate-source.ts",
+    "affiliate:setup:nyusa": "tsx scripts/setup-new-york-united-soccer-academy-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
