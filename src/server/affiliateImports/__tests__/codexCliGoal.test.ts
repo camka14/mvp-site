@@ -79,6 +79,20 @@ describe('Codex affiliate intake goal', () => {
     );
   });
 
+  it('uses danger-full-access only when an external container boundary was requested', () => {
+    const args = buildCodexAffiliateIngestionArgs({
+      ...options,
+      containerIsolated: true,
+    });
+
+    expect(args).toEqual(expect.arrayContaining([
+      '--sandbox',
+      'danger-full-access',
+    ]));
+    expect(args).not.toContain('workspace-write');
+    expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+  });
+
   it('rejects worker ids that could become command syntax', () => {
     expect(() => buildCodexAffiliateIngestionArgs({
       ...options,

@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -23,8 +24,14 @@ const codexExecutable = readOption('--codex-bin')
   ?? 'codex';
 const useLiveIntakes = process.argv.includes('--live');
 const isDryRun = process.argv.includes('--dry-run');
+const containerIsolated = process.argv.includes('--container-isolated');
 const workerId = readOption('--worker') ?? `codex-luna-${process.pid}`;
-const options = { repositoryRoot, useLiveIntakes, workerId };
+const options = {
+  repositoryRoot,
+  useLiveIntakes,
+  workerId,
+  containerIsolated,
+};
 
 const inspectCodex = async () => {
   let version: string | null = null;
@@ -65,6 +72,7 @@ const main = async () => {
     model: CODEX_AFFILIATE_INGESTION_MODEL,
     reasoningEffort: CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
     useLiveIntakes,
+    containerIsolated,
     workerId,
     codex: preflight,
     loginCommand: preflight.authenticated ? null : 'codex login --device-auth',
@@ -74,11 +82,18 @@ const main = async () => {
     },
     goal,
     authority: useLiveIntakes
-      ? 'live-intake-read-and-mapping-queue-only'
+      ? containerIsolated
+        ? 'container-isolated-live-intake-read-and-mapping-queue-only'
+        : 'live-intake-read-and-mapping-queue-only'
       : 'local-intake-and-mapping-queue-only',
   }, null, 2));
 
   if (isDryRun) return;
+  if (containerIsolated && !fs.existsSync('/.dockerenv')) {
+    throw new Error(
+      '--container-isolated may only be used inside the dedicated Docker boundary.',
+    );
+  }
   if (!preflight.cliAvailable) {
     throw new Error(
       'Codex CLI is not runnable. Install or repair @openai/codex on the VM, then retry.',

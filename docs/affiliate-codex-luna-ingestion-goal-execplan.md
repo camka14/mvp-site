@@ -32,6 +32,9 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - Observation: a positional initial prompt passed to interactive `codex` is submitted as a normal user message and is not parsed through the slash-command input path.
   Evidence: the current Codex source sends `initial_prompt` through `submit_initial_user_message_if_pending()` and `submit_user_message`, while slash commands are parsed through `QueuedInputAction::ParseSlash`. The launcher therefore must instruct the goal-enabled agent to call `create_goal`; a positional string beginning with `/goal` would not create a persisted goal.
 
+- Observation: the OVH host blocks the unprivileged user namespace that Codex's Bubblewrap command sandbox requires.
+  Evidence: the first VM goal run failed every command before process launch with `bwrap: setting up uid map: Permission denied`; the goal was stopped before it claimed an intake, and the queue remained at 97 queued jobs with no active leases.
+
 - Observation: the current generated mapping setup already creates a private unlisted organization, disabled scrape source, inactive/unvalidated mapping, focused test, and registry fragment, but official logo normalization remains a manual gate.
   Evidence: `src/server/affiliateImports/agentTemplates/sourceFiles.ts` explicitly leaves `logoId` null and says that normalized-logo review remains manual.
 
@@ -56,6 +59,10 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - Decision: keep human approval and publication outside the goal.
   Rationale: Codex may create and validate review-ready organization/source/mapping/logo artifacts, but a generated mapping is not training gold and a candidate is not publishable until the existing reviewer and administrator approval gates succeed.
   Date/Author: 2026-07-30 / Codex
+
+- Decision: permit `danger-full-access` only when `--container-isolated` is used inside a dedicated Docker boundary.
+  Rationale: changing the OVH host's namespace security or running unsandboxed against the host would expose production files and Docker. The dedicated container mounts only the test checkout and Codex state, receives only selected intake/storage credentials, has no Docker socket, and joins only the live Postgres and disposable-validation networks.
+  Date/Author: 2026-07-31 / Codex
 
 ## Outcomes & Retrospective
 

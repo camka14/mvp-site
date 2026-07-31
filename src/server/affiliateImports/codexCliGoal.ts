@@ -8,6 +8,7 @@ export type CodexAffiliateGoalOptions = {
   repositoryRoot: string;
   useLiveIntakes: boolean;
   workerId: string;
+  containerIsolated?: boolean;
 };
 
 const npmRunCommand = (script: string, arguments_: string[] = []): string => [
@@ -92,6 +93,9 @@ export const buildCodexAffiliateIngestionArgs = (
   options: CodexAffiliateGoalOptions,
 ): string[] => {
   const repositoryRoot = path.resolve(options.repositoryRoot);
+  const sandboxMode = options.containerIsolated
+    ? 'danger-full-access'
+    : 'workspace-write';
   return [
     '--cd',
     repositoryRoot,
@@ -104,7 +108,7 @@ export const buildCodexAffiliateIngestionArgs = (
     '--enable',
     'goals',
     '--sandbox',
-    'workspace-write',
+    sandboxMode,
     '--ask-for-approval',
     'never',
     buildCodexAffiliateIngestionGoal({
