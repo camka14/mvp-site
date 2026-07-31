@@ -101,6 +101,7 @@
     "affiliate:setup:basketball-city": "tsx scripts/setup-basketball-city-affiliate-source.ts",
     "affiliate:setup:nyc-soccer-academy": "tsx scripts/setup-nyc-soccer-academy-affiliate-source.ts",
     "affiliate:setup:cunningham-tennis": "tsx scripts/setup-cunningham-tennis-affiliate-source.ts",
+    "affiliate:setup:jmta": "tsx scripts/setup-john-mcenroe-tennis-academy-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
