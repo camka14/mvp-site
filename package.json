@@ -106,6 +106,7 @@
     "affiliate:setup:fort-greene-tennis": "tsx scripts/setup-fort-greene-tennis-affiliate-source.ts",
     "affiliate:setup:usa-softball-long-island": "tsx scripts/setup-usa-softball-long-island-affiliate-source.ts",
     "affiliate:setup:dv7-soccer-new-york": "tsx scripts/setup-dv7-soccer-new-york-affiliate-source.ts",
+    "affiliate:setup:juventus-academy-new-york": "tsx scripts/setup-juventus-academy-new-york-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
