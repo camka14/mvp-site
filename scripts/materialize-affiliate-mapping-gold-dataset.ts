@@ -14,6 +14,9 @@ import {
   assertApprovedAffiliateEvidenceCapturePlan,
 } from '../src/server/affiliateImports/agentEvidenceCapturePlan';
 import {
+  resolveApprovedAffiliateTrainingRecoverySelection,
+} from '../src/server/affiliateImports/agentTrainingAcquisitionPlan';
+import {
   buildAffiliateMappingJobContextFromExports,
 } from '../src/server/affiliateImports/agentJobContext';
 import {
@@ -554,6 +557,30 @@ const main = async () => {
   const plannedExampleCount = selectedExamples.length;
   const baseGoldOption = readOption('--base-gold-release');
   const baseGold = baseGoldOption ? await readGoldRelease(baseGoldOption) : null;
+  const acquisitionPlanOption = readOption('--acquisition-plan');
+  const acquisitionApprovalOption = readOption('--acquisition-approval');
+  if (acquisitionApprovalOption && !acquisitionPlanOption) {
+    throw new Error('--acquisition-approval requires --acquisition-plan.');
+  }
+  const acquisitionSelection = acquisitionPlanOption
+    ? resolveApprovedAffiliateTrainingRecoverySelection(
+      JSON.parse(await fs.readFile(path.resolve(acquisitionPlanOption), 'utf8')),
+      JSON.parse(await fs.readFile(path.resolve(
+        acquisitionApprovalOption
+          ?? path.join(path.dirname(path.resolve(acquisitionPlanOption)), 'approval.json'),
+      ), 'utf8')),
+    )
+    : null;
+  if (
+    acquisitionSelection
+    && (
+      !isTrainingPlan
+      || acquisitionSelection.sourceCapturePlanId !== selectionId
+      || acquisitionSelection.sourceCapturePlanSha256 !== selectionSha256
+    )
+  ) {
+    throw new Error('Approved acquisition scope does not match the materialization plan.');
+  }
   const baseExampleIds = new Set(
     baseGold?.release.examples.map((example) => example.exampleId) ?? [],
   );
@@ -588,6 +615,28 @@ const main = async () => {
       completeSourceKeys.has(example.sourceKey)
     ));
   }
+  if (acquisitionSelection) {
+    const approvedRecoverySourceKeys = new Set(
+      acquisitionSelection.recoveryCandidates.map((candidate) => candidate.sourceKey),
+    );
+    const unapprovedSourceKeys = selectedExamples
+      .filter((example) => !approvedRecoverySourceKeys.has(example.sourceKey))
+      .map((example) => example.sourceKey);
+    if (unapprovedSourceKeys.length) {
+      throw new Error(
+        `Complete additions are outside the approved acquisition scope: ${unapprovedSourceKeys.join(', ')}.`,
+      );
+    }
+  }
+  const frozenExamples: AffiliateFrozenTrainingValidationExample[] = [
+    ...(baseGold?.release.examples.map(frozenSplitExample) ?? []),
+    ...(acquisitionSelection?.recoveryCandidates.map((candidate) => ({
+      registrableDomain: candidate.registrableDomain,
+      split: candidate.assignedSplit as 'train' | 'validation',
+      targetKind: candidate.targetKind,
+      mappingMode: candidate.mappingMode,
+    })) ?? []),
+  ];
   const splitByDomain = isTrainingPlan
     ? buildAffiliateTrainingValidationSplitAssignments({
       candidates: selectedExamples.map((example) => ({
@@ -596,7 +645,7 @@ const main = async () => {
         targetKind: example.targetKind,
         mappingMode: example.mappingMode,
       })),
-      frozenExamples: baseGold?.release.examples.map(frozenSplitExample) ?? [],
+      frozenExamples,
     })
     : new Map<string, 'test'>(selectedExamples.map((example) => [
         example.registrableDomain,
@@ -609,6 +658,8 @@ const main = async () => {
       plannedExampleCount,
       exampleCount: selectedExamples.length,
       carriedForwardExampleCount: carriedForwardSourceKeys.length,
+      acquisitionPlanId: acquisitionSelection?.selectionId ?? null,
+      acquisitionPlanSha256: acquisitionSelection?.selectionSha256 ?? null,
       baseGoldReleaseId: baseGold?.release.manifest.releaseId ?? null,
       baseGoldReleaseSha256: baseGold?.releaseSha256 ?? null,
       evidenceIncompleteSourceCount: evidenceIncompleteSourceKeys.length,
@@ -983,6 +1034,8 @@ const main = async () => {
       plannedExampleCount,
       exampleCount: results.length,
       carriedForwardSourceKeys,
+      acquisitionPlanId: acquisitionSelection?.selectionId ?? null,
+      acquisitionPlanSha256: acquisitionSelection?.selectionSha256 ?? null,
       baseGoldReleaseId: baseGold?.release.manifest.releaseId ?? null,
       baseGoldReleaseSha256: baseGold?.releaseSha256 ?? null,
       evidenceIncompleteSourceKeys,
