@@ -143,6 +143,7 @@
     "affiliate:setup:commonpoint-turf-court-rentals": "tsx scripts/setup-commonpoint-turf-court-rentals-affiliate-source.ts",
     "affiliate:setup:harvey-hockey-camp": "tsx scripts/setup-harvey-hockey-camp-affiliate-source.ts",
     "affiliate:setup:next-level-sports-center": "tsx scripts/setup-next-level-sports-center-affiliate-source.ts",
+    "affiliate:setup:powerzone-volleyball-court-rental": "tsx scripts/setup-powerzone-volleyball-court-rental-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
