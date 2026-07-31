@@ -20,6 +20,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - [x] (2026-07-31 00:55Z) Updated the rollout goal with the exact intake, logo, organization, validation, failure, and publication boundaries.
 - [x] (2026-07-31 00:55Z) Passed skill validation, 10 focused Jest tests, `npx tsc --noEmit`, local/live launcher dry runs, and `git diff --check`.
 - [x] (2026-07-31 01:00Z) Committed the plan and implementation as `878f6e88` and `d2032b0c`, then pushed `codex/affiliate-codex-luna-goal` to the HTTPS GitHub remote for VM testing.
+- [x] (2026-07-31 04:00Z) Added and VM-tested an externally isolated Docker fallback for OVH hosts that block Bubblewrap user namespaces; the goal now runs as UID 1001 with all Linux capabilities dropped, no Docker socket, and only the checkout plus selected Codex/database mounts.
 
 ## Surprises & Discoveries
 
@@ -66,7 +67,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 
 ## Outcomes & Retrospective
 
-The implementation is complete, validated locally, and pushed on `codex/affiliate-codex-luna-goal`. It adds a repository-discovered ingestion skill, a Luna x-high interactive launcher that creates a persisted goal before claiming work, a read-only queue-exhaustion report, and a strict terminal-result boundary. No application route, component, Prisma schema, migration, deployment file, or scheduled website process is changed by this work. VM installation and Codex device login are intentionally deferred until the branch is checked out on the target machine.
+The implementation is complete, validated locally, and pushed on `codex/affiliate-codex-luna-goal`. It adds a repository-discovered ingestion skill, a Luna x-high interactive launcher that creates a persisted goal before claiming work, a read-only queue-exhaustion report, a strict terminal-result boundary, and one opt-in AI-worker Dockerfile for hosts where Bubblewrap cannot start. No application route, component, Prisma schema, migration, production Compose file, or scheduled website process is changed. On the OVH VM, Codex device login succeeded, the isolated disposable database received all migrations, the live queue reported 97 claimable jobs, and the containerized Luna x-high goal entered `Pursuing goal` without claiming or altering website records during setup.
 
 ## Context and Orientation
 
@@ -198,3 +199,5 @@ Revision note (2026-07-30): Created this plan to add the user-requested Codex Lu
 Revision note (2026-07-31): Recorded the CLI positional-prompt discovery, switched durable goal creation to the `create_goal` tool, added malformed-lease handling to the stop condition, and recorded successful local validation.
 
 Revision note (2026-07-31): Recorded the scoped implementation commits and successful branch push for VM testing.
+
+Revision note (2026-07-31): Recorded the OVH Bubblewrap failure, externally isolated container fallback, successful device login, and running VM goal.
