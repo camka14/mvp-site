@@ -19,7 +19,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - [x] (2026-07-31 00:55Z) Added read-only queue status and strict terminal result commands, including malformed-lease detection.
 - [x] (2026-07-31 00:55Z) Updated the rollout goal with the exact intake, logo, organization, validation, failure, and publication boundaries.
 - [x] (2026-07-31 00:55Z) Passed skill validation, 10 focused Jest tests, `npx tsc --noEmit`, local/live launcher dry runs, and `git diff --check`.
-- [ ] Commit the implementation in scoped commits and push `codex/affiliate-codex-luna-goal` for VM testing.
+- [x] (2026-07-31 01:00Z) Committed the plan and implementation as `878f6e88` and `d2032b0c`, then pushed `codex/affiliate-codex-luna-goal` to the HTTPS GitHub remote for VM testing.
 
 ## Surprises & Discoveries
 
@@ -59,7 +59,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 
 ## Outcomes & Retrospective
 
-The implementation is complete and validated locally. It adds a repository-discovered ingestion skill, a Luna x-high interactive launcher that creates a persisted goal before claiming work, a read-only queue-exhaustion report, and a strict terminal-result boundary. No application route, component, Prisma schema, migration, deployment file, or scheduled website process is changed by this work. The remaining step is the scoped commit and branch push for VM installation/login testing.
+The implementation is complete, validated locally, and pushed on `codex/affiliate-codex-luna-goal`. It adds a repository-discovered ingestion skill, a Luna x-high interactive launcher that creates a persisted goal before claiming work, a read-only queue-exhaustion report, and a strict terminal-result boundary. No application route, component, Prisma schema, migration, deployment file, or scheduled website process is changed by this work. VM installation and Codex device login are intentionally deferred until the branch is checked out on the target machine.
 
 ## Context and Orientation
 
@@ -189,3 +189,5 @@ The script may query Prisma rows, but the summary function must not import Prism
 Revision note (2026-07-30): Created this plan to add the user-requested Codex Luna x-high ingestion option as a durable VM goal while preserving the existing evidence, review, publication, and training-data boundaries.
 
 Revision note (2026-07-31): Recorded the CLI positional-prompt discovery, switched durable goal creation to the `create_goal` tool, added malformed-lease handling to the stop condition, and recorded successful local validation.
+
+Revision note (2026-07-31): Recorded the scoped implementation commits and successful branch push for VM testing.
