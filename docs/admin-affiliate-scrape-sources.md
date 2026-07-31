@@ -303,6 +303,10 @@ City, school, and parks sites remain strong inventory sources, but they are more
 
 ## Implementation Notes
 
+### 2026-07-31 Asphalt Green Soccer Club intake
+
+Live intake `new-york-new-york-metropolitan-area-asphalt-green-soccer-club-agsoccerclub-com`, run `073d1ff4-18d4-4c5d-b015-d1c8f619bb75`, was captured 2026-07-29 via ScrapingDog with `ALLOWED` compliance. The stored homepage provides enough evidence for one ongoing `CLUB` candidate for Asphalt Green Soccer Club in New York City, with Soccer and U6-U18/19 context. Discovered program, tryout, and registration URLs were not captured as detail pages and are withheld; no dated EVENT or TEAM candidate is created. Stored logo candidates are third-party Adidas, EDP, USYS, NAL, and WPSL marks, so the organization logo is explicitly `MANUAL_REVIEW`. The source package is local-only, monthly/weekly intended cadence is disabled, and its mapping remains unvalidated until an independent reviewer captures the missing detail pages and official logo.
+
 ### 2026-07-20 scoped successful-zero-source completion audit
 
 The 25 sources below were the successful local sources whose latest scrape had

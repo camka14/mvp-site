@@ -75,6 +75,7 @@
     "affiliate:setup:carr-sports-academy": "tsx scripts/setup-carr-sports-academy-affiliate-source.ts",
     "affiliate:setup:cyo-camp-howard-sports": "tsx scripts/setup-cyo-camp-howard-sports-affiliate-source.ts",
     "affiliate:setup:gridiron-new-york": "tsx scripts/setup-gridiron-new-york-affiliate-source.ts",
+    "affiliate:setup:asphalt-green-soccer-club": "tsx scripts/setup-asphalt-green-soccer-club-affiliate-source.ts",
     "affiliate:setup:503-baseball": "tsx scripts/setup-503-baseball-affiliate-source.ts",
     "affiliate:setup:cascade-athletic-clubs-gresham": "tsx scripts/setup-cascade-athletic-clubs-gresham-affiliate-source.ts",
     "affiliate:setup:nw-futures-baseball": "tsx scripts/setup-nw-futures-baseball-affiliate-source.ts",
