@@ -84,6 +84,7 @@
     "affiliate:setup:neaau-new-york-city": "tsx scripts/setup-neaau-new-york-city-affiliate-source.ts",
     "affiliate:setup:new-york-elite-volleyball": "tsx scripts/setup-new-york-elite-volleyball-affiliate-source.ts",
     "affiliate:setup:hot-volleyball-nyc": "tsx scripts/setup-hot-volleyball-nyc-affiliate-source.ts",
+    "affiliate:setup:nyc-pickleball-leagues": "tsx scripts/setup-nyc-pickleball-leagues-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
