@@ -115,6 +115,7 @@
     "affiliate:setup:gg-volleyball-club": "tsx scripts/setup-gg-volleyball-club-affiliate-source.ts",
     "affiliate:setup:the-program-nyc": "tsx scripts/setup-the-program-nyc-affiliate-source.ts",
     "affiliate:setup:five-star-soccer-academy": "tsx scripts/setup-five-star-soccer-academy-affiliate-source.ts",
+    "affiliate:setup:central-park-tennis-center": "tsx scripts/setup-central-park-tennis-center-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
