@@ -120,6 +120,7 @@
     "affiliate:setup:atlantic-volleyball-academy": "tsx scripts/setup-atlantic-volleyball-academy-affiliate-source.ts",
     "affiliate:setup:globall-competitions": "tsx scripts/setup-globall-competitions-affiliate-source.ts",
     "affiliate:setup:new-york-tennis-club-rental": "tsx scripts/setup-new-york-tennis-club-rental-affiliate-source.ts",
+    "affiliate:setup:big-league-ultimate-frisbee": "tsx scripts/setup-big-league-ultimate-frisbee-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
