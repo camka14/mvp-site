@@ -1,4 +1,4 @@
-/** Local-only setup for the John McEnroe Tennis Academy stored-intake club package. */
+/** Operator-approved setup for the John McEnroe Tennis Academy stored-intake club package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { JMTA_HOME_URL, JMTA_LOGO_SOURCE_URL, JMTA_MAPPING, JMTA_ORG_DESCRIPTION
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_john_mcenroe_tennis_academy';
@@ -75,7 +81,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'John McEnroe Tennis Academy (JMTA)', location: 'New York, NY', address: null, description: JMTA_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: JMTA_HOME_URL, sports: ['Tennis'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'John McEnroe Tennis Academy (JMTA)', location: 'New York, NY', address: null, description: JMTA_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: JMTA_HOME_URL, sports: ['Tennis'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'John McEnroe Tennis Academy (JMTA)', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: JMTA_HOME_URL, listUrl: JMTA_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake JMTA club package with one ongoing CLUB profile; unchecked camp, event, tournament, and location rows remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

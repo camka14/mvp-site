@@ -1,4 +1,4 @@
-/** Local-only setup for the Globall Competitions stored-intake CLUB package. */
+/** Operator-approved setup for the Globall Competitions stored-intake CLUB package. */
 import dotenv from 'dotenv';
 import path from 'node:path';
 import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
@@ -25,7 +25,13 @@ import {
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_globall_competitions';
@@ -64,7 +70,7 @@ const main = async () => {
   try {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
-    const organization = { updatedAt: new Date(), name: 'Globall Competitions', location: 'New York region', address: null, description: GLOBALL_COMPETITIONS_ORG_DESCRIPTION, logoId: null, ownerId: owner.id, website: GLOBALL_COMPETITIONS_HOME_URL, sports: ['Soccer'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'Globall Competitions', location: 'New York region', address: null, description: GLOBALL_COMPETITIONS_ORG_DESCRIPTION, logoId: null, ownerId: owner.id, website: GLOBALL_COMPETITIONS_HOME_URL, sports: ['Soccer'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'Globall Competitions', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: GLOBALL_COMPETITIONS_HOME_URL, listUrl: GLOBALL_COMPETITIONS_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake Globall Competitions CLUB package with one ongoing New York-region soccer competition organizer profile. Current tournament and league pages are unchecked and the stored homepage lacks complete dated rows, so no EVENT or RENTAL candidate is created; logo remains in manual review.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

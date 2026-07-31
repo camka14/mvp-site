@@ -1,4 +1,4 @@
-/** Local-only setup for the 5 Star Soccer Academy stored-intake CLUB package. */
+/** Operator-approved setup for the 5 Star Soccer Academy stored-intake CLUB package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -19,7 +19,13 @@ import {
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_five_star_soccer_academy';
@@ -91,7 +97,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: '5 Star Soccer Academy', location: 'New York City, NY', address: null, description: FIVE_STAR_SOCCER_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: FIVE_STAR_SOCCER_HOME_URL, sports: ['Soccer'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: '5 Star Soccer Academy', location: 'New York City, NY', address: null, description: FIVE_STAR_SOCCER_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: FIVE_STAR_SOCCER_HOME_URL, sports: ['Soccer'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: '5 Star Soccer Academy', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: FIVE_STAR_SOCCER_HOME_URL, listUrl: FIVE_STAR_SOCCER_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake 5 Star Soccer Academy CLUB package with one ongoing NYC youth-soccer profile. Current training/camp/tryout pages are not captured as complete allowed rows, historical detail pages are unchecked, and no EVENT or TEAM candidate is created.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

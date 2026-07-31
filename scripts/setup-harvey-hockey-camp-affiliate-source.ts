@@ -1,4 +1,4 @@
-/** Local-only setup for the Harvey Hockey Camp stored-intake package. */
+/** Operator-approved setup for the Harvey Hockey Camp stored-intake package. */
 import dotenv from 'dotenv';
 import path from 'node:path';
 import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
@@ -16,7 +16,13 @@ import {
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_harvey_hockey_camp';
@@ -69,7 +75,7 @@ const main = async () => {
       ownerId: owner.id,
       website: HARVEY_SCHOOL_HOME_URL,
       sports: ['Ice Hockey'],
-      status: 'UNLISTED',
+      status: 'UNLISTED' as const,
       publicPageEnabled: false,
       publicWidgetsEnabled: false,
     };

@@ -1,4 +1,4 @@
-/** Local-only setup for the APTC at Queens College stored-intake rental package. */
+/** Operator-approved setup for the APTC at Queens College stored-intake rental package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { APTC_HOME_URL, APTC_LOGO_SOURCE_URL, APTC_ORG_DESCRIPTION, APTC_PICKLEB
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_aptcnyc_queens_college';
@@ -75,7 +81,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'APTC at Queens College', location: 'APTC at Queens College', address: null, description: APTC_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: APTC_HOME_URL, sports: ['Pickleball'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'APTC at Queens College', location: 'APTC at Queens College', address: null, description: APTC_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: APTC_HOME_URL, sports: ['Pickleball'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'APTC at Queens College Pickleball Court Rentals', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: APTC_HOME_URL, listUrl: APTC_PICKLEBALL_RENTALS_URL, targetKind: 'RENTAL', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 43200, notes: 'Stored-intake pickleball rental package with current summer 2026 rate bands and official waiver link; address and live availability remain unset.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

@@ -1,4 +1,4 @@
-/** Local-only setup for the Asphalt Green soccer overview stored-intake package. */
+/** Operator-approved setup for the Asphalt Green soccer overview stored-intake package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { ASPHALT_GREEN_AGSC_DESCRIPTION, ASPHALT_GREEN_AGSC_LOGO_URL, ASPHALT_GR
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_asphalt_green_soccer_overview';
@@ -75,7 +81,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'Asphalt Green Soccer Club', location: 'New York, NY', address: null, description: ASPHALT_GREEN_AGSC_DESCRIPTION, logoId, ownerId: owner.id, website: ASPHALT_GREEN_HOME_URL, sports: ['Soccer'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'Asphalt Green Soccer Club', location: 'New York, NY', address: null, description: ASPHALT_GREEN_AGSC_DESCRIPTION, logoId, ownerId: owner.id, website: ASPHALT_GREEN_HOME_URL, sports: ['Soccer'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'Asphalt Green Soccer Overview', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: ASPHALT_GREEN_HOME_URL, listUrl: ASPHALT_GREEN_SOCCER_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake soccer overview package with one ongoing CLUB profile; unchecked dated programs, tryouts, rentals, and team rows remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

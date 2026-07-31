@@ -1,4 +1,4 @@
-/** Local-only setup for the New York United Soccer Academy stored-intake club package. */
+/** Operator-approved setup for the New York United Soccer Academy stored-intake club package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { NYUSA_HOME_URL, NYUSA_LOGO_SOURCE_URL, NYUSA_MAPPING, NYUSA_ORG_DESCRIP
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_new_york_united_soccer_academy';
@@ -75,7 +81,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'New York United Soccer Academy', location: 'Queens, NY', address: null, description: NYUSA_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: NYUSA_HOME_URL, sports: ['Soccer'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'New York United Soccer Academy', location: 'Queens, NY', address: null, description: NYUSA_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: NYUSA_HOME_URL, sports: ['Soccer'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'New York United Soccer Academy', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: NYUSA_HOME_URL, listUrl: NYUSA_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake NYUSA club package with one ongoing CLUB profile; unchecked program, camp, tryout, registration, team, and rental rows remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

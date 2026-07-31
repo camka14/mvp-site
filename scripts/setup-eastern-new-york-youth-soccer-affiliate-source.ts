@@ -1,4 +1,4 @@
-/** Local-only setup for the Eastern New York ODP stored-intake package. */
+/** Operator-approved setup for the Eastern New York ODP stored-intake package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,7 +18,13 @@ import {
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_eastern_new_york_youth_soccer_odp';
@@ -96,7 +102,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'Eastern New York Youth Soccer Association ODP', location: 'Eastern New York', address: null, description: ENY_ODP_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: ENY_ODP_HOME_URL, sports: ['Soccer'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'Eastern New York Youth Soccer Association ODP', location: 'Eastern New York', address: null, description: ENY_ODP_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: ENY_ODP_HOME_URL, sports: ['Soccer'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'Eastern New York ODP Tryouts', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: ENY_ODP_HOME_URL, listUrl: ENY_ODP_TRYOUTS_URL, targetKind: 'EVENT', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake ENY ODP CLUB and future EVENT package; past, rescheduled, announced-later, and unchecked rows remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

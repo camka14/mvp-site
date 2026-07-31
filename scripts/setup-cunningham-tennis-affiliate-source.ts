@@ -1,4 +1,4 @@
-/** Local-only setup for the Cunningham Tennis stored-intake club and rental package. */
+/** Operator-approved setup for the Cunningham Tennis stored-intake club and rental package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { CUNNINGHAM_DESCRIPTION, CUNNINGHAM_HOME_URL, CUNNINGHAM_LOGO_SOURCE_URL
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_cunningham_tennis';
@@ -75,7 +81,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'Cunningham Tennis', location: 'New York, NY', address: null, description: CUNNINGHAM_DESCRIPTION, logoId, ownerId: owner.id, website: CUNNINGHAM_HOME_URL, sports: ['Tennis'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'Cunningham Tennis', location: 'New York, NY', address: null, description: CUNNINGHAM_DESCRIPTION, logoId, ownerId: owner.id, website: CUNNINGHAM_HOME_URL, sports: ['Tennis'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'Cunningham Tennis', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: CUNNINGHAM_HOME_URL, listUrl: CUNNINGHAM_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake Cunningham Tennis package with ongoing CLUB and RENTAL link-out candidates; past summer session and unchecked detail rows remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

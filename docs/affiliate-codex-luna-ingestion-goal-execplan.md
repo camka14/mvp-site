@@ -21,6 +21,10 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - [x] (2026-07-31 00:55Z) Passed skill validation, 10 focused Jest tests, `npx tsc --noEmit`, local/live launcher dry runs, and `git diff --check`.
 - [x] (2026-07-31 01:00Z) Committed the plan and implementation as `878f6e88` and `d2032b0c`, then pushed `codex/affiliate-codex-luna-goal` to the HTTPS GitHub remote for VM testing.
 - [x] (2026-07-31 04:00Z) Added and VM-tested an externally isolated Docker fallback for OVH hosts that block Bubblewrap user namespaces; the goal now runs as UID 1001 with all Linux capabilities dropped, no Docker socket, and only the checkout plus selected Codex/database mounts.
+- [x] (2026-07-31 18:00Z) Exhausted the live eligible mapping queue: 89 jobs produced strict review results and source-scoped commits, while 8 ineligible, duplicate, incomplete, held-out, or team-only jobs finished as durable failures instead of retrying.
+- [x] (2026-07-31 19:00Z) Audited all 89 review results and separated 73 packages with official logo evidence from 16 packages that explicitly require manual logo review.
+- [x] (2026-07-31 20:00Z) Added an operator-only live approval command that applies only the 73 official-logo packages, verifies their private and disabled review state, and records approval provenance without publishing organizations or enabling scheduled scraping.
+- [x] (2026-07-31 20:00Z) Passed TypeScript, 88 generated source suites with 176 tests, 53 shared importer and approval tests, `git diff --check`, and an audit confirming all 73 checked-in official logos are opaque 1024-by-1024 PNG files.
 
 ## Surprises & Discoveries
 
@@ -65,9 +69,17 @@ The new path is an explicitly invoked developer command. It is not imported by t
   Rationale: changing the OVH host's namespace security or running unsandboxed against the host would expose production files and Docker. The dedicated container mounts only the test checkout and Codex state, receives only selected intake/storage credentials, has no Docker socket, and joins only the live Postgres and disposable-validation networks.
   Date/Author: 2026-07-31 / Codex
 
+- Decision: bulk approval may apply only results with `OFFICIAL_ASSET` or `OFFICIAL_SCREENSHOT_CROP` logo dispositions.
+  Rationale: the operator approved the existing captured evidence and mappings, but the repository completion contract still prohibits publishing or approving an organization package whose logo disposition is `MANUAL_REVIEW`. Those 16 jobs remain review-required until official logo evidence is supplied.
+  Date/Author: 2026-07-31 / Codex
+
+- Decision: an approved setup remains private and operationally disabled.
+  Rationale: live approval creates the unlisted organization, official logo, source, unvalidated mapping, and review candidates needed for later evaluation. It must verify `publicPageEnabled=false`, `autoScrapeEnabled=false`, and `validatedAt=null`; approval is not publication or automatic ingestion.
+  Date/Author: 2026-07-31 / Codex
+
 ## Outcomes & Retrospective
 
-The implementation is complete, validated locally, and pushed on `codex/affiliate-codex-luna-goal`. It adds a repository-discovered ingestion skill, a Luna x-high interactive launcher that creates a persisted goal before claiming work, a read-only queue-exhaustion report, a strict terminal-result boundary, and one opt-in AI-worker Dockerfile for hosts where Bubblewrap cannot start. No application route, component, Prisma schema, migration, production Compose file, or scheduled website process is changed. On the OVH VM, Codex device login succeeded, the isolated disposable database received all migrations, the live queue reported 97 claimable jobs, and the containerized Luna x-high goal entered `Pursuing goal` without claiming or altering website records during setup.
+The ingestion goal and generated cohort are complete and release-validated. The repository now contains the discoverable skill, Luna x-high launcher, queue-exhaustion report, strict result contract, isolated VM worker, 89 review-result commits, and a guarded operator approval command. The live eligible queue is exhausted. Seventy-three packages have official logo evidence and are eligible for operator-approved live setup; 16 remain held for manual logo review, and 8 were durably skipped or failed for documented eligibility or evidence reasons. Live approval intentionally stops with private organizations, disabled sources, unvalidated mappings, and unpublished review candidates. No application route, React component, Prisma schema, migration, production Compose file, or scheduled website process is changed.
 
 ## Context and Orientation
 
@@ -201,3 +213,5 @@ Revision note (2026-07-31): Recorded the CLI positional-prompt discovery, switch
 Revision note (2026-07-31): Recorded the scoped implementation commits and successful branch push for VM testing.
 
 Revision note (2026-07-31): Recorded the OVH Bubblewrap failure, externally isolated container fallback, successful device login, and running VM goal.
+
+Revision note (2026-07-31): Recorded queue exhaustion, cohort audit results, release validation, and the guarded live-approval boundary.

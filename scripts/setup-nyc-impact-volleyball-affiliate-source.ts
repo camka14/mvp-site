@@ -1,4 +1,4 @@
-/** Local-only setup for the NYC Impact Boys Volleyball stored-intake CLUB package. */
+/** Operator-approved setup for the NYC Impact Boys Volleyball stored-intake CLUB package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { NYC_IMPACT_VOLLEYBALL_HOME_URL, NYC_IMPACT_VOLLEYBALL_LOGO_SOURCE_URL, 
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_nyc_impact_volleyball';
@@ -66,7 +72,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'NYC Impact Boys Volleyball', location: null, address: null, description: NYC_IMPACT_VOLLEYBALL_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: NYC_IMPACT_VOLLEYBALL_HOME_URL, sports: ['Volleyball'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'NYC Impact Boys Volleyball', location: null, address: null, description: NYC_IMPACT_VOLLEYBALL_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: NYC_IMPACT_VOLLEYBALL_HOME_URL, sports: ['Volleyball'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'NYC Impact Boys Volleyball', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: NYC_IMPACT_VOLLEYBALL_HOME_URL, listUrl: NYC_IMPACT_VOLLEYBALL_TRYOUT_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake NYC Impact Boys Volleyball package with one ongoing CLUB profile; month/day tryout rows without individual source years, unchecked season/program/team pages, and missing canonical location remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

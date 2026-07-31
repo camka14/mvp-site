@@ -57,6 +57,7 @@
     "affiliate:mapping:disposable-scrape": "tsx scripts/run-affiliate-agent-disposable-scrape-fixture.ts",
     "affiliate:mapping:agent": "tsx scripts/run-affiliate-mapping-agent.ts",
     "affiliate:mapping:review": "tsx scripts/review-affiliate-mapping-job.ts",
+    "affiliate:mapping:apply-approved-live": "tsx scripts/apply-approved-affiliate-mapping-jobs.ts",
     "affiliate:intakes:codex-goal": "tsx scripts/run-affiliate-intake-codex-goal.ts",
     "affiliate:intakes:codex-goal:dry-run": "tsx scripts/run-affiliate-intake-codex-goal.ts --dry-run",
     "affiliate:mapping:sft-release": "tsx scripts/build-affiliate-mapping-sft-release.ts",

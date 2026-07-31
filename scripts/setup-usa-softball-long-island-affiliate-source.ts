@@ -1,4 +1,4 @@
-/** Local-only setup for the USA Softball Long Island stored-intake CLUB package. */
+/** Operator-approved setup for the USA Softball Long Island stored-intake CLUB package. */
 import dotenv from 'dotenv';
 import path from 'node:path';
 import type { AffiliateScrapeMapping } from '../src/server/affiliateImports/types';
@@ -6,7 +6,13 @@ import { USA_SOFTBALL_LI_HOME_URL, USA_SOFTBALL_LI_MAPPING, USA_SOFTBALL_LI_ORG_
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_usa_softball_long_island';
@@ -44,7 +50,7 @@ const main = async () => {
   try {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
-    const organization = { updatedAt: new Date(), name: 'USA Softball Long Island', location: 'Long Island, NY', address: null, description: USA_SOFTBALL_LI_ORG_DESCRIPTION, logoId: null, ownerId: owner.id, website: USA_SOFTBALL_LI_HOME_URL, sports: ['Softball'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'USA Softball Long Island', location: 'Long Island, NY', address: null, description: USA_SOFTBALL_LI_ORG_DESCRIPTION, logoId: null, ownerId: owner.id, website: USA_SOFTBALL_LI_HOME_URL, sports: ['Softball'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'USA Softball Long Island', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: USA_SOFTBALL_LI_HOME_URL, listUrl: USA_SOFTBALL_LI_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 43200, notes: 'Stored-intake USA Softball Long Island package with one ongoing CLUB profile; stale dated teasers and unchecked registration/program pages remain withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

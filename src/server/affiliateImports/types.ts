@@ -118,6 +118,7 @@ export const affiliateScrapeMappingSchema = z.object({
     address: fieldMappingSchema.optional(),
     startsAt: fieldMappingSchema.optional(),
     endsAt: fieldMappingSchema.optional(),
+    timeZone: fieldMappingSchema.optional(),
     scheduleText: fieldMappingSchema.optional(),
     dateDisplayMode: fieldMappingSchema.optional(),
     dateDisplayText: fieldMappingSchema.optional(),

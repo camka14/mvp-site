@@ -1,4 +1,4 @@
-/** Local-only setup for the Artistic Sports Complex stored-intake rental package. */
+/** Operator-approved setup for the Artistic Sports Complex stored-intake rental package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -7,7 +7,13 @@ import { ARTISTIC_SPORTS_COMPLEX_ADDRESS, ARTISTIC_SPORTS_COMPLEX_CITY, ARTISTIC
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_artistic_sports_complex';
@@ -44,7 +50,7 @@ const main = async () => {
   try {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
-    const organization = { updatedAt: new Date(), name: 'Artistic Sports Complex', location: ARTISTIC_SPORTS_COMPLEX_CITY, address: ARTISTIC_SPORTS_COMPLEX_ADDRESS, description: ARTISTIC_SPORTS_COMPLEX_ORG_DESCRIPTION, logoId: null, ownerId: owner.id, website: ARTISTIC_SPORTS_COMPLEX_HOME_URL, sports: ['Basketball'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'Artistic Sports Complex', location: ARTISTIC_SPORTS_COMPLEX_CITY, address: ARTISTIC_SPORTS_COMPLEX_ADDRESS, description: ARTISTIC_SPORTS_COMPLEX_ORG_DESCRIPTION, logoId: null, ownerId: owner.id, website: ARTISTIC_SPORTS_COMPLEX_HOME_URL, sports: ['Basketball'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'Artistic Sports Complex Basketball Rentals', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: ARTISTIC_SPORTS_COMPLEX_HOME_URL, listUrl: ARTISTIC_SPORTS_COMPLEX_RENTALS_URL, targetKind: 'RENTAL', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 43200, notes: 'Stored-intake basketball rental package with exact public rates and booking paths; logo remains manual review.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

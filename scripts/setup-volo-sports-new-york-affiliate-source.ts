@@ -1,4 +1,4 @@
-/** Local-only setup for the Volo Sports New York stored-intake club package. */
+/** Operator-approved setup for the Volo Sports New York stored-intake club package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { VOLO_NEW_YORK_HOME_URL, VOLO_NEW_YORK_LOGO_SOURCE_URL, VOLO_NEW_YORK_MA
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_volo_sports_new_york';
@@ -74,7 +80,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'Volo Sports New York Metro Area', location: 'New York Metro Area', address: null, description: VOLO_NEW_YORK_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: VOLO_NEW_YORK_HOME_URL, sports: ['Multi-sport'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'Volo Sports New York Metro Area', location: 'New York Metro Area', address: null, description: VOLO_NEW_YORK_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: VOLO_NEW_YORK_HOME_URL, sports: ['Multi-sport'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'Volo Sports New York Metro Area', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: 'https://www.volosports.com', listUrl: VOLO_NEW_YORK_HOME_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake multi-sport club package; incomplete dated registration and event rows are withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });

@@ -1,5 +1,5 @@
 /**
- * Local-only setup for the FA Euro New York stored-intake package.
+ * Operator-approved setup for the FA Euro New York stored-intake package.
  *
  * The package emits one review-only CLUB candidate from the stored official
  * tryouts page. Dated camp, registration, and tournament rows are withheld
@@ -24,7 +24,11 @@ dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
 
 if (process.argv.includes('--live')) {
-  throw new Error('This source setup is local-only and does not accept --live.');
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
 }
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
@@ -167,7 +171,7 @@ const upsertOrganization = async (prisma: any, ownerId: string, logoId: string) 
     ownerId,
     website: FA_EURO_NEW_YORK_HOME_URL,
     sports: ['Soccer'],
-    status: 'UNLISTED',
+    status: 'UNLISTED' as const,
     publicPageEnabled: false,
     publicWidgetsEnabled: false,
   };

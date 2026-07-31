@@ -1,4 +1,4 @@
-/** Local-only setup for the Commonpoint Turf and Court Rentals stored-intake package. */
+/** Operator-approved setup for the Commonpoint Turf and Court Rentals stored-intake package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -19,7 +19,13 @@ import {
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_commonpoint_tennis_athletic_center';
@@ -106,7 +112,7 @@ const main = async () => {
       ownerId: owner.id,
       website: COMMONPOINT_HOME_URL,
       sports: ['Tennis', 'Pickleball', 'Soccer'],
-      status: 'UNLISTED',
+      status: 'UNLISTED' as const,
       publicPageEnabled: false,
       publicWidgetsEnabled: false,
     };

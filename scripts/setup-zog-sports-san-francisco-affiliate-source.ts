@@ -1,4 +1,4 @@
-/** Local-only setup for the ZogSports San Francisco stored-intake club package. */
+/** Operator-approved setup for the ZogSports San Francisco stored-intake club package. */
 import dotenv from 'dotenv';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -8,7 +8,13 @@ import { ZOG_SPORTS_HOME_URL, ZOG_SPORTS_SF_FOOTBALL_URL, ZOG_SPORTS_SF_LOGO_SOU
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: path.join(process.cwd(), '.env.local'), override: false, quiet: true });
-if (process.argv.includes('--live')) throw new Error('This source setup is local-only and does not accept --live.');
+if (process.argv.includes('--live')) {
+  const liveDatabaseUrl = process.env.DATABASE_URL_LIVE?.trim();
+  if (!liveDatabaseUrl) throw new Error('DATABASE_URL_LIVE is required with --live.');
+  process.env.DATABASE_URL = liveDatabaseUrl;
+  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
+  process.env.STORAGE_PROVIDER = 'spaces';
+}
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
 const ORG_ID = 'affiliate_org_zogsports_san_francisco';
@@ -74,7 +80,7 @@ const main = async () => {
     const owner = await prisma.authUser.findUnique({ where: { email: OWNER_EMAIL }, select: { id: true } });
     if (!owner?.id) throw new Error(`Owner user ${OWNER_EMAIL} was not found.`);
     const logoId = await upsertLogo(prisma, owner.id);
-    const organization = { updatedAt: new Date(), name: 'ZogSports San Francisco & East Bay', location: 'San Francisco Bay Area', address: null, description: ZOG_SPORTS_SF_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: ZOG_SPORTS_HOME_URL, sports: ['Flag Football'], status: 'UNLISTED', publicPageEnabled: false, publicWidgetsEnabled: false };
+    const organization = { updatedAt: new Date(), name: 'ZogSports San Francisco & East Bay', location: 'San Francisco Bay Area', address: null, description: ZOG_SPORTS_SF_ORG_DESCRIPTION, logoId, ownerId: owner.id, website: ZOG_SPORTS_HOME_URL, sports: ['Flag Football'], status: 'UNLISTED' as const, publicPageEnabled: false, publicWidgetsEnabled: false };
     await prisma.organizations.upsert({ where: { id: ORG_ID }, create: { id: ORG_ID, createdAt: new Date(), hasStripeAccount: false, verificationStatus: 'UNVERIFIED', verificationReviewStatus: 'NONE', ...organization }, update: organization });
     const source = { name: 'ZogSports San Francisco Adult Flag Football', sourceKey: SOURCE_KEY, organizationId: ORG_ID, baseUrl: ZOG_SPORTS_HOME_URL, listUrl: ZOG_SPORTS_SF_FOOTBALL_URL, targetKind: 'CLUB', status: 'ACTIVE', autoScrapeEnabled: false, scrapeIntervalMinutes: 10080, notes: 'Stored-intake adult flag-football club package; incomplete current league rows are withheld.', metadata: sourceMetadata };
     await prisma.affiliateScrapeSources.upsert({ where: { id: SOURCE_ID }, create: { id: SOURCE_ID, ...source }, update: source });
