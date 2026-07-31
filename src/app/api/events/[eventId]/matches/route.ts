@@ -165,26 +165,33 @@ const normalizeBulkMatchSegments = (
   segments: Array<z.infer<typeof bulkMatchSegmentSchema>> | undefined,
   eventId: string,
   matchId: string,
+  existingSegments: SchedulerMatch['segments'] = [],
 ): SchedulerMatch['segments'] | undefined => {
   if (!Array.isArray(segments)) {
     return undefined;
   }
   return [...segments]
     .sort((left, right) => left.sequence - right.sequence)
-    .map((segment) => ({
-      id: segment.id ?? `${matchId}_segment_${segment.sequence}`,
-      eventId,
-      matchId,
-      sequence: segment.sequence,
-      status: (segment.status ?? 'NOT_STARTED') as SchedulerMatch['segments'][number]['status'],
-      scores: segment.scores ?? {},
-      winnerEventTeamId: segment.winnerEventTeamId ?? null,
-      startedAt: segment.startedAt ?? null,
-      endedAt: segment.endedAt ?? null,
-      resultType: segment.resultType ?? null,
-      statusReason: segment.statusReason ?? null,
-      metadata: segment.metadata ?? null,
-    }));
+    .map((segment) => {
+      const existing = existingSegments.find((candidate) => (
+        (segment.id != null && candidate.id === segment.id)
+        || candidate.sequence === segment.sequence
+      ));
+      return {
+        id: segment.id ?? `${matchId}_segment_${segment.sequence}`,
+        eventId,
+        matchId,
+        sequence: segment.sequence,
+        status: (segment.status ?? 'NOT_STARTED') as SchedulerMatch['segments'][number]['status'],
+        scores: segment.scores ?? {},
+        winnerEventTeamId: segment.winnerEventTeamId ?? null,
+        startedAt: segment.startedAt ?? null,
+        endedAt: segment.endedAt ?? null,
+        resultType: segment.resultType ?? null,
+        statusReason: segment.statusReason ?? null,
+        metadata: hasOwn(segment, 'metadata') ? segment.metadata ?? null : existing?.metadata ?? null,
+      };
+    });
 };
 
 const applyBulkStatusSnapshot = (
@@ -202,7 +209,7 @@ const applyBulkStatusSnapshot = (
   if (hasOwn(entry, 'statusReason')) target.statusReason = entry.statusReason ?? null;
   if (hasOwn(entry, 'winnerEventTeamId')) target.winnerEventTeamId = entry.winnerEventTeamId ?? null;
   if (hasOwn(entry, 'segments')) {
-    target.segments = normalizeBulkMatchSegments(entry.segments, eventId, matchId) ?? [];
+    target.segments = normalizeBulkMatchSegments(entry.segments, eventId, matchId, target.segments) ?? [];
   }
 };
 

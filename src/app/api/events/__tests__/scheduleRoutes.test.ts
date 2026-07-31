@@ -3022,6 +3022,97 @@ describe('schedule routes', () => {
     expect(json.matches).toHaveLength(2);
   });
 
+  it('bulk unconfirms a set and clears stale winners while preserving actual end and segment metadata', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          status: 'COMPLETE',
+          resultStatus: 'FINAL',
+          resultType: 'REGULATION',
+          actualStart: '2026-07-31T18:00:00.000Z',
+          actualEnd: new Date('2026-07-31T18:20:00.000Z'),
+          statusReason: 'Final',
+          winnerEventTeamId: 'team_1',
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'COMPLETE',
+            scores: { team_1: 25, team_2: 3 },
+            winnerEventTeamId: 'team_1',
+            startedAt: '2026-07-31T18:00:00.000Z',
+            endedAt: '2026-07-31T18:20:00.000Z',
+            resultType: 'REGULATION',
+            statusReason: 'Final',
+            metadata: { clockStoppedDurationSeconds: 9 },
+          }],
+        },
+      },
+      teams: {},
+    });
+    serializeMatchesMock.mockReturnValue([{ id: 'match_1' }]);
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [{
+          id: 'match_1',
+          status: 'IN_PROGRESS',
+          resultStatus: null,
+          resultType: null,
+          actualEnd: '2026-07-31T18:20:00.000Z',
+          statusReason: null,
+          winnerEventTeamId: null,
+          team1Points: [0],
+          team2Points: [0],
+          setResults: [0],
+          segments: [{
+            id: 'match_1_segment_1',
+            sequence: 1,
+            status: 'NOT_STARTED',
+            scores: { team_1: 0, team_2: 0 },
+          }],
+        }],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(saveMatchesMock).toHaveBeenCalledTimes(1);
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.status).toBe('IN_PROGRESS');
+    expect(savedMatch.resultStatus).toBeNull();
+    expect(savedMatch.resultType).toBeNull();
+    expect(savedMatch.actualEnd).toEqual(new Date('2026-07-31T18:20:00.000Z'));
+    expect(savedMatch.statusReason).toBeNull();
+    expect(savedMatch.winnerEventTeamId).toBeNull();
+    expect(savedMatch.segments).toEqual([{
+      id: 'match_1_segment_1',
+      eventId: 'event_1',
+      matchId: 'match_1',
+      sequence: 1,
+      status: 'NOT_STARTED',
+      scores: { team_1: 0, team_2: 0 },
+      winnerEventTeamId: null,
+      startedAt: null,
+      endedAt: null,
+      resultType: null,
+      statusReason: null,
+      metadata: { clockStoppedDurationSeconds: 9 },
+    }]);
+  });
+
   it('rejects a bulk update that would assign one team to both match slots', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
