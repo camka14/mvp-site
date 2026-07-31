@@ -54,6 +54,30 @@ describe('useLocation', () => {
     expect(localStorage.getItem('user-location')).toBe(JSON.stringify({ lat: 40, lng: -105 }));
   });
 
+  it('starts geolocation without awaiting the Permissions API', async () => {
+    const permissionsQuery = jest.fn().mockResolvedValue({ state: 'prompt' });
+    (navigator as Navigator & { permissions?: { query: jest.Mock } }).permissions = {
+      query: permissionsQuery,
+    };
+    mockedLocationService.getCurrentLocation.mockResolvedValue({ lat: 45.58, lng: -122.35 });
+    mockedLocationService.reverseGeocode.mockResolvedValue({
+      lat: 45.58,
+      lng: -122.35,
+      city: 'Washougal',
+      state: 'WA',
+    });
+
+    const { result } = renderHook(() => useLocation());
+
+    await act(async () => {
+      await result.current.requestLocation();
+    });
+
+    expect(permissionsQuery).not.toHaveBeenCalled();
+    expect(mockedLocationService.getCurrentLocation).toHaveBeenCalledTimes(1);
+    expect(result.current.locationInfo).toMatchObject({ city: 'Washougal', state: 'WA' });
+  });
+
   it('searches for a location via geocode', async () => {
     mockedLocationService.geocodeLocation.mockResolvedValue({
       lat: 51.5,
@@ -63,10 +87,12 @@ describe('useLocation', () => {
 
     const { result } = renderHook(() => useLocation());
 
+    let found = false;
     await act(async () => {
-      await result.current.searchLocation('London');
+      found = await result.current.searchLocation('London');
     });
 
+    expect(found).toBe(true);
     expect(mockedLocationService.geocodeLocation).toHaveBeenCalledWith('London');
     expect(result.current.location).toEqual({ lat: 51.5, lng: -0.12 });
     expect(result.current.locationInfo?.city).toBe('London');
@@ -84,5 +110,20 @@ describe('useLocation', () => {
 
     expect(result.current.location).toBeNull();
     expect(localStorage.getItem('user-location')).toBeNull();
+  });
+
+  it('returns false and exposes the geocoder error when a location is not found', async () => {
+    mockedLocationService.geocodeLocation.mockRejectedValue(new Error('Location not found'));
+
+    const { result } = renderHook(() => useLocation());
+
+    let found = true;
+    await act(async () => {
+      found = await result.current.searchLocation('not-a-real-place');
+    });
+
+    expect(found).toBe(false);
+    expect(result.current.error).toBe('Location not found');
+    expect(result.current.location).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { supportsNativeIosSmartAppBanner } from '../MobileAppPrompt';
+import { isOnboardingPromptPath, supportsNativeIosSmartAppBanner } from '../MobileAppPrompt';
 
 describe('MobileAppPrompt browser gating', () => {
   it('suppresses the custom prompt for iPhone Safari so the native banner is the only iOS prompt', () => {
@@ -13,5 +13,11 @@ describe('MobileAppPrompt browser gating', () => {
       'Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/135.0.7049.53 Mobile/15E148 Safari/604.1';
 
     expect(supportsNativeIosSmartAppBanner(chromeOnIosUserAgent, 5)).toBe(false);
+  });
+
+  it('does not stack the mobile app prompt over either onboarding flow', () => {
+    expect(isOnboardingPromptPath('/')).toBe(true);
+    expect(isOnboardingPromptPath('/onboarding')).toBe(true);
+    expect(isOnboardingPromptPath('/discover')).toBe(false);
   });
 });

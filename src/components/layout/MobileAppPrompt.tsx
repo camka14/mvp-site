@@ -2,6 +2,7 @@
 
 import { Button, Group, Paper, Text } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   getMobileAppLinks,
 } from '@/lib/mobileAppLinks';
@@ -10,6 +11,10 @@ type MobilePlatform = 'ios' | 'android' | 'other';
 
 const DISMISSED_UNTIL_KEY = 'mvp_mobile_app_prompt_dismissed_until';
 const DISMISS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+export const isOnboardingPromptPath = (pathname: string | null): boolean => (
+  pathname === '/' || pathname === '/onboarding'
+);
 
 const detectMobilePlatform = (ua: string, maxTouchPoints: number): MobilePlatform => {
   const userAgent = ua.toLowerCase();
@@ -44,8 +49,10 @@ export const supportsNativeIosSmartAppBanner = (ua: string, maxTouchPoints: numb
 };
 
 export default function MobileAppPrompt() {
+  const pathname = usePathname();
   const [platform, setPlatform] = useState<MobilePlatform>('other');
   const [visible, setVisible] = useState(false);
+  const onboardingPromptPath = isOnboardingPromptPath(pathname);
 
   const { iosStoreUrl, androidStoreUrl, iosDeepLink, androidDeepLink } = getMobileAppLinks();
 
@@ -62,6 +69,7 @@ export default function MobileAppPrompt() {
   }, [androidDeepLink, iosDeepLink, platform]);
 
   useEffect(() => {
+    if (onboardingPromptPath) return;
     if (process.env.NEXT_PUBLIC_SHOW_APP_PROMPT === '0') return;
     if (typeof window === 'undefined') return;
 
@@ -83,9 +91,9 @@ export default function MobileAppPrompt() {
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [onboardingPromptPath]);
 
-  if (!visible || platform === 'other') return null;
+  if (onboardingPromptPath || !visible || platform === 'other') return null;
 
   const dismiss = () => {
     if (typeof window !== 'undefined') {

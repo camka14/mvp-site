@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from '@/app/hooks/useLocation';
 import { locationService } from '@/lib/locationService';
 import { useDebounce } from '@/app/hooks/useDebounce';
@@ -13,11 +13,22 @@ export default function LocationSearch() {
   const [predictions, setPredictions] = useState<Array<{ description: string; placeId: string }>>([]);
   const [predictionsLoading, setPredictionsLoading] = useState(false);
   const [sessionToken, setSessionToken] = useState<any | null>(null);
+  const locationPromptAttemptedRef = useRef(false);
   const debouncedQuery = useDebounce(searchQuery, 250);
 
-  const { location, locationInfo, loading, error, requestLocation, clearLocation, setLocationFromInfo } = useLocation();
+  const {
+    location,
+    locationInfo,
+    loading,
+    error,
+    requestLocation,
+    searchLocation,
+    clearLocation,
+    setLocationFromInfo,
+  } = useLocation();
 
   const handleUseCurrentLocation = async () => {
+    locationPromptAttemptedRef.current = true;
     await requestLocation();
   };
 
@@ -33,14 +44,22 @@ export default function LocationSearch() {
   const handleSearchLocation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    // If user pressed Enter on a typed query without selecting a prediction, fallback to geocode
-    try {
-      const info = await locationService.geocodeLocation(searchQuery);
-      setLocationFromInfo(info);
-      setShowLocationOptions(false);
-      endSession();
-    } catch (e) {
-      // ignore; error surfaced via hook if needed
+    const found = await searchLocation(searchQuery.trim());
+    if (!found) return;
+
+    setShowLocationOptions(false);
+    endSession();
+  };
+
+  const toggleLocationOptions = () => {
+    const willOpen = !showLocationOptions;
+    setShowLocationOptions(willOpen);
+    if (!willOpen) return;
+
+    startSession();
+    if (!location && !locationPromptAttemptedRef.current) {
+      locationPromptAttemptedRef.current = true;
+      void requestLocation();
     }
   };
 
@@ -87,7 +106,7 @@ export default function LocationSearch() {
   return (
     <Popover opened={showLocationOptions} onChange={setShowLocationOptions} position="bottom-start" withArrow>
       <Popover.Target>
-        <Button variant="default" onClick={() => { setShowLocationOptions(!showLocationOptions); if (!showLocationOptions) startSession(); }}>
+        <Button variant="default" onClick={toggleLocationOptions}>
           {locationInfo?.city ? `${locationInfo.city}${locationInfo.state ? `, ${locationInfo.state}` : ''}` : 'Set Location'}
         </Button>
       </Popover.Target>

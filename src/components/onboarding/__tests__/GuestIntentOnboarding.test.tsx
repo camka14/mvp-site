@@ -99,6 +99,16 @@ describe('GuestIntentOnboarding', () => {
     );
   });
 
+  it('requests browser location directly from the onboarding button', async () => {
+    renderWizard();
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
+    fireEvent.click(screen.getByText('Events').closest('button') as HTMLButtonElement);
+    fireEvent.click(screen.getByRole('button', { name: /use my location/i }));
+
+    expect(requestLocationMock).toHaveBeenCalledTimes(1);
+  });
+
   it('does not show an unsupported skill filter for rentals', async () => {
     renderWizard();
 

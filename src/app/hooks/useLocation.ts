@@ -54,7 +54,7 @@ interface UseLocationReturn {
   loading: boolean;
   error: string | null;
   requestLocation: () => Promise<void>;
-  searchLocation: (query: string) => Promise<void>;
+  searchLocation: (query: string) => Promise<boolean>;
   clearLocation: () => void;
   setLocationFromInfo: (info: LocationInfo) => void;
 }
@@ -102,21 +102,6 @@ export function useLocation(): UseLocationReturn {
     setError(null);
 
     try {
-      // Check permission if Permissions API is available
-      if (typeof navigator !== 'undefined' && (navigator as any).permissions && (navigator as any).permissions.query) {
-        try {
-          const status = await (navigator as any).permissions.query({ name: 'geolocation' as PermissionName });
-          if (status.state === 'denied') {
-            setError('Location permission denied. Enable it in your browser settings.');
-            setLoading(false);
-            return;
-          }
-          // If 'prompt' or 'granted', proceed to request/get location
-        } catch {
-          // Ignore permission check failures and fallback to requesting
-        }
-      }
-
       const coords = await locationService.getCurrentLocation();
       // Reverse geocode to get city/state/etc
       let info: LocationInfo = { ...coords };
@@ -145,7 +130,7 @@ export function useLocation(): UseLocationReturn {
     }
   }, []);
 
-  const searchLocation = useCallback(async (query: string) => {
+  const searchLocation = useCallback(async (query: string): Promise<boolean> => {
     setLoading(true);
     setError(null);
     
@@ -165,8 +150,10 @@ export function useLocation(): UseLocationReturn {
       // Save to localStorage
       localStorage.setItem('user-location', JSON.stringify(coords));
       localStorage.setItem('user-location-info', JSON.stringify(locationData));
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to find location');
+      return false;
     } finally {
       setLoading(false);
     }

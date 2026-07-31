@@ -340,6 +340,11 @@ svg {
   color: var(--discover-text-muted, #6b7280);
 }
 
+.discover-map-search-toggle,
+.discover-map-filter-toggle {
+  display: none !important;
+}
+
 .discover-map-filter-shell {
   position: absolute;
   z-index: 3;
@@ -354,6 +359,88 @@ svg {
 .discover-map-filter-scroll {
   height: 100%;
   overflow-y: auto;
+}
+
+@media (max-width: 47.99em) {
+  .discover-map-search-shell,
+  .discover-map-filter-shell {
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  .discover-map-search-shell #discover-map-search-controls,
+  .discover-map-filter-shell #discover-map-filter-controls {
+    visibility: hidden;
+    transition: visibility 0s linear 240ms;
+  }
+
+  .discover-map-search-shell {
+    z-index: 6 !important;
+    top: 0.75rem !important;
+    right: auto !important;
+    left: 50% !important;
+    width: min(42rem, calc(100% - 1.5rem));
+    transform: translate(-50%, -100%);
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .discover-map-filter-shell {
+    z-index: 5;
+    top: 10.5rem;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    width: min(20rem, calc(100% - 4.25rem));
+    height: auto;
+    max-width: none;
+    overflow: visible;
+    transform: translateX(-100%);
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .discover-map-search-shell[data-mobile-expanded='true'] {
+    pointer-events: auto;
+    transform: translate(-50%, 0);
+  }
+
+  .discover-map-filter-shell[data-mobile-expanded='true'] {
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  .discover-map-search-shell[data-mobile-expanded='true'] #discover-map-search-controls,
+  .discover-map-filter-shell[data-mobile-expanded='true'] #discover-map-filter-controls {
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .discover-map-search-toggle,
+  .discover-map-filter-toggle {
+    display: inline-flex !important;
+    position: absolute !important;
+    z-index: 7;
+    pointer-events: auto;
+    visibility: visible;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2);
+  }
+
+  .discover-map-search-toggle {
+    bottom: -2.75rem;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .discover-map-filter-toggle {
+    top: calc(50% - 4.875rem);
+    right: -2.75rem;
+    transform: translateY(-50%);
+  }
+}
+
+@media (max-width: 47.99em) and (prefers-reduced-motion: reduce) {
+  .discover-map-search-shell,
+  .discover-map-filter-shell {
+    transition: none;
+  }
 }
 
 .discover-map-marker {

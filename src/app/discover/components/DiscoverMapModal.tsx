@@ -12,6 +12,7 @@ import {
 } from 'react';
 import Image from 'next/image';
 import {
+  ActionIcon,
   Alert,
   Button,
   Chip,
@@ -34,7 +35,15 @@ import {
   OverlayViewF,
   useJsApiLoader,
 } from '@react-google-maps/api';
-import { CalendarDays, Search, X } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Search,
+  X,
+} from 'lucide-react';
 
 import {
   Event,
@@ -652,7 +661,13 @@ export default function DiscoverMapModal({
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [isSearchAreaDirty, setIsSearchAreaDirty] = useState(false);
   const [mapZoom, setMapZoom] = useState(DEFAULT_MAP_ZOOM);
-  const latestLoadMapDataRef = useRef<(nextCenter: MapCenter, radiusKm?: number) => Promise<void>>(async () => {});
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const latestLoadMapDataRef = useRef<(
+    nextCenter: MapCenter,
+    radiusKm?: number,
+    target?: MapSearchTarget,
+  ) => Promise<void>>(async () => {});
   const initialMapLoadKeyRef = useRef<string | null>(null);
   const mapSettledOnceRef = useRef(false);
 
@@ -704,7 +719,11 @@ export default function DiscoverMapModal({
     ));
   }, [kmBetween]);
 
-  const loadMapData = useCallback(async (nextCenter: MapCenter, nextRadiusKm?: number) => {
+  const loadMapData = useCallback(async (
+    nextCenter: MapCenter,
+    nextRadiusKm?: number,
+    target: MapSearchTarget = searchTarget,
+  ) => {
     const mapSearchRadiusKm = normalizeMapRadiusKm(nextRadiusKm);
     const effectiveEventRadiusKm = typeof maxDistance === 'number'
       ? Math.min(maxDistance, mapSearchRadiusKm)
@@ -713,15 +732,22 @@ export default function DiscoverMapModal({
     setError(null);
     try {
       const [nearbyEvents, orgs] = await Promise.all([
-        eventService.getEventsPaginated({
-          userLocation: nextCenter,
-          maxDistance: effectiveEventRadiusKm,
-          dateFrom: eventDateRange.dateFrom,
-          dateTo: eventDateRange.dateTo,
-          tags: selectedTags.length > 0 ? selectedTags : undefined,
-          sports: selectedSports.length > 0 ? selectedSports : undefined,
-        }, 100, 0),
-        organizationService.listOrganizationsWithFields(DISCOVERY_PAGE_SIZE, { includeAffiliateRentals: true }),
+        target === 'events'
+          ? eventService.getEventsPaginated({
+              userLocation: nextCenter,
+              maxDistance: effectiveEventRadiusKm,
+              dateFrom: eventDateRange.dateFrom,
+              dateTo: eventDateRange.dateTo,
+              tags: selectedTags.length > 0 ? selectedTags : undefined,
+              sports: selectedSports.length > 0 ? selectedSports : undefined,
+            }, 100, 0)
+          : Promise.resolve([]),
+        target === 'events'
+          ? Promise.resolve([])
+          : organizationService.listOrganizationsWithFields(DISCOVERY_PAGE_SIZE, {
+              includeAffiliateRentals: target === 'rentals',
+              hydrateRelations: target === 'rentals',
+            }),
       ]);
 
       const orgsWithDistance = orgs
@@ -796,6 +822,7 @@ export default function DiscoverMapModal({
     eventDateRange.dateTo,
     kmBetween,
     maxDistance,
+    searchTarget,
     selectedSports,
     selectedTags,
   ]);
@@ -809,6 +836,8 @@ export default function DiscoverMapModal({
       initialMapLoadKeyRef.current = null;
       mapSettledOnceRef.current = false;
       setIsSearchAreaDirty(false);
+      setMobileSearchOpen(false);
+      setMobileFiltersOpen(false);
       return;
     }
     if (location) {
@@ -894,16 +923,15 @@ export default function DiscoverMapModal({
     mapSettledOnceRef.current = true;
   }, [map, resolveViewportRadiusKm, syncMapZoom, updateViewportRadius]);
 
-  const handleMapDragStart = useCallback(() => {
+  const handleMapDragEnd = useCallback(() => {
     setIsSearchAreaDirty(true);
   }, []);
 
   const handleMapZoomChanged = useCallback(() => {
-    syncMapZoom(map);
     if (mapSettledOnceRef.current) {
       setIsSearchAreaDirty(true);
     }
-  }, [map, syncMapZoom]);
+  }, []);
 
   const handleMapLoad = useCallback((nextMap: google.maps.Map) => {
     setMap(nextMap);
@@ -1048,9 +1076,11 @@ export default function DiscoverMapModal({
   }, [searchTarget, searchTerm, visibleEvents, visibleOrganizations, visibleRentals]);
 
   const handleSearchTargetChange = useCallback((value: string | null) => {
-    setSearchTarget((value as MapSearchTarget) ?? 'events');
+    const nextTarget = (value as MapSearchTarget) ?? 'events';
+    setSearchTarget(nextTarget);
     setSelected(null);
-  }, []);
+    void loadMapData(center, viewportRadiusKm, nextTarget);
+  }, [center, loadMapData, viewportRadiusKm]);
 
   const focusResult = useCallback((result: SearchResult) => {
     map?.panTo(result.coordinates);
@@ -1188,6 +1218,8 @@ export default function DiscoverMapModal({
           radius="md"
           p="sm"
           shadow="md"
+          className="discover-map-search-shell"
+          data-mobile-expanded={mobileSearchOpen}
           style={{
             position: 'absolute',
             zIndex: 4,
@@ -1196,53 +1228,67 @@ export default function DiscoverMapModal({
             top: 16,
           }}
         >
-          <Group align="stretch" gap="xs" wrap="wrap">
-            <Select
-              aria-label="Map search category"
-              data={SEARCH_TARGETS}
-              value={searchTarget}
-              onChange={handleSearchTargetChange}
-              allowDeselect={false}
-              style={{ width: 150 }}
-            />
-            <TextInput
-              aria-label="Map search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  handleSearchSubmit();
-                }
-              }}
-              placeholder={`Search ${SEARCH_TARGETS.find((target) => target.value === searchTarget)?.label.toLowerCase() ?? 'map'}...`}
-              style={{ flex: 1, minWidth: 180 }}
-            />
-            <Button leftSection={<Search size={16} />} onClick={handleSearchSubmit}>
-              Search
-            </Button>
-          </Group>
-          {searchTerm.trim() && (
-            <ScrollArea.Autosize mah={180} mt="xs">
-              {searchResults.length > 0 ? (
-                searchResults.slice(0, 8).map((result) => (
-                  <button
-                    key={`${result.type}:${result.id}`}
-                    type="button"
-                    onClick={() => focusResult(result)}
-                    className="discover-map-search-result"
-                  >
-                    <span>{result.label}</span>
-                    <small>{result.description}</small>
-                  </button>
-                ))
-              ) : (
-                <Text size="sm" c="dimmed" px="xs" py={6}>
-                  No nearby {SEARCH_TARGETS.find((target) => target.value === searchTarget)?.label.toLowerCase()} match this search.
-                </Text>
-              )}
-            </ScrollArea.Autosize>
-          )}
+          <div id="discover-map-search-controls">
+            <Group align="stretch" gap="xs" wrap="wrap">
+              <Select
+                aria-label="Map search category"
+                data={SEARCH_TARGETS}
+                value={searchTarget}
+                onChange={handleSearchTargetChange}
+                allowDeselect={false}
+                style={{ width: 150 }}
+              />
+              <TextInput
+                aria-label="Map search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    handleSearchSubmit();
+                  }
+                }}
+                placeholder={`Search ${SEARCH_TARGETS.find((target) => target.value === searchTarget)?.label.toLowerCase() ?? 'map'}...`}
+                style={{ flex: 1, minWidth: 180 }}
+              />
+              <Button leftSection={<Search size={16} />} onClick={handleSearchSubmit}>
+                Search
+              </Button>
+            </Group>
+            {searchTerm.trim() && (
+              <ScrollArea.Autosize mah={180} mt="xs">
+                {searchResults.length > 0 ? (
+                  searchResults.slice(0, 8).map((result) => (
+                    <button
+                      key={`${result.type}:${result.id}`}
+                      type="button"
+                      onClick={() => focusResult(result)}
+                      className="discover-map-search-result"
+                    >
+                      <span>{result.label}</span>
+                      <small>{result.description}</small>
+                    </button>
+                  ))
+                ) : (
+                  <Text size="sm" c="dimmed" px="xs" py={6}>
+                    No nearby {SEARCH_TARGETS.find((target) => target.value === searchTarget)?.label.toLowerCase()} match this search.
+                  </Text>
+                )}
+              </ScrollArea.Autosize>
+            )}
+          </div>
+          <ActionIcon
+            variant="default"
+            size="lg"
+            radius="xl"
+            className="discover-map-search-toggle"
+            aria-label={mobileSearchOpen ? 'Hide map search' : 'Show map search'}
+            aria-controls="discover-map-search-controls"
+            aria-expanded={mobileSearchOpen}
+            onClick={() => setMobileSearchOpen((current) => !current)}
+          >
+            {mobileSearchOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </ActionIcon>
         </Paper>
 
         {showSearchArea && (
@@ -1268,8 +1314,12 @@ export default function DiscoverMapModal({
             p={0}
             shadow="md"
             className="discover-map-filter-shell"
+            data-mobile-expanded={mobileFiltersOpen}
           >
-            <div className="discover-filter-panel discover-map-filter-scroll p-4">
+            <div
+              id="discover-map-filter-controls"
+              className="discover-filter-panel discover-map-filter-scroll p-4"
+            >
               <Group justify="space-between" align="center" mb="md">
                 <div>
                   <Text fw={700} size="sm">
@@ -1489,6 +1539,18 @@ export default function DiscoverMapModal({
                 )}
               </div>
             </div>
+            <ActionIcon
+              variant="default"
+              size="lg"
+              radius="xl"
+              className="discover-map-filter-toggle"
+              aria-label={mobileFiltersOpen ? 'Hide map filters' : 'Show map filters'}
+              aria-controls="discover-map-filter-controls"
+              aria-expanded={mobileFiltersOpen}
+              onClick={() => setMobileFiltersOpen((current) => !current)}
+            >
+              {mobileFiltersOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
+            </ActionIcon>
           </Paper>
         )}
 
@@ -1519,7 +1581,7 @@ export default function DiscoverMapModal({
             zoom={DEFAULT_MAP_ZOOM}
             onLoad={handleMapLoad}
             onUnmount={handleMapUnmount}
-            onDragStart={handleMapDragStart}
+            onDragEnd={handleMapDragEnd}
             onIdle={handleMapIdle}
             onZoomChanged={handleMapZoomChanged}
             options={{

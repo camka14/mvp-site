@@ -8,6 +8,19 @@ const setGooglePlacesMock = (places: Record<string, unknown>) => {
   };
 };
 
+const setGoogleGeocoderMock = (geocode: jest.Mock) => {
+  (window as typeof window & { google?: any }).google = {
+    maps: {
+      places: {},
+      Geocoder: jest.fn(() => ({ geocode })),
+      GeocoderStatus: {
+        OK: 'OK',
+        ZERO_RESULTS: 'ZERO_RESULTS',
+      },
+    },
+  };
+};
+
 describe('locationService Places autocomplete', () => {
   afterEach(() => {
     delete (window as typeof window & { google?: any }).google;
@@ -156,6 +169,74 @@ describe('locationService Places autocomplete', () => {
     expect(getPlacePredictions).toHaveBeenCalledWith(
       { input: 'Whole Foods', sessionToken: { token: 'places-session' } },
       expect.any(Function),
+    );
+  });
+
+  it('geocodes ZIP codes through the browser Maps SDK', async () => {
+    const geocode = jest.fn((request, callback) => {
+      callback([
+        {
+          formatted_address: 'Washougal, WA 98671, USA',
+          geometry: {
+            location: {
+              lat: () => 45.5826,
+              lng: () => -122.3534,
+            },
+          },
+          address_components: [
+            { long_name: 'Washougal', short_name: 'Washougal', types: ['locality'] },
+            { long_name: 'Washington', short_name: 'WA', types: ['administrative_area_level_1'] },
+            { long_name: '98671', short_name: '98671', types: ['postal_code'] },
+            { long_name: 'United States', short_name: 'US', types: ['country'] },
+          ],
+        },
+      ], 'OK');
+    });
+    setGoogleGeocoderMock(geocode);
+
+    await expect(locationService.geocodeLocation('98671')).resolves.toMatchObject({
+      city: 'Washougal',
+      state: 'WA',
+      zipCode: '98671',
+      lat: 45.5826,
+      lng: -122.3534,
+      formattedAddress: 'Washougal, WA 98671, USA',
+    });
+    expect(geocode).toHaveBeenCalledWith({ address: '98671' }, expect.any(Function));
+  });
+
+  it('reverse geocodes current coordinates through the browser Maps SDK', async () => {
+    const geocode = jest.fn((request, callback) => {
+      callback([
+        {
+          formatted_address: 'Washougal, WA 98671, USA',
+          geometry: { location: request.location },
+          address_components: [
+            { long_name: 'Washougal', short_name: 'Washougal', types: ['locality'] },
+            { long_name: 'Washington', short_name: 'WA', types: ['administrative_area_level_1'] },
+          ],
+        },
+      ], 'OK');
+    });
+    setGoogleGeocoderMock(geocode);
+
+    await expect(locationService.reverseGeocode(45.5826, -122.3534)).resolves.toMatchObject({
+      city: 'Washougal',
+      state: 'WA',
+      lat: 45.5826,
+      lng: -122.3534,
+    });
+    expect(geocode).toHaveBeenCalledWith({
+      location: { lat: 45.5826, lng: -122.3534 },
+    }, expect.any(Function));
+  });
+
+  it('surfaces a not-found geocoding result', async () => {
+    const geocode = jest.fn((_request, callback) => callback([], 'ZERO_RESULTS'));
+    setGoogleGeocoderMock(geocode);
+
+    await expect(locationService.geocodeLocation('not-a-real-place')).rejects.toThrow(
+      'Geocoding failed: Location not found',
     );
   });
 });

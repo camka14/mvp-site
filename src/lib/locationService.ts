@@ -197,7 +197,7 @@ class LocationService {
           let errorMessage = 'Unable to retrieve location';
           switch (error.code) {
             case error.PERMISSION_DENIED:
-              errorMessage = 'Location access denied by user';
+              errorMessage = 'Location access is blocked. Enable location permission for BracketIQ in your browser settings, then try again.';
               break;
             case error.POSITION_UNAVAILABLE:
               errorMessage = 'Location information unavailable';
@@ -213,88 +213,60 @@ class LocationService {
     });
   }
 
-  // Convert city/zip to coordinates using Google Geocoding API
-  async geocodeLocation(location: string): Promise<LocationInfo> {
-    if (!this.googleApiKey) {
-      throw new Error('Google Maps API key not configured');
+  private async geocodeWithMaps(
+    request: { address?: string; location?: LocationCoordinates },
+  ): Promise<any> {
+    this.ensureBrowser();
+    await this.loadPlacesLibrary();
+
+    const g = (window as any).google;
+    if (!g?.maps?.Geocoder) {
+      throw new Error('Google Maps geocoder is unavailable');
     }
 
-    try {
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(location)}&key=${this.googleApiKey}`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Geocoding request failed');
-      }
+    return new Promise((resolve, reject) => {
+      const geocoder = new g.maps.Geocoder();
+      geocoder.geocode(request, (results: any[] | null, status: string) => {
+        const okStatus = g.maps.GeocoderStatus?.OK ?? 'OK';
+        const zeroResultsStatus = g.maps.GeocoderStatus?.ZERO_RESULTS ?? 'ZERO_RESULTS';
 
-      const data = await response.json();
-      
-      if (data.status !== 'OK' || !data.results.length) {
-        throw new Error('Location not found');
-      }
-
-      const result = data.results[0];
-      const location_info: LocationInfo = {
-        lat: result.geometry.location.lat,
-        lng: result.geometry.location.lng,
-        formattedAddress: typeof result.formatted_address === 'string' ? result.formatted_address : undefined,
-      };
-
-      // Extract city, state, zipCode from address components
-      result.address_components?.forEach((component: any) => {
-        const types = component.types;
-        if (types.includes('locality')) {
-          location_info.city = component.long_name;
-        } else if (types.includes('administrative_area_level_1')) {
-          location_info.state = component.short_name;
-        } else if (types.includes('postal_code')) {
-          location_info.zipCode = component.long_name;
-        } else if (types.includes('country')) {
-          location_info.country = component.short_name;
+        if (status === zeroResultsStatus || !results?.length) {
+          reject(new Error('Location not found'));
+          return;
         }
-      });
+        if (status !== okStatus) {
+          reject(new Error(`Geocoding request failed (${status})`));
+          return;
+        }
 
-      return location_info;
+        resolve(results[0]);
+      });
+    });
+  }
+
+  // Convert city/zip to coordinates using Google Geocoding API
+  async geocodeLocation(location: string): Promise<LocationInfo> {
+    try {
+      const result = await this.geocodeWithMaps({ address: location.trim() });
+      return extractLocationInfoFromPlaceResult(result);
     } catch (error) {
-      throw new Error(`Geocoding failed: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Geocoding failed: ${message}`);
     }
   }
 
   // Reverse geocode coordinates to city/state/etc
   async reverseGeocode(lat: number, lng: number): Promise<LocationInfo> {
-    if (!this.googleApiKey) {
-      throw new Error('Google Maps API key not configured');
-    }
-
     try {
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${this.googleApiKey}`
-      );
-      if (!response.ok) {
-        throw new Error('Reverse geocoding request failed');
-      }
-      const data = await response.json();
-      if (data.status !== 'OK' || !data.results.length) {
-        throw new Error('Location not found');
-      }
-      const result = data.results[0];
-      const info: LocationInfo = { lat, lng };
-      result.address_components?.forEach((component: any) => {
-        const types = component.types;
-        if (types.includes('locality')) {
-          info.city = component.long_name;
-        } else if (types.includes('administrative_area_level_1')) {
-          info.state = component.short_name;
-        } else if (types.includes('postal_code')) {
-          info.zipCode = component.long_name;
-        } else if (types.includes('country')) {
-          info.country = component.short_name;
-        }
-      });
-      return info;
+      const result = await this.geocodeWithMaps({ location: { lat, lng } });
+      return {
+        ...extractLocationInfoFromPlaceResult(result),
+        lat,
+        lng,
+      };
     } catch (error) {
-      throw new Error(`Reverse geocoding failed: ${error}`);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Reverse geocoding failed: ${message}`);
     }
   }
 

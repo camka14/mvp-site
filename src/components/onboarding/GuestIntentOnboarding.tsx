@@ -264,6 +264,7 @@ export default function GuestIntentOnboarding() {
       closeOnEscape={false}
       withCloseButton={false}
       centered
+      zIndex={1400}
       size={!searchTarget && !createTarget ? 'xl' : 'lg'}
       title={(
         <div className={styles.brand}>
@@ -273,7 +274,7 @@ export default function GuestIntentOnboarding() {
       )}
       overlayProps={{
         backgroundOpacity: 0.76,
-        blur: 2,
+        blur: 0,
         color: '#101828',
         className: 'guest-onboarding-backdrop',
       }}

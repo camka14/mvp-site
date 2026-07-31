@@ -10,6 +10,7 @@ import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 const VANCOUVER_WA_CENTER = { lat: 45.6387, lng: -122.6615 };
 
 let mockMapCenter = { ...VANCOUVER_WA_CENTER };
+let mockMapZoom = 11;
 
 const mockMap = {
   getCenter: jest.fn(() => ({
@@ -26,7 +27,7 @@ const mockMap = {
       lng: () => mockMapCenter.lng,
     }),
   })),
-  getZoom: jest.fn(() => 11),
+  getZoom: jest.fn(() => mockMapZoom),
   panTo: jest.fn(),
   setZoom: jest.fn(),
 };
@@ -35,7 +36,7 @@ jest.mock('@react-google-maps/api', () => {
   const React = require('react');
 
   return {
-    GoogleMap: ({ children, onDragStart, onIdle, onLoad }: any) => {
+    GoogleMap: ({ children, onDragEnd, onIdle, onLoad, onZoomChanged }: any) => {
       const loadedRef = React.useRef(false);
 
       React.useEffect(() => {
@@ -55,11 +56,31 @@ jest.mock('@react-google-maps/api', () => {
             type: 'button',
             onClick: () => {
               mockMapCenter = { lat: VANCOUVER_WA_CENTER.lat + 0.05, lng: VANCOUVER_WA_CENTER.lng };
-              onDragStart?.();
+              onDragEnd?.();
               onIdle?.();
             },
           },
           'Simulate map idle',
+        ),
+        React.createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () => {
+              mockMapZoom = 12;
+              onZoomChanged?.();
+              onZoomChanged?.();
+            },
+          },
+          'Simulate map zoom events',
+        ),
+        React.createElement(
+          'button',
+          {
+            type: 'button',
+            onClick: () => onIdle?.(),
+          },
+          'Finish map zoom',
         ),
         children,
       );
@@ -259,6 +280,7 @@ describe('DiscoverMapModal', () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = 'test-key';
     mockMapCenter = { ...VANCOUVER_WA_CENTER };
+    mockMapZoom = 11;
     mockedEventService.getEventsPaginated.mockResolvedValue([]);
     mockedOrganizationService.listOrganizationsWithFields.mockResolvedValue([]);
   });
@@ -269,6 +291,7 @@ describe('DiscoverMapModal', () => {
     await waitFor(() => {
       expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
     });
+    expect(mockedOrganizationService.listOrganizationsWithFields).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Simulate map idle' }));
 
@@ -325,6 +348,68 @@ describe('DiscoverMapModal', () => {
     expect(screen.queryByText('Tournament')).not.toBeInTheDocument();
   });
 
+  it('opens and closes the mobile map search and filters independently', async () => {
+    renderModal();
+
+    await waitFor(() => {
+      expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
+    });
+
+    const searchShell = document.querySelector('.discover-map-search-shell');
+    const filterShell = document.querySelector('.discover-map-filter-shell');
+    expect(searchShell).toHaveAttribute('data-mobile-expanded', 'false');
+    expect(filterShell).toHaveAttribute('data-mobile-expanded', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show map search' }));
+
+    expect(searchShell).toHaveAttribute('data-mobile-expanded', 'true');
+    expect(filterShell).toHaveAttribute('data-mobile-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Hide map search' })).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show map filters' }));
+
+    expect(filterShell).toHaveAttribute('data-mobile-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Hide map filters' })).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide map search' }));
+
+    expect(searchShell).toHaveAttribute('data-mobile-expanded', 'false');
+    expect(filterShell).toHaveAttribute('data-mobile-expanded', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide map filters' }));
+
+    expect(filterShell).toHaveAttribute('data-mobile-expanded', 'false');
+  });
+
+  it('regroups markers only after a zoom gesture settles', async () => {
+    mockedEventService.getEventsPaginated.mockResolvedValue([
+      buildMapEvent({
+        $id: 'zoom-event-one',
+        name: 'Zoom Event One',
+        coordinates: [VANCOUVER_WA_CENTER.lng, VANCOUVER_WA_CENTER.lat],
+      }),
+      buildMapEvent({
+        $id: 'zoom-event-two',
+        name: 'Zoom Event Two',
+        coordinates: [VANCOUVER_WA_CENTER.lng + 0.02, VANCOUVER_WA_CENTER.lat],
+      }),
+    ]);
+
+    renderModal();
+
+    expect(await screen.findByRole('button', { name: '2 events' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Simulate map zoom events' }));
+
+    expect(screen.getByRole('button', { name: '2 events' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Zoom Event One' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish map zoom' }));
+
+    expect(await screen.findByRole('button', { name: 'Zoom Event One' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom Event Two' })).toBeInTheDocument();
+  });
+
   it('groups touching event markers into a count marker', async () => {
     mockedEventService.getEventsPaginated.mockResolvedValue([
       buildMapEvent({
@@ -365,17 +450,17 @@ describe('DiscoverMapModal', () => {
 
     renderModal();
 
-    await waitFor(() => {
-      expect(mockedOrganizationService.listOrganizationsWithFields).toHaveBeenCalledWith(
-        100,
-        { includeAffiliateRentals: true },
-      );
-    });
-
     fireEvent.change(screen.getAllByLabelText('Map search category')[0], {
       target: { value: 'Rentals' },
     });
     fireEvent.click(await screen.findByText('Rentals'));
+
+    await waitFor(() => {
+      expect(mockedOrganizationService.listOrganizationsWithFields).toHaveBeenCalledWith(
+        100,
+        { includeAffiliateRentals: true, hydrateRelations: true },
+      );
+    });
 
     const marker = await screen.findByRole('button', { name: 'Affiliate Indoor Court' });
     fireEvent.click(marker);

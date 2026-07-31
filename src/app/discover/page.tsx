@@ -852,8 +852,23 @@ function DiscoverPageContent() {
     if (typeof window === 'undefined') {
       return;
     }
+    if (!navigator.permissions?.query) {
+      return;
+    }
+
+    let cancelled = false;
     locationRequestAttemptedRef.current = true;
-    requestLocation().catch(() => {});
+    void navigator.permissions.query({ name: 'geolocation' }).then((status) => {
+      if (!cancelled && status.state === 'granted') {
+        void requestLocation();
+      }
+    }).catch(() => {
+      // Wait for the user to open Set Location so the browser can prompt from that gesture.
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [location, requestLocation, urlPreset.location]);
 
   useEffect(() => {
