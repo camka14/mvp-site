@@ -128,7 +128,7 @@ describe('TeamCard division label', () => {
 });
 
 describe('TeamCard organization ownership', () => {
-  it('shows compact trust status without replacing affiliate registration', () => {
+  it('keeps affiliate registration without showing ownership controls', () => {
     renderWithMantine(
       <TeamCard
         team={createTeam({
@@ -144,7 +144,8 @@ describe('TeamCard organization ownership', () => {
     );
 
     expect(screen.getByText('External registration')).toBeInTheDocument();
-    expect(screen.getByTestId('team-card-ownership-badges')).toHaveTextContent('Unclaimed profile');
+    expect(screen.queryByTestId('team-card-ownership-badges')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unclaimed profile')).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /claim/i })).not.toBeInTheDocument();
   });
 });

@@ -107,7 +107,7 @@ describe('EventCard affiliate schedule display', () => {
     expect(screen.queryByText('Free')).not.toBeInTheDocument();
   });
 
-  it('keeps affiliate organization host links on BracketIQ', () => {
+  it('keeps affiliate organization host links without ownership badges', () => {
     renderWithMantine(
       <EventCard
         event={createEvent({
@@ -127,8 +127,9 @@ describe('EventCard affiliate schedule display', () => {
       'href',
       '/organizations/org_1',
     );
-    expect(screen.getByTestId('event-card-ownership-badges')).toHaveTextContent('Claimed profile');
-    expect(screen.getByTestId('event-card-ownership-badges')).toHaveTextContent('Website verified');
+    expect(screen.queryByTestId('event-card-ownership-badges')).not.toBeInTheDocument();
+    expect(screen.queryByText('Claimed profile')).not.toBeInTheDocument();
+    expect(screen.queryByText('Website verified')).not.toBeInTheDocument();
     expect(screen.getByText('External registration')).toBeInTheDocument();
   });
 
@@ -152,6 +153,7 @@ describe('EventCard affiliate schedule display', () => {
       '/organizations/org_unclaimed',
     );
     expect(screen.queryByText('Unclaimed profile')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Claim this profile' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('event-card-ownership-badges')).not.toBeInTheDocument();
   });
 

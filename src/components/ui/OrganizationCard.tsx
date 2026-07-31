@@ -3,8 +3,6 @@
 import React from 'react';
 import Image from 'next/image';
 import type { Organization } from '@/types';
-import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
-import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 
 interface OrganizationCardProps {
   organization: Organization;
@@ -92,13 +90,6 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
               {organization.location || '—'}
             </div>
             <div className="text-right text-slate-500">{formatOrganizationDivisionSummary(organization)}</div>
-          </div>
-          <div
-            className="flex min-h-6 flex-wrap items-center gap-2"
-            data-testid="organization-card-badges"
-          >
-            <OrganizationOwnershipBadges organization={organization} compact />
-            <OrganizationVerificationBadge organization={organization} />
           </div>
         </div>
       </div>

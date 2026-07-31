@@ -2,8 +2,6 @@ import { Avatar, Text } from '@mantine/core';
 import { ShieldCheck } from 'lucide-react';
 
 import UserCard from '@/components/ui/UserCard';
-import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
-import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import type { Organization, UserData } from '@/types';
 import { getOrganizationAvatarUrl } from '@/types';
@@ -94,14 +92,7 @@ export function PublicEventOverview({
                                                 </Text>
                                             </div>
                                         </div>
-                                        <div
-                                            className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
-                                            data-testid="event-host-ownership-badges"
-                                        >
-                                            <OrganizationOwnershipBadges organization={organization} compact />
-                                        </div>
                                     </a>
-                                    <OrganizationClaimCallout organization={organization} compact />
                                 </div>
                             ) : hostUser ? (
                                 <UserCard

@@ -5,8 +5,6 @@ import { notFound } from 'next/navigation';
 import { ArrowRight, CalendarDays, MapPin } from 'lucide-react';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
-import OrganizationClaimCallout from '@/components/ui/OrganizationClaimCallout';
-import OrganizationOwnershipBadges from '@/components/ui/OrganizationOwnershipBadges';
 import { absoluteUrl } from '@/server/publicSearchSeo';
 import {
   createRegularPublicEventStructuredData,
@@ -104,14 +102,6 @@ export default async function RegularPublicEventPage({ params }: RegularPublicEv
 
   const primaryHref = data.registrationPath ?? regularOrganizationPath(data.organization.id);
   const primaryLabel = data.registrationPath ? 'Open registration' : 'View organization';
-  const organizationForOwnership = {
-    $id: data.organization.id,
-    name: data.organization.name,
-    originType: data.organization.originType,
-    ownershipStatus: data.organization.ownershipStatus,
-    claimVerificationLevel: data.organization.claimVerificationLevel,
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
       <MarketingHeader navItems={navItems} />
@@ -187,20 +177,7 @@ export default async function RegularPublicEventPage({ params }: RegularPublicEv
                     </p>
                   </div>
                 </div>
-                <div
-                  className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3"
-                  data-testid="public-event-host-ownership-badges"
-                >
-                  <OrganizationOwnershipBadges
-                    organization={organizationForOwnership}
-                    compact
-                  />
-                </div>
               </Link>
-              <OrganizationClaimCallout
-                organization={organizationForOwnership}
-                compact
-              />
             </div>
             <dl className="mt-5 space-y-4 text-sm">
               {data.event.sportName ? (

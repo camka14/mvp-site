@@ -34,13 +34,14 @@ const baseProps: React.ComponentProps<typeof PublicEventOverview> = {
 };
 
 describe('PublicEventOverview', () => {
-    it('renders the organization host, status, description, and single-day schedule', () => {
+    it('renders the organization host, event status, description, and single-day schedule', () => {
         renderWithMantine(<PublicEventOverview {...baseProps} />);
 
         expect(screen.getByRole('link', { name: /River City Sports Club/ })).toHaveAttribute('href', '/organizations/river-city');
         expect(screen.getByText('Open organization profile')).toBeInTheDocument();
-        expect(screen.getByTestId('event-host-ownership-badges')).toHaveTextContent('Claimed profile');
-        expect(screen.getByTestId('event-host-ownership-badges')).toHaveTextContent('Website verified');
+        expect(screen.queryByTestId('event-host-ownership-badges')).not.toBeInTheDocument();
+        expect(screen.queryByText('Claimed profile')).not.toBeInTheDocument();
+        expect(screen.queryByText('Website verified')).not.toBeInTheDocument();
         expect(screen.getByText('Registration is open')).toBeInTheDocument();
         expect(screen.getByText('A welcoming local league.')).toBeInTheDocument();
         expect(screen.getByText('Starts')).toBeInTheDocument();
@@ -48,7 +49,7 @@ describe('PublicEventOverview', () => {
         expect(screen.getByText('123 Main St')).toBeInTheDocument();
     });
 
-    it('shows a claim callout for an unclaimed affiliate organization', () => {
+    it('keeps claim controls off event details for an unclaimed affiliate organization', () => {
         renderWithMantine(
             <PublicEventOverview
                 {...baseProps}
@@ -60,11 +61,13 @@ describe('PublicEventOverview', () => {
             />,
         );
 
-        expect(screen.getByTestId('event-host-ownership-badges')).toHaveTextContent('Unclaimed profile');
-        expect(screen.getByRole('link', { name: 'Claim this profile' })).toHaveAttribute(
+        expect(screen.getByRole('link', { name: /River City Sports Club/ })).toHaveAttribute(
             'href',
-            '/organizations/org-1/claim',
+            '/organizations/river-city',
         );
+        expect(screen.queryByTestId('event-host-ownership-badges')).not.toBeInTheDocument();
+        expect(screen.queryByText('Unclaimed profile')).not.toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: 'Claim this profile' })).not.toBeInTheDocument();
     });
 
     it('keeps affiliate organization actions on the internal organization profile', () => {
