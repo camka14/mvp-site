@@ -109,6 +109,7 @@
     "affiliate:setup:juventus-academy-new-york": "tsx scripts/setup-juventus-academy-new-york-affiliate-source.ts",
     "affiliate:setup:impact-youth-league-nyc": "tsx scripts/setup-impact-youth-league-nyc-affiliate-source.ts",
     "affiliate:setup:escalades-basketball-club": "tsx scripts/setup-escalades-basketball-club-affiliate-source.ts",
+    "affiliate:setup:nyc-impact-volleyball": "tsx scripts/setup-nyc-impact-volleyball-affiliate-source.ts",
     "affiliate:setup:nyc-beach-volleyball": "tsx scripts/setup-nyc-beach-volleyball-affiliate-source.ts",
     "affiliate:setup:qbk-sports": "tsx scripts/setup-qbk-sports-affiliate-source.ts",
     "affiliate:setup:riverside-park-beach-volleyball": "tsx scripts/setup-riverside-park-beach-volleyball-affiliate-source.ts",
