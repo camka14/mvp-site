@@ -294,6 +294,8 @@ export interface MatchSegmentOperation {
   resultType?: MatchResultType | string | null;
   statusReason?: string | null;
   metadata?: Record<string, unknown> | null;
+  clockStoppedAt?: string | null;
+  clockStoppedDurationSeconds?: number;
   clientOperationId?: string;
   clientDeviceId?: string;
   clientCreatedAt?: string;

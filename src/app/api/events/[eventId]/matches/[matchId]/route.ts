@@ -87,6 +87,8 @@ const segmentOperationSchema = z.object({
   resultType: z.string().nullable().optional(),
   statusReason: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  clockStoppedAt: z.string().nullable().optional(),
+  clockStoppedDurationSeconds: z.number().int().nonnegative().optional(),
   ...clientOperationFields,
 });
 const incidentOperationSchema = z.object({
@@ -1006,6 +1008,25 @@ const applySegmentOperations = (
         } as MatchSegment;
     const canonicalExisting: MatchSegment = { ...existing };
     delete canonicalExisting.$id;
+    const operationMetadata = mergeClientOperationMetadata(
+      Object.prototype.hasOwnProperty.call(operation, 'metadata')
+        ? operation.metadata ?? null
+        : existing.metadata ?? null,
+      operation,
+    );
+    const clockMetadata = operationMetadata && typeof operationMetadata === 'object' && !Array.isArray(operationMetadata)
+      ? { ...operationMetadata }
+      : {};
+    if (Object.prototype.hasOwnProperty.call(operation, 'clockStoppedAt')) {
+      if (operation.clockStoppedAt == null) {
+        delete clockMetadata.clockStoppedAt;
+      } else {
+        clockMetadata.clockStoppedAt = operation.clockStoppedAt;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(operation, 'clockStoppedDurationSeconds')) {
+      clockMetadata.clockStoppedDurationSeconds = operation.clockStoppedDurationSeconds;
+    }
     const next: MatchSegment = {
       ...canonicalExisting,
       id: operation.id ?? existing.id,
@@ -1029,12 +1050,7 @@ const applySegmentOperations = (
       statusReason: Object.prototype.hasOwnProperty.call(operation, 'statusReason')
         ? operation.statusReason ?? null
         : existing.statusReason ?? null,
-      metadata: mergeClientOperationMetadata(
-        Object.prototype.hasOwnProperty.call(operation, 'metadata')
-          ? operation.metadata ?? null
-          : existing.metadata ?? null,
-        operation,
-      ),
+      metadata: Object.keys(clockMetadata).length > 0 ? clockMetadata : null,
     };
     if (existingIndex >= 0) {
       segments[existingIndex] = next;

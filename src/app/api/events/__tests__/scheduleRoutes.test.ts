@@ -1175,6 +1175,8 @@ describe('schedule routes', () => {
             sequence: 1,
             status: 'IN_PROGRESS',
             startedAt: '2026-06-08T20:00:00.000Z',
+            clockStoppedAt: '2026-06-08T20:04:00.000Z',
+            clockStoppedDurationSeconds: 18,
             clientOperationId: 'phone:match_1:1',
             clientDeviceId: 'phone',
             clientCreatedAt: '2026-06-08T20:00:00.000Z',
@@ -1206,6 +1208,8 @@ describe('schedule routes', () => {
     const savedMatch = saveMatchesMock.mock.calls[0][1][0];
     expect(savedMatch.segments[0].metadata).toEqual({
       existing: true,
+      clockStoppedAt: '2026-06-08T20:04:00.000Z',
+      clockStoppedDurationSeconds: 18,
       clientOperation: {
         id: 'phone:match_1:1',
         deviceId: 'phone',
