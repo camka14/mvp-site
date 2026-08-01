@@ -17,9 +17,10 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-01 23:10Z) Audited the generated setup template, guarded live application command, mapping repair classifier, approval requeue behavior, and official-logo approval gates.
 - [x] (2026-08-01 23:20Z) Updated generated setup code and agent instructions so guarded `--live` support and producer-side manual-logo resolution are required.
 - [x] (2026-08-01 23:25Z) Extended retry eligibility and claim output to select manual-logo producer repairs and expose durable `repairContext` without recycling unrelated rejection states.
-- [ ] Run focused Jest tests, TypeScript, and diff checks; commit and push the scoped repair. (Completed: 33 focused tests, TypeScript, and diff check pass. Remaining: repository CI, commit, and push.)
-- [ ] Update both OVH agent checkouts, restart the producer and reviewer, and verify their generated goals contain the repaired contract.
-- [ ] Preview and apply the live requeue, then verify repaired jobs are claimed and re-reviewed without leaked leases.
+- [x] (2026-08-01 23:12Z) Ran 33 focused tests, repository CI, TypeScript, and diff validation; committed and pushed the repair plus the current-failure classifier safeguard to `main`.
+- [x] (2026-08-01 23:19Z) Updated both OVH agent checkouts, restored disk capacity, restarted the producer and reviewer, and verified their generated goals contain the guarded-live, event-location, division/pricing, and manual-logo contracts.
+- [x] (2026-08-01 23:20Z) Previewed and requeued exactly 91 live packages: 59 manual-logo reviews, 29 guarded-live setup repairs, and 3 event-location package repairs. Queue reports showed zero expired leases and zero claims without leases before agent restart.
+- [ ] Verify repaired jobs are claimed and independently re-reviewed without leaked leases.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
 ## Surprises & Discoveries
@@ -38,6 +39,12 @@ The result is observable in three places: focused tests prove the retry classifi
 
 - Observation: the first live retry preview selected 163 of 165 rejected approvals because it combined stale approval text with the mapping job's current error. Some selected jobs currently failed with terminal reasons such as `Already-finished intake` but retained an older review mentioning a refused `--live` setup.
   Evidence: the preview was run without `--apply`, so no live rows changed; inspection of selected rows showed the newer mapping failure and older approval text described different attempts.
+
+- Observation: the approval agent had exited because the OVH root filesystem was 99% full. Thirteen producer crash core dumps consumed roughly 35 GB; intake/output evidence remained separate and was not removed.
+  Evidence: exact-file inspection showed `core.10672` through `core.9991` at roughly 2.3 to 2.8 GB each. Removing only those core dumps restored 28 GB free and reduced root usage to 61%.
+
+- Observation: the producer goal requires an interactive terminal and exits when launched as a detached non-TTY Docker exec.
+  Evidence: the non-TTY launch reported `The Codex ingestion goal requires an interactive terminal`; launching it through `script` supplied a pseudo-terminal and produced the expected live Luna goal process.
 
 ## Decision Log
 
@@ -59,12 +66,20 @@ The result is observable in three places: focused tests prove the retry classifi
 
 ## Outcomes & Retrospective
 
-Implementation is in progress. The live reviewer is paused, its interrupted claim was returned to the queue, and no package has yet been requeued under the new repair contract.
+The repair is deployed to both OVH agent checkouts. The live requeue reset 91
+producer-fixable packages while preserving their prior decisions in repair
+history: 59 require manual official-logo evidence review, 29 require a new
+guarded-live setup commit, and 3 require event-location package repair. The 74
+remaining rejected packages were not recycled because their latest failure did
+not match a supported repair reason.
 
-The local repair implementation now passes 33 focused tests plus TypeScript and
-diff validation. Generated setup scripts select the live database only through
-the shared guarded helper, retry classification recognizes manual-logo work,
-and mapping claims expose the latest repair context to Luna.
+The local repair implementation passes 33 focused tests, repository CI,
+TypeScript, and diff validation. Generated setup scripts select the live
+database only through the shared guarded helper, retry classification recognizes
+manual-logo work without allowing stale reviews to override current failures,
+and mapping claims expose the latest repair context to Luna. The producer and
+independent reviewer are running; final approved-organization and unresolved-logo
+counts remain pending as they work through their queues.
 
 ## Context and Orientation
 
