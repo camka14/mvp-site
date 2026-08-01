@@ -64,7 +64,15 @@ write_allowlist() {
 
   if [[ "$skip_reload" != "true" ]]; then
     systemctl restart fail2ban.service
-    fail2ban-client status sshd >/dev/null
+    for _ in {1..20}; do
+      if fail2ban-client ping >/dev/null 2>&1; then
+        fail2ban-client status sshd >/dev/null
+        return
+      fi
+      sleep 0.25
+    done
+    echo "Fail2ban did not become ready after restarting." >&2
+    return 1
   fi
 }
 
