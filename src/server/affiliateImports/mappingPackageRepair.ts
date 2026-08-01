@@ -36,13 +36,18 @@ export const affiliateMappingProducerRepairEligibility = (input: {
   const decision = recordValue(input.approvalDecision);
   const envelope = recordValue(input.resultSummary);
   const embeddedReview = recordValue(envelope.approvalReview);
-  const evidence = [
-    ...stringValues(input.mappingErrorMessage),
+  const currentMappingFailure = stringValues(input.mappingErrorMessage).join(' ');
+  const priorReviewEvidence = [
     ...stringValues(decision.rationale),
     ...stringValues(decision.blockingIssues),
     ...stringValues(embeddedReview.rationale),
     ...stringValues(embeddedReview.blockingIssues),
   ].join(' ');
+  // A later producer attempt can fail for a different, terminal reason while the
+  // approval row still contains an older repairable review. In that case the
+  // current mapping failure is authoritative and must not be masked by stale
+  // approval evidence.
+  const evidence = currentMappingFailure || priorReviewEvidence;
   if (!evidence) {
     return { eligible: false, reason: 'rejection-reason-missing', repairReason: null };
   }

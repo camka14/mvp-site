@@ -49,6 +49,20 @@ describe('affiliate mapping producer repair eligibility', () => {
     });
   });
 
+  it('does not let stale approval evidence override a newer terminal mapping failure', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      mappingErrorMessage: 'Already-finished intake cannot be claimed again.',
+      approvalDecision: {
+        blockingIssues: ['The old setup script refused --live.'],
+      },
+    })).toEqual({
+      eligible: false,
+      reason: 'unrelated-producer-defect',
+      repairReason: null,
+    });
+  });
+
   it('requeues packages rejected because event location failures were treated as package failures', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,

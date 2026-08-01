@@ -36,6 +36,9 @@ The result is observable in three places: focused tests prove the retry classifi
 - Observation: a mapping with `logoDisposition = MANUAL_REVIEW` cannot be safely approved because the guarded live application also requires the resulting organization to have a logo file.
   Evidence: `src/server/affiliateImports/approvalQueue.ts` rejects approval of manual-logo results, while `scripts/apply-approved-affiliate-mapping-jobs.ts` rejects a live organization with no `logoId`.
 
+- Observation: the first live retry preview selected 163 of 165 rejected approvals because it combined stale approval text with the mapping job's current error. Some selected jobs currently failed with terminal reasons such as `Already-finished intake` but retained an older review mentioning a refused `--live` setup.
+  Evidence: the preview was run without `--apply`, so no live rows changed; inspection of selected rows showed the newer mapping failure and older approval text described different attempts.
+
 ## Decision Log
 
 - Decision: Keep the independent official-logo gate and send manual-logo packages back to the producer for evidence review instead of weakening approval to accept logo-less organizations.
@@ -48,6 +51,10 @@ The result is observable in three places: focused tests prove the retry classifi
 
 - Decision: Preserve terminal decisions and repair attempts in `mappingRepairHistory`, and allow one operator-controlled retry pass rather than silently looping rejected packages.
   Rationale: repeated automatic retries can spend indefinitely on sites with no supportable official logo or location evidence. Durable history keeps the process inspectable and lets later retries require new evidence or an explicit operator action.
+  Date/Author: 2026-08-01 / Codex
+
+- Decision: When a failed mapping job has a current `errorMessage`, classify retry eligibility from that error alone; use approval evidence only when the current error is empty.
+  Rationale: the mapping job represents the latest producer attempt. Letting an older approval decision override it can recycle terminal failures and create an unnecessarily broad retry cohort.
   Date/Author: 2026-08-01 / Codex
 
 ## Outcomes & Retrospective
