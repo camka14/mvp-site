@@ -16,6 +16,7 @@ After this change, an affiliate event, club, or rental with an evidenced address
 - [x] (2026-08-01 10:18 PDT) Passed focused Jest suites (53 tests), TypeScript, the full `npm run test:ci` suite including API-route coverage, the optimized production build, and diff checks.
 - [x] (2026-08-01 10:20 PDT) Committed the scoped implementation as `1b8f6e82` and pushed it to `main` without staging the unrelated legacy Portland files.
 - [x] (2026-08-01 10:52 PDT) Passed exact-commit CI, published and deployed the immutable OVH image, configured the server-only key for the app and agent dotenv files, repaired 46 events and 105 organizations, and verified the live New York radius API returns the screenshot listings with their resolved coordinates.
+- [x] (2026-08-01 11:00 PDT) Closed the final source-organization edge case: a located child event or rental may publish, but its source organization is promoted to `LISTED` only when that organization has its own valid coordinates.
 
 ## Surprises & Discoveries
 
@@ -126,6 +127,8 @@ Do not commit keys, provider payloads, or full live row dumps. Commit only code,
 ## Outcomes & Retrospective
 
 The implementation is live. Publication can no longer silently turn a failed place lookup into a public `[0, 0]` event, listed club, or active rental facility. The server key is present in the OVH app container and in the dotenv files used by the existing Luna ingestion and approval containers without restarting them.
+
+A source organization is now also protected from indirect publication: publishing a child event or rental no longer lists an address-less source organization. This preserves the correctly located child while holding the organization outside map discovery until its own intake evidence supplies a resolvable place.
 
 The New York dry run selected 159 missing rows. Google resolved 151: all 46 events and 105 of 113 organizations. Places Text Search resolved 143 and the Geocoding compatibility fallback resolved eight. The apply transaction wrote those 151 coordinate pairs. The second dry run found no remaining event repair and only eight organization rows with no source-backed location evidence, so those records were intentionally not guessed.
 

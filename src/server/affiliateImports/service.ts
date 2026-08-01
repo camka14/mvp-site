@@ -1346,11 +1346,17 @@ const markSourceOrganizationListedForPublishedContent = async (
   });
   const coordinates = normalizeAffiliateCoordinates(organization.coordinates)
     ?? (await geocodeFirstAvailableAddress(geocodeQueries));
+  if (!coordinates) {
+    // Publishing a child event or rental must not make an unlocatable source
+    // organization visible on the organization map. Its own evidence can be
+    // completed independently without blocking a correctly located child.
+    return;
+  }
   await organizations.update({
     where: { id: organization.id },
     data: {
       status: 'LISTED',
-      ...(coordinates ? { coordinates } : {}),
+      coordinates,
       updatedAt: new Date(),
     },
   });

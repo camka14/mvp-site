@@ -660,7 +660,7 @@ describe('affiliate import service', () => {
     expect(result.candidate.listingKind).toBe('EVENT');
   });
 
-  it('publishes event candidates as real hostless affiliate events', async () => {
+  it('publishes located events without listing an unlocatable source organization', async () => {
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.387, 45.539]);
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_1',
@@ -720,13 +720,7 @@ describe('affiliate import service', () => {
       }),
     });
     expect(geocodeAddressToCoordinatesMock).toHaveBeenCalledWith('819 NW Corporate Dr, Troutdale, OR 97060');
-    expect(prismaMock.organizations.update).toHaveBeenCalledWith({
-      where: { id: 'org_troutdale' },
-      data: {
-        status: 'LISTED',
-        updatedAt: expect.any(Date),
-      },
-    });
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
     expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
       where: { id: 'candidate_1' },
       data: {
@@ -1514,7 +1508,11 @@ describe('affiliate import service', () => {
         },
       },
     });
-    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_automatic' });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_automatic',
+      name: 'Automatic Source',
+      location: 'Portland, OR',
+    });
     prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
       id: 'mapping_automatic',
       sourceId: 'source_automatic',
@@ -1571,6 +1569,7 @@ describe('affiliate import service', () => {
       where: { id: 'org_automatic' },
       data: {
         status: 'LISTED',
+        coordinates: [-122.6765, 45.5231],
         updatedAt: expect.any(Date),
       },
     });
