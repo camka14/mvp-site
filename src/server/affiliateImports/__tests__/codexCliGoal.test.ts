@@ -72,6 +72,10 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('two duplicate-safe review scrapes');
     expect(goal).toContain('Keep valid organizations reviewable when individual events lack locations');
     expect(goal).toContain('SOURCE_ORGANIZATION fallback with stored evidence');
+    expect(goal).toContain('Preserve the exact source division label');
+    expect(goal).toContain('group every division by its stable event identity/detail-page context');
+    expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
+    expect(goal).toContain('differing division prices must produce a compact event range');
     expect(goal).toContain('Setup scripts must support guarded --live');
     expect(goal).toContain('TEAM-only');
     expect(goal).toContain('Do not publish candidates or organizations');

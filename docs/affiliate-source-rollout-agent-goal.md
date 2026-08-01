@@ -55,6 +55,8 @@ The goal agent must follow `$ingest-affiliate-intakes` and the affiliate source 
 - Create or repair an idempotent setup script and matching `package.json` command that can restore the organization, source, mapping, cadence, logo association, and intentional manual candidates through both its disposable default and the guarded `--live` application mode. The producer validates only the disposable mode and must not apply the package live.
 - Run setup and scraping against a disposable database first. A launcher `--live` flag authorizes only live intake evidence reads and mapping-job queue transitions; it does not authorize live organization, source, mapping, logo, candidate, or publication writes.
 - Inspect at least five candidates and every produced candidate kind. Verify classification, official URLs, dates, descriptions, tags, divisions, prices, registration type, capacity, location, and coordinates against the rendered source.
+- Treat each source event as one parent record. Group every division under its exact event identity/detail-page context and never merge divisions across adjacent cards, dates, venues, or registration pages. Preserve the organization's exact division label as the display name, then independently select BracketIQ's canonical `gender` (`M`, `F`, `C`), `ratingType` (`AGE` or `SKILL`), `divisionTypeId`, `skillDivisionTypeId`, and `ageDivisionTypeId`. Use Coed only when the source says coed/mixed or leaves gender unspecified; preserve ambiguous labels and flag them for review rather than guessing.
+- Keep source prices and capacities on their owning divisions. Do not copy or average a division price. Use an event-level fallback only for a genuinely single-price or single-division event; when division prices differ, expose a compact event price range and keep late fees, discounts, membership requirements, and other caveats in the details.
 - Resolve event-specific evidenced addresses, venues, and facilities through the server-only Google Places path. An event may use the canonical source organization's valid location only when stored evidence shows it is held there and the candidate records `locationSource: "SOURCE_ORGANIZATION"` plus a non-empty `locationEvidence` note. City-only text, common ownership, or proximity is insufficient. Reject and log only the affected event when no usable location exists; do not fail an otherwise valid organization/source package.
 - Run the scrape twice and prove the second run does not create duplicate candidates or published targets.
 - Configure the documented daily, weekly, or monthly cadence, but leave new recurring scraping disabled until coordinator review succeeds.
@@ -74,6 +76,8 @@ The coordinator may mark a source complete only when:
 - extracted data matches the rendered source;
 - organization location and coordinates work when the source publishes a resolvable organization location;
 - accepted events have event-specific valid non-zero coordinates or an explicit evidence-backed source-organization fallback, while invalid event locations are excluded and appear in stable scrape-run rejection summaries;
+- source division names remain intact while canonical gender/age/skill fields are populated from evidence;
+- divisions are grouped to the correct parent event and each division retains its own source price and capacity, with event-level price/range derived without cross-division leakage;
 - rerunning is duplicate-safe;
 - cadence and automation state are correct;
 - focused tests, TypeScript, and diff checks pass;

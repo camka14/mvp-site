@@ -57,6 +57,10 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('Review organization validity independently from child event validity');
     expect(goal).toContain('events without usable locations were correctly excluded and logged');
     expect(goal).toContain('explicit SOURCE_ORGANIZATION mode');
+    expect(goal).toContain('group every source division under the correct parent event');
+    expect(goal).toContain('Preserve the exact organization division label as display name');
+    expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
+    expect(goal).toContain('differing division prices require a compact event range');
     expect(goal).toContain('Never publish an organization or candidate');
   });
 

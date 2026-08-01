@@ -74,6 +74,35 @@ owner, or proximity is insufficient. When neither event-specific location nor
 source-organization evidence exists, preserve the gap: the scrape must reject
 that event and expose the failure rather than invent coordinates.
 
+## Preserve event, division, and pricing semantics
+
+Treat each source event as the parent record for the divisions shown inside
+that event card or detail page. Group every division under exactly one parent
+event using the source's stable event identity, URL, or detail-page context;
+never merge divisions from neighboring cards, dates, venues, or registration
+pages. Set `singleDivision` only when the source genuinely exposes one
+division. Keep an event with multiple divisions as one event with multiple
+division rows.
+
+Preserve the organization's exact division label in the division `name` (for
+example, `Women's D3`, `12U Gold`, or `Adult Rec`). Add our own structured
+classification separately: `gender` must be `M`, `F`, or `C`; `ratingType`
+must be `AGE` or `SKILL`; and `divisionTypeId`, `skillDivisionTypeId`, and
+`ageDivisionTypeId` must use the canonical sport catalog. Use `C`/Coed only
+when the source says coed/mixed or does not specify a gender. Do not replace a
+source label with our canonical label, and do not guess an age or skill tier
+when the evidence is ambiguous; preserve the source text and add a warning or
+manual-review disposition.
+
+Keep prices and capacity attached to the division that owns them. Parse the
+source's per-division registration price into `priceCents` without averaging,
+overwriting, or copying one division's price to another. Use an event-level
+price only when the source publishes one price for the whole event or there is
+truly one division; when division prices differ, derive the public event price
+as a compact range. Keep late fees, discounts, membership requirements,
+player-card fees, and other caveats in the description/details, and leave
+price null when the source does not publish a price.
+
 ## Preserve approval boundaries
 
 The goal may produce review-ready code, local database records, fixtures, and validation output. It must not:

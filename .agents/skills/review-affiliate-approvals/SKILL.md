@@ -80,6 +80,24 @@ review scrapes rejected events without usable locations. Confirm that those
 events were excluded from candidate/target persistence and that both scrape
 runs contain stable title-and-reason rejection summaries.
 
+Also review event and division integrity independently of the organization:
+
+- Confirm every division is attached to the correct parent event and that
+  divisions from neighboring event cards, dates, venues, or detail pages were
+  not merged.
+- Confirm the displayed division `name` preserves the organization's exact
+  label while `gender` (`M`, `F`, `C`), `ratingType` (`AGE` or `SKILL`),
+  `divisionTypeId`, `skillDivisionTypeId`, and `ageDivisionTypeId` use the
+  canonical BracketIQ catalog. Do not require the source label to match our
+  canonical display name. Use Coed only when the source says coed/mixed or
+  leaves gender unspecified; ambiguous classification is a DEFER or concrete
+  REJECT, never a guess.
+- Confirm each division keeps its own source price and capacity. Reject copied,
+  averaged, or cross-event prices. A single event-level price is valid only
+  when the source publishes one price for the whole event or there is one
+  division; differing division prices must produce a compact event range, with
+  fee caveats retained in details.
+
 For every accepted event with an evidenced address or venue, independently
 compare the evidence with its finite, in-range `[longitude, latitude]`
 coordinates. Source-organization coordinates are valid only when the candidate

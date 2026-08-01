@@ -57,6 +57,21 @@ the referenced canonical organization has valid coordinates. Cite the stored
 intake artifact plus candidate/target or rejection-log evidence. Correctly
 filtered bad events do not invalidate an otherwise valid organization package.
 
+`packageValidationPassed` also requires division and pricing integrity. Every
+source division must be grouped under the correct parent event; adjacent
+cards, dates, venues, and detail pages must not leak divisions into one
+another. The source's exact division label must remain the display `name`,
+while BracketIQ's canonical `gender` (`M`, `F`, `C`), `ratingType` (`AGE` or
+`SKILL`), `divisionTypeId`, `skillDivisionTypeId`, and `ageDivisionTypeId` are
+stored as separate structured fields. A reviewer must not reject a source
+label merely because it differs from the canonical catalog label. Coed is
+appropriate when the source says coed/mixed or does not specify gender;
+ambiguous age or skill classification requires DEFER or a concrete REJECT.
+Each division's source price and capacity must remain attached to that
+division. Do not approve copied or averaged prices. An event-level price is a
+fallback only for a genuinely single-price or single-division event; differing
+division prices must produce a compact range and retain fee caveats in details.
+
 The mapping-package evidence command is the authoritative bridge between the
 producer and reviewer containers. Its producer-commit and file hashes come from
 the producer checkout mounted read-only. Its two review-scrape rows and current

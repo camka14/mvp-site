@@ -27,6 +27,21 @@ Every successful checkpoint must contain:
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.
 
+For every multi-division event, prove that the divisions are grouped under the
+correct parent event and did not leak across adjacent cards, dates, venues, or
+detail pages. Preserve each source-stated division label as its display `name`
+and select our structured `gender` (`M`, `F`, `C`), `ratingType` (`AGE` or
+`SKILL`), `divisionTypeId`, `skillDivisionTypeId`, and `ageDivisionTypeId`
+separately from that label using the canonical sport catalog. Use Coed only
+when the source says coed/mixed or does not specify gender; preserve ambiguous
+source text and flag it for review instead of guessing.
+
+Keep each source price and capacity on the division that owns it. Do not
+average, copy, or collapse per-division prices. Use a numeric event-level
+fallback only for a genuinely single-price or single-division event; derive a
+compact event price range when division prices differ, and keep fee caveats in
+the details text.
+
 For each event with an evidenced address, venue, or facility, run the normal
 server-side Google Places resolver. Coordinates must contain finite longitude
 then latitude, remain within geographic bounds, and must not equal `[0, 0]`.
