@@ -29,6 +29,7 @@
     "backfill:event-templates": "tsx scripts/backfill-event-template-records.ts",
     "affiliate:scrape:due": "tsx scripts/run-due-affiliate-scrapes.ts",
     "affiliate:scrape:due:dry-run": "tsx scripts/run-due-affiliate-scrapes.ts --dry-run --no-email",
+    "affiliate:repair:coordinates": "tsx scripts/repair-affiliate-location-coordinates.ts",
     "affiliate:intakes:process": "tsx scripts/process-affiliate-source-intakes.ts",
     "affiliate:intake:benchmark": "tsx scripts/benchmark-affiliate-intake-providers.ts",
     "affiliate:intakes:bootstrap": "tsx scripts/bootstrap-affiliate-source-intakes.ts",

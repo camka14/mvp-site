@@ -45,6 +45,7 @@ Create or repair everything needed for review:
 
 - an idempotent source setup script and package command;
 - the canonical organization draft with website, description, sport, city, and address when evidenced; for US locations, persist the city as `City, ST` whenever the stored evidence establishes the state so public search and sitemap location filters can classify it, but never infer a missing state;
+- valid `[longitude, latitude]` coordinates resolved through the server-side Google Places path for every evidenced address, city, venue, or facility; a missing key, denied request, null pair, out-of-range pair, or `[0, 0]` is blocking rather than a warning that can be ignored;
 - a generic mapping, manual candidates, or a clearly justified custom extractor;
 - official outbound action URLs;
 - an official logo asset or official screenshot crop normalized to an opaque 1024 by 1024 image;
@@ -54,6 +55,8 @@ Create or repair everything needed for review:
 - a compact result JSON and a source-scoped commit.
 
 Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and keep the organization unpublishable.
+
+When the stored source genuinely publishes no address, city, or identifiable place, record that exact limitation and keep map publication disabled. Never substitute a directory organization, parent organization, nearby facility, or another event's coordinates for the produced event, club, or rental.
 
 ## Preserve approval boundaries
 

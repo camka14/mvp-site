@@ -47,6 +47,14 @@ A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
 `identityIndependent`, `packageValidationPassed`, `officialLogoVerified`,
 `duplicateSafetyVerified`, and `storedEvidenceSufficient`.
 
+For a mapping approval, `packageValidationPassed` also means that every
+evidence-backed event, club, and rental location has been independently checked
+against the persisted target coordinates. Null, malformed, out-of-range, and
+`[0, 0]` coordinates fail package validation when the source identifies a
+resolvable place. Cite the stored intake artifact plus the candidate/target ID
+or focused test output in `evidenceReferences`; never treat an unstored browser
+impression or a nearby organization's coordinates as proof.
+
 Positive decisions have no blocking issues. `BLOCK`, `REJECT`, and `DEFER`
 must contain at least one concrete blocking issue. Evidence references must use
 stable identifiers from the claim, database, repository commit, test output, or

@@ -11,7 +11,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { getStorageProvider } from '@/lib/storageProvider';
-import { geocodeAddressToCoordinates } from '@/server/geocoding';
+import { geocodeAddressToCoordinates, isValidGeocodeCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
 import { syncEventTags } from '@/server/eventTags';
 import { downloadPublicRemoteImage } from '@/server/publicRemoteImage';
@@ -19,6 +19,11 @@ import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage
 import { inferAffiliateParticipantAvailability, parseAffiliateMaxParticipants } from './participantAvailability';
 import { scrapingDogClient } from './scrapingDogClient';
 import { inferAffiliateEventTagNames } from './tags';
+import {
+  buildAffiliateEventLocationQueries,
+  buildAffiliatePlaceLocationQueries,
+  normalizeAffiliateCoordinates,
+} from './locationResolution';
 import {
   AFFILIATE_AUTOMATION_BASELINE_METADATA_KEY,
   AFFILIATE_AUTOMATION_REVIEW_METADATA_KEY,
@@ -1152,85 +1157,26 @@ const resolveAffiliateSportId = async (sportName: unknown): Promise<string | nul
   return sport?.id ?? null;
 };
 
-const normalizePersistedCoordinates = (value: unknown): [number, number] | null => {
-  if (!Array.isArray(value) || value.length < 2) return null;
-  const lng = Number(value[0]);
-  const lat = Number(value[1]);
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
-  if (lng === 0 && lat === 0) return null;
-  return [lng, lat];
-};
-
-const uniqueStrings = (values: Array<string | null | undefined>): string[] => {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  values.forEach((value) => {
-    const normalized = nullableString(value);
-    if (!normalized) return;
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    result.push(normalized);
-  });
-  return result;
-};
-
-const buildAffiliateGeocodeQueries = (params: {
-  location?: string | null;
-  address?: string | null;
-  city?: string | null;
-}): string[] => {
-  const location = nullableString(params.location);
-  const address = nullableString(params.address);
-  const city = nullableString(params.city);
-  const fullAddress =
-    address && city && !address.toLowerCase().includes(city.toLowerCase()) ? `${address}, ${city}` : address;
-
-  return uniqueStrings([
-    fullAddress,
-    location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
-      ? `${location}, ${fullAddress}`
-      : null,
-    location && city && !location.toLowerCase().includes(city.toLowerCase()) ? `${location}, ${city}` : null,
-    city,
-    location,
-  ]);
-};
-
-const buildAffiliateFacilityGeocodeQueries = (params: {
-  name?: string | null;
-  location?: string | null;
-  address?: string | null;
-  city?: string | null;
-}): string[] => {
-  const name = nullableString(params.name);
-  const location = nullableString(params.location);
-  const address = nullableString(params.address);
-  const city = nullableString(params.city);
-  const fullAddress =
-    address && city && !address.toLowerCase().includes(city.toLowerCase()) ? `${address}, ${city}` : address;
-
-  return uniqueStrings([
-    name && fullAddress && !fullAddress.toLowerCase().includes(name.toLowerCase()) ? `${name}, ${fullAddress}` : null,
-    fullAddress,
-    location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
-      ? `${location}, ${fullAddress}`
-      : null,
-    name && city && !name.toLowerCase().includes(city.toLowerCase()) ? `${name}, ${city}` : null,
-    name && location && !name.toLowerCase().includes(location.toLowerCase()) ? `${name}, ${location}` : null,
-    location && city && !location.toLowerCase().includes(city.toLowerCase()) ? `${location}, ${city}` : null,
-    city,
-    location,
-    name,
-  ]);
-};
-
 const geocodeFirstAvailableAddress = async (queries: string[]): Promise<[number, number] | null> => {
   for (const query of queries) {
     const coordinates = await geocodeAddressToCoordinates(query);
     if (coordinates) return coordinates;
   }
   return null;
+};
+
+const assertAffiliateCoordinatesForPublication = (params: {
+  coordinates: unknown;
+  targetLabel: 'event' | 'organization' | 'rental facility';
+  queries: string[];
+}) => {
+  if (isValidGeocodeCoordinates(params.coordinates)) return;
+  const querySummary = params.queries.length
+    ? ` Attempted location queries: ${params.queries.join(' | ')}.`
+    : ' No source-backed address, city, or place was available.';
+  throw new Error(
+    `Affiliate ${params.targetLabel} cannot be published without valid non-zero coordinates. Configure the server-only GOOGLE_MAPS_API_KEY for Places API (New) and Geocoding API, or correct the stored location evidence.${querySummary}`,
+  );
 };
 
 const buildAffiliateEventData = async (
@@ -1264,13 +1210,20 @@ const buildAffiliateEventData = async (
     'Location TBD';
   const address = nullableString(candidate.address);
   const city = nullableString(candidate.city);
-  const geocodeQueries = buildAffiliateGeocodeQueries({
+  const geocodeQueries = buildAffiliateEventLocationQueries({
     location,
     address,
     city,
   });
   const coordinates =
-    (await geocodeFirstAvailableAddress(geocodeQueries)) ?? normalizePersistedCoordinates(fallbackCoordinates);
+    (await geocodeFirstAvailableAddress(geocodeQueries)) ?? normalizeAffiliateCoordinates(fallbackCoordinates);
+  if (state === 'PUBLISHED') {
+    assertAffiliateCoordinatesForPublication({
+      coordinates,
+      targetLabel: 'event',
+      queries: geocodeQueries,
+    });
+  }
   const organizerName = nullableString(candidate.organizerName) ?? nullableString(source.name);
 
   return {
@@ -1361,7 +1314,14 @@ const loadSourceOrganization = async (source: { organizationId?: string | null }
   const { organizations } = affiliatePrisma();
   const organization = await organizations.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true, coordinates: true },
+    select: {
+      id: true,
+      ownerId: true,
+      name: true,
+      location: true,
+      address: true,
+      coordinates: true,
+    },
   });
   if (!organization) {
     throw new Error('Affiliate source organization was not found.');
@@ -1378,10 +1338,19 @@ const markSourceOrganizationListedForPublishedContent = async (
 ) => {
   const organization = await loadSourceOrganization(source);
   const { organizations } = affiliatePrisma();
+  const geocodeQueries = buildAffiliatePlaceLocationQueries({
+    name: nullableString(organization.name),
+    location: nullableString(organization.location),
+    address: nullableString(organization.address),
+    city: nullableString(organization.location),
+  });
+  const coordinates = normalizeAffiliateCoordinates(organization.coordinates)
+    ?? (await geocodeFirstAvailableAddress(geocodeQueries));
   await organizations.update({
     where: { id: organization.id },
     data: {
       status: 'LISTED',
+      ...(coordinates ? { coordinates } : {}),
       updatedAt: new Date(),
     },
   });
@@ -1486,7 +1455,7 @@ const upsertAffiliateFacilityForCandidate = async (
   source: AffiliateScrapeSourceRow,
   options: { status?: string | null } = {},
 ) => {
-  const organization = await loadSourceOrganization(source);
+  await loadSourceOrganization(source);
   const { facilities } = affiliatePrisma();
   const facilityId =
     nullableString(candidate.publishedFacilityId) ?? affiliateFacilityIdForCandidate(candidate, source);
@@ -1499,7 +1468,7 @@ const upsertAffiliateFacilityForCandidate = async (
     nullableString(candidate.venueName) ?? nullableString(candidate.city) ?? nullableString(candidate.address) ?? name;
   const address = nullableString(candidate.address);
   const city = nullableString(candidate.city);
-  const geocodeQueries = buildAffiliateFacilityGeocodeQueries({
+  const geocodeQueries = buildAffiliatePlaceLocationQueries({
     name,
     location,
     address,
@@ -1507,8 +1476,15 @@ const upsertAffiliateFacilityForCandidate = async (
   });
   const coordinates =
     (await geocodeFirstAvailableAddress(geocodeQueries)) ??
-    normalizePersistedCoordinates(existingFacility?.coordinates) ??
-    normalizePersistedCoordinates(organization.coordinates);
+    normalizeAffiliateCoordinates(existingFacility?.coordinates);
+  const status = nullableString(options.status) ?? (candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT');
+  if (status === 'ACTIVE') {
+    assertAffiliateCoordinatesForPublication({
+      coordinates,
+      targetLabel: 'rental facility',
+      queries: geocodeQueries,
+    });
+  }
   const data = {
     organizationId: nullableString(source.organizationId),
     name,
@@ -1517,7 +1493,7 @@ const upsertAffiliateFacilityForCandidate = async (
     coordinates,
     operatingHours: null,
     timeZone: nullableString(candidate.timeZone) ?? 'America/Los_Angeles',
-    status: nullableString(options.status) ?? (candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT'),
+    status,
     isDefault: false,
     affiliateUrl: nullableString(candidate.officialActionUrl),
   };
@@ -1586,11 +1562,23 @@ const buildAffiliateOrganizationData = async (
   const location =
     nullableString(candidate.venueName) ?? nullableString(candidate.city) ?? nullableString(candidate.address) ?? null;
   const address = nullableString(candidate.address);
-  const geocodeAddress = address ?? location;
-  const coordinates = geocodeAddress
-    ? ((await geocodeAddressToCoordinates(geocodeAddress)) ??
-      normalizePersistedCoordinates(sourceOrganization.coordinates))
-    : normalizePersistedCoordinates(sourceOrganization.coordinates);
+  const city = nullableString(candidate.city);
+  const geocodeQueries = buildAffiliatePlaceLocationQueries({
+    name,
+    location,
+    address,
+    city,
+  });
+  const coordinates = await geocodeFirstAvailableAddress(geocodeQueries);
+  const status = options.status ?? 'UNLISTED';
+  const publicPageEnabled = options.publicPageEnabled === true;
+  if (status === 'LISTED' || publicPageEnabled) {
+    assertAffiliateCoordinatesForPublication({
+      coordinates,
+      targetLabel: 'organization',
+      queries: geocodeQueries,
+    });
+  }
   const sportName = nullableString(candidate.sportName);
   const description =
     nullableString(candidate.description) ??
@@ -1613,13 +1601,13 @@ const buildAffiliateOrganizationData = async (
     description,
     website,
     sports: sportName ? [sportName] : [],
-    status: options.status ?? 'UNLISTED',
+    status,
     hasStripeAccount: false,
     verificationStatus: 'UNVERIFIED',
     verificationReviewStatus: 'NONE',
     coordinates,
     publicSlug: await nextAvailableOrganizationSlug(name, organizationId),
-    publicPageEnabled: options.publicPageEnabled === true,
+    publicPageEnabled,
     publicWidgetsEnabled: false,
     publicHeadline: name,
     publicIntroText: description,
@@ -2001,9 +1989,11 @@ export const runAffiliateSourceScrape = async (
         dedupeKey,
         candidate,
       });
-      const nextCandidateStatus = automaticallyPublishCandidates
-        ? 'PUBLISHED'
-        : existing?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
+      const shouldPublishCandidate = automaticallyPublishCandidates || existing?.status === 'PUBLISHED';
+      // Keep newly discovered candidates non-published until their backing target
+      // has passed every publication gate. Otherwise a failed automatic import
+      // can leave a PUBLISHED candidate pointing at no usable public record.
+      const initialCandidateStatus = existing?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
 
       const saved = existing
         ? await candidates.update({
@@ -2014,61 +2004,80 @@ export const runAffiliateSourceScrape = async (
               publishedTeamId: existing.publishedTeamId ?? null,
               publishedFacilityId: existing.publishedFacilityId ?? null,
               publishedOrganizationId: existing.publishedOrganizationId ?? null,
-              status: nextCandidateStatus,
+              status: initialCandidateStatus,
             },
           })
         : await candidates.create({
             data: {
               id: createId(),
               ...data,
-              status: nextCandidateStatus,
+              status: initialCandidateStatus,
             },
           });
       if (candidate.listingKind === 'EVENT') {
         const event = await upsertAffiliateEventForCandidate(saved, source, {
-          state: saved.status === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED',
+          state: shouldPublishCandidate ? 'PUBLISHED' : 'UNPUBLISHED',
         });
-        if (saved.status === 'PUBLISHED') {
+        if (shouldPublishCandidate) {
           await markSourceOrganizationListedForPublishedContent(source);
         }
         const savedWithEvent = await candidates.update({
           where: { id: saved.id },
-          data: { publishedEventId: event.id },
+          data: {
+            ...(shouldPublishCandidate ? { status: 'PUBLISHED' } : {}),
+            publishedEventId: event.id,
+          },
         });
         savedCandidates.push(savedWithEvent);
       } else if (candidate.listingKind === 'TEAM') {
         const team = await upsertAffiliateTeamForCandidate(saved, source, {
-          visibility: saved.status === 'PUBLISHED' ? 'PUBLIC' : 'ADMIN_ONLY',
+          visibility: shouldPublishCandidate ? 'PUBLIC' : 'ADMIN_ONLY',
         });
         const savedWithTeam = await candidates.update({
           where: { id: saved.id },
-          data: { publishedTeamId: team.id },
+          data: {
+            ...(shouldPublishCandidate ? { status: 'PUBLISHED' } : {}),
+            publishedTeamId: team.id,
+          },
         });
         savedCandidates.push(savedWithTeam);
       } else if (candidate.listingKind === 'RENTAL' && nullableString(source.organizationId)) {
         const facility = await upsertAffiliateFacilityForCandidate(saved, source, {
-          status: saved.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
+          status: shouldPublishCandidate ? 'ACTIVE' : 'DRAFT',
         });
-        if (saved.status === 'PUBLISHED') {
+        if (shouldPublishCandidate) {
           await markSourceOrganizationListedForPublishedContent(source);
         }
         const savedWithFacility = await candidates.update({
           where: { id: saved.id },
-          data: { publishedFacilityId: facility.id },
+          data: {
+            ...(shouldPublishCandidate ? { status: 'PUBLISHED' } : {}),
+            publishedFacilityId: facility.id,
+          },
         });
         savedCandidates.push(savedWithFacility);
       } else if (candidate.listingKind === 'CLUB') {
         const organization = await upsertAffiliateOrganizationForCandidate(saved, source, {
-          status: saved.status === 'PUBLISHED' ? 'LISTED' : 'UNLISTED',
-          publicPageEnabled: saved.status === 'PUBLISHED',
+          status: shouldPublishCandidate ? 'LISTED' : 'UNLISTED',
+          publicPageEnabled: shouldPublishCandidate,
         });
         const savedWithOrganization = await candidates.update({
           where: { id: saved.id },
-          data: { publishedOrganizationId: organization.id },
+          data: {
+            ...(shouldPublishCandidate ? { status: 'PUBLISHED' } : {}),
+            publishedOrganizationId: organization.id,
+          },
         });
         savedCandidates.push(savedWithOrganization);
       } else {
-        savedCandidates.push(saved);
+        if (shouldPublishCandidate && initialCandidateStatus !== 'PUBLISHED') {
+          savedCandidates.push(await candidates.update({
+            where: { id: saved.id },
+            data: { status: 'PUBLISHED' },
+          }));
+        } else {
+          savedCandidates.push(saved);
+        }
       }
       if (existing) {
         updatedCandidateCount += 1;

@@ -55,6 +55,7 @@ The goal agent must follow `$ingest-affiliate-intakes` and the affiliate source 
 - Create or repair an idempotent setup script and matching `package.json` command that can restore the organization, source, mapping, cadence, logo association, and intentional manual candidates.
 - Run setup and scraping against a disposable database first. A launcher `--live` flag authorizes only live intake evidence reads and mapping-job queue transitions; it does not authorize live organization, source, mapping, logo, candidate, or publication writes.
 - Inspect at least five candidates and every produced candidate kind. Verify classification, official URLs, dates, descriptions, tags, divisions, prices, registration type, capacity, location, and coordinates against the rendered source.
+- Resolve evidenced addresses, cities, venues, and facilities through the server-only Google Places path. Inspect the persisted target and require finite, in-range `[longitude, latitude]` coordinates that are not `[0, 0]`. Missing credentials, denied requests, or unresolved evidenced locations block `REVIEW_REQUIRED`; do not copy coordinates from a parent/source organization or neighboring venue.
 - Run the scrape twice and prove the second run does not create duplicate candidates or published targets.
 - Configure the documented daily, weekly, or monthly cadence, but leave new recurring scraping disabled until coordinator review succeeds.
 - Add focused fixtures/tests and run the required checks from the skill and repository instructions.
@@ -72,6 +73,7 @@ The coordinator may mark a source complete only when:
 - mapping/candidates use the existing import contract;
 - extracted data matches the rendered source;
 - location and coordinates work when the source publishes a resolvable location;
+- the source package records the successful evidence-backed location query and the persisted target has valid non-zero coordinates for every produced kind with an identifiable place;
 - rerunning is duplicate-safe;
 - cadence and automation state are correct;
 - focused tests, TypeScript, and diff checks pass;

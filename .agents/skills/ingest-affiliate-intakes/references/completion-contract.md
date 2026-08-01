@@ -13,7 +13,7 @@ Supported target kinds are `EVENT`, `RENTAL`, and `CLUB`. Do not create `TEAM` m
 Every successful checkpoint must contain:
 
 1. A canonical organization ID and idempotent setup code.
-2. Source organization fields supported by evidence: name, official website, description, sports, city, and address.
+2. Source organization fields supported by evidence: name, official website, description, sports, city, address, and valid non-zero `[longitude, latitude]` coordinates resolved from that evidence when a place is identifiable.
 3. A disabled affiliate source and unvalidated mapping or reviewed custom extractor.
 4. Official action URLs and source provenance.
 5. An official logo reference normalized to an opaque 1024 by 1024 asset, or an explicit manual-review result that prevents publication.
@@ -25,6 +25,10 @@ Every successful checkpoint must contain:
 ## Candidate checks
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.
+
+For each event, club, or rental whose stored evidence identifies an address, city, venue, or facility, run the normal server-side Google Places resolver and inspect the persisted target. Coordinates must contain finite longitude then latitude, remain within geographic bounds, and must not equal `[0, 0]`. `REVIEW_REQUIRED` is invalid when the resolver is missing credentials, is denied, or cannot resolve an otherwise evidenced location. Fix the input or record a concrete blocked/failed result. When the source truly provides no identifiable location, preserve that limitation without inventing coordinates and keep the target unpublishable.
+
+Never use source-organization coordinates as a facility fallback, directory coordinates as a club fallback, or one event venue as another event's fallback merely to pass this check.
 
 Never infer a year for an ambiguous event date. Never convert a stale tryout, evaluation, deadline, or registration page into a current event. Use evergreen rows only for stable ongoing programs with explicit `NO_FIXED_DATE` or `ONGOING` display.
 

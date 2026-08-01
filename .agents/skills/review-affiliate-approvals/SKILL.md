@@ -43,8 +43,19 @@ the result.
 
 Verify the claimed job's producer is not the reviewer. Inspect its stored
 intake evidence, commit, changed-file scope, test evidence, parser/mapping,
-official-logo proof, two stable duplicate-safe scrapes, candidate count, and
-live safety state.
+official-logo proof, two stable duplicate-safe scrapes, candidate count,
+location resolution, and live safety state.
+
+For every produced event, club, or rental with an evidenced address, city,
+venue, or facility, independently compare the stored evidence with the
+candidate and backing target. The target must have finite in-range coordinates
+in `[longitude, latitude]` order and must not contain `[0, 0]`. A missing or
+denied server-side Places result, coordinates copied from an unrelated source
+organization, or an unresolvable evidenced address requires `REJECT` when the
+producer must fix the package and `DEFER` when additional evidence or human
+judgment is required. A source that genuinely has no identifiable location may
+remain reviewable only when the limitation is explicit and publication stays
+disabled.
 
 - `APPROVE` only when every required check in the result schema is true.
 - `REJECT` for a concrete defect that requires new producer work.

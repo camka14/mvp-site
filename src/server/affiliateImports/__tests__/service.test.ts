@@ -71,6 +71,16 @@ jest.mock('@/lib/id', () => ({
 }));
 jest.mock('@/server/geocoding', () => ({
   geocodeAddressToCoordinates: jest.fn(),
+  isValidGeocodeCoordinates: (value: unknown) => {
+    if (!Array.isArray(value) || value.length < 2) return false;
+    const lng = Number(value[0]);
+    const lat = Number(value[1]);
+    return Number.isFinite(lng)
+      && Number.isFinite(lat)
+      && Math.abs(lng) <= 180
+      && Math.abs(lat) <= 90
+      && !(lng === 0 && lat === 0);
+  },
 }));
 
 import {
@@ -89,7 +99,7 @@ describe('affiliate import service', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     idCounter = 0;
-    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+    geocodeAddressToCoordinatesMock.mockResolvedValue([-122.6765, 45.5231]);
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.divisions.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.divisions.upsert.mockImplementation(async ({ create }) => create);
@@ -775,6 +785,7 @@ describe('affiliate import service', () => {
       where: { id: 'org_downtown' },
       data: {
         status: 'LISTED',
+        coordinates: [-122.6765, 45.5231],
         updatedAt: expect.any(Date),
       },
     });
@@ -1224,6 +1235,99 @@ describe('affiliate import service', () => {
     expect(prismaMock.events.create).not.toHaveBeenCalled();
   });
 
+  it('does not publish an affiliate event when its source-backed location cannot resolve', async () => {
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_missing_event_coordinates',
+      sourceId: 'source_1',
+      listingKind: 'EVENT',
+      title: 'New York Showcase',
+      venueName: 'Major Owens Center',
+      city: 'Brooklyn, NY',
+      address: '1561 Bedford Ave, Brooklyn, NY 11225',
+      startsAt: new Date('2099-08-18T04:00:00.000Z'),
+      officialActionUrl: 'https://example.com/register',
+      sourceUrl: 'https://example.com/event',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1' });
+    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+
+    await expect(publishAffiliateCandidate('candidate_missing_event_coordinates')).rejects.toThrow(
+      'Affiliate event cannot be published without valid non-zero coordinates.',
+    );
+
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateImportCandidates.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'PUBLISHED' }),
+    }));
+  });
+
+  it('does not activate an affiliate rental when its facility location cannot resolve', async () => {
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_missing_rental_coordinates',
+      sourceId: 'source_1',
+      listingKind: 'RENTAL',
+      title: 'Brooklyn Court Rental',
+      venueName: 'Brooklyn Sports Center',
+      city: 'Brooklyn, NY',
+      address: '100 Main St, Brooklyn, NY 11201',
+      officialActionUrl: 'https://example.com/book',
+      sourceUrl: 'https://example.com/rental',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      sourceKey: 'example-rentals',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'owner_1' });
+    prismaMock.facilities.findUnique.mockResolvedValue(null);
+
+    await expect(publishAffiliateCandidate('candidate_missing_rental_coordinates')).rejects.toThrow(
+      'Affiliate rental facility cannot be published without valid non-zero coordinates.',
+    );
+
+    expect(prismaMock.facilities.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not list an affiliate club when its source-backed location cannot resolve', async () => {
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_missing_club_coordinates',
+      sourceId: 'source_1',
+      listingKind: 'CLUB',
+      title: 'Brooklyn Volleyball Club',
+      city: 'Brooklyn, NY',
+      officialActionUrl: 'https://example.com/club',
+      sourceUrl: 'https://example.com/clubs',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      sourceKey: 'example-clubs',
+      organizationId: 'source_org',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'source_org',
+      ownerId: 'owner_1',
+      ownershipStatus: 'UNCLAIMED',
+    });
+
+    await expect(publishAffiliateCandidate('candidate_missing_club_coordinates')).rejects.toThrow(
+      'Affiliate organization cannot be published without valid non-zero coordinates.',
+    );
+
+    expect(prismaMock.organizations.upsert).not.toHaveBeenCalled();
+  });
+
   it('skips scraped event candidates with missing or past start dates', async () => {
     prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
       id: 'source_1',
@@ -1454,7 +1558,11 @@ describe('affiliate import service', () => {
     });
 
     expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ status: 'PUBLISHED', title: 'Automatic league' }),
+      data: expect.objectContaining({ status: 'DISCOVERED', title: 'Automatic league' }),
+    });
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: expect.any(String) },
+      data: expect.objectContaining({ status: 'PUBLISHED', publishedEventId: expect.any(String) }),
     });
     expect(prismaMock.events.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ state: 'PUBLISHED' }),
@@ -1472,6 +1580,84 @@ describe('affiliate import service', () => {
         logs: expect.objectContaining({ automaticallyPublishedCandidateCount: 1 }),
       }),
     });
+  });
+
+  it('does not mark a new automatic candidate published when location resolution fails', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_automatic_unresolved',
+      name: 'Automatic Source',
+      activeMappingId: 'mapping_automatic_unresolved',
+      listUrl: 'https://example.com/events',
+      organizationId: 'org_automatic_unresolved',
+      metadata: {
+        automationBaseline: {
+          schemaVersion: 1,
+          mappingId: 'mapping_automatic_unresolved',
+          mappingVersion: 1,
+          approvedAt: '2026-07-01T00:00:00.000Z',
+          candidateCount: 1,
+          rejectedCount: 0,
+          listingKinds: ['EVENT'],
+          criticalMissingCount: 0,
+          criticalMissingRate: 0,
+          normalizedFieldsHash: 'baseline-hash',
+        },
+      },
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_automatic_unresolved' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_automatic_unresolved',
+      sourceId: 'source_automatic_unresolved',
+      version: 1,
+      validatedAt: new Date('2026-07-01T00:00:00.000Z'),
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://example.com/events',
+        itemSelector: '.event',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+          city: { selector: 'body', mode: 'literal', value: 'New York, NY' },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_automatic_unresolved' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({
+      id: 'run_automatic_unresolved',
+      ...data,
+    }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }));
+    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+
+    await expect(runAffiliateSourceScrape('source_automatic_unresolved', {
+      importMode: 'AUTOMATIC',
+      client: {
+        fetchPage: async () => ({
+          url: 'https://example.com/events',
+          finalUrl: 'https://example.com/events',
+          statusCode: 200,
+          fetchedAt: '2026-08-01T00:00:00.000Z',
+          body: '<div class="event"><span class="title">Unresolved automatic league</span><span class="start">2099-01-01T18:00:00.000Z</span><a href="/register">Register</a></div>',
+        }),
+      },
+    })).rejects.toThrow('Affiliate event cannot be published without valid non-zero coordinates.');
+
+    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: 'DISCOVERED', title: 'Unresolved automatic league' }),
+    });
+    expect(prismaMock.affiliateImportCandidates.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'PUBLISHED' }),
+    }));
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
   });
 
   it('holds an automatic run for review when a nonzero baseline drops to zero', async () => {
@@ -2426,7 +2612,7 @@ describe('affiliate import service', () => {
     });
   });
 
-  it('falls back to the source organization coordinates for affiliate rental facilities', async () => {
+  it('does not substitute source organization coordinates for an unresolved affiliate rental facility', async () => {
     prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
       id: 'source_rentals',
       name: 'Cascade Athletic Clubs Gresham Rentals',
@@ -2499,11 +2685,11 @@ describe('affiliate import service', () => {
         organizationId: 'org_cascade',
         name: 'Cascade Athletic Clubs Gresham Pickleball Courts',
         address: '19201 SE Division St, Gresham, OR 97030',
-        coordinates: [-122.4650436, 45.5047844],
+        coordinates: null,
         affiliateUrl: 'https://cascadeac.clubautomation.com/',
       }),
       update: expect.objectContaining({
-        coordinates: [-122.4650436, 45.5047844],
+        coordinates: null,
         affiliateUrl: 'https://cascadeac.clubautomation.com/',
       }),
     });
