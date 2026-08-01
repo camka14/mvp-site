@@ -1,6 +1,10 @@
 # BracketIQ single-VM production stack
 
-This directory is the provider-neutral production stack for moving `mvp-site` off DigitalOcean App Platform. The first target is an OVHcloud US VPS-2 in Hillsboro, Oregon, running a Docker-supported Ubuntu LTS release. The provisioned host uses Ubuntu 26.04 LTS. The stack keeps DigitalOcean Spaces for application files and encrypted off-server PostgreSQL backups during the transition.
+This directory is the provider-neutral production stack currently running
+`mvp-site` on an OVHcloud US VPS-2 in Hillsboro, Oregon. The provisioned host
+uses Ubuntu 26.04 LTS. The application, PostgreSQL, and Redis all run on OVH;
+DigitalOcean Spaces remains only for application files and encrypted off-server
+PostgreSQL backups.
 
 The VM runs four long-lived containers:
 
@@ -11,18 +15,15 @@ The VM runs four long-lived containers:
 
 `compose.production.yml` is intentionally separate from the repository-root development Compose file.
 
-## What the owner must do
+## Production responsibilities
 
-Before Codex can provision a server, the account owner must:
+The account owner must:
 
-1. Create or sign in to an OVHcloud US account, add billing, and order one VPS-2 in Hillsboro with a Docker-supported Ubuntu LTS release. The current host uses Ubuntu 26.04 LTS. Do not cancel DigitalOcean App Platform or managed PostgreSQL.
-2. Add a dedicated deployment SSH public key during provisioning. The private key must stay on an operator machine and must never be pasted into chat or committed.
-3. Create or approve a protected GitHub `production` environment for the manual image workflow. Add the client-visible Maps key, Stripe publishable key, and PostHog token as environment secrets; add the Maps ID, mobile deep links, and store URLs as environment variables.
-4. Make the missing live-only secrets available through a protected channel. In the current inventory, the Apple sign-in private key requires special attention. Populate it directly in `/opt/bracketiq/deploy/vm/app.env`; do not send the value in chat.
-5. At the two explicit gates, approve the public DNS switch and later the short write-frozen database migration window.
-6. After seven stable days and a successful restore drill, approve deletion of only the old `mvp-site` App Platform service and its managed database.
-
-Everything else in this runbook is reversible preparation and can happen before public traffic changes.
+1. Maintain the OVHcloud account, VPS billing, and recovery-console access.
+2. Keep the dedicated deployment SSH private key on approved operator machines; never paste or commit it.
+3. Approve the protected GitHub `production` environment when publishing a tested immutable image.
+4. Maintain live-only secrets directly in `/opt/bracketiq/deploy/vm/app.env`; never send their values in chat.
+5. Approve future DNS, destructive database, or non-backward-compatible migration changes at their explicit gates.
 
 ## Files that must remain secret
 
@@ -37,7 +38,9 @@ On the VM, create these files from their tracked examples:
 
 Set mode `0600`. `app.env` uses the limited runtime database role. `migration.env` uses the owner role and is loaded only by the one-off migration service. URL-encode database and Redis passwords when placing them inside URLs. Preserve `AUTH_SECRET` and all existing webhook verification secrets through the cutover so sessions and provider callbacks remain valid.
 
-The tracked `app.env.example` is an inventory aid, not an assertion that every optional integration is enabled. Compare it with the live App Platform environment immediately before deployment.
+The tracked `app.env.example` is an inventory aid, not an assertion that every
+optional integration is enabled. Compare it with the current OVH `app.env`
+inventory whenever integrations change.
 
 ## Initial VM layout
 
@@ -134,14 +137,12 @@ For a restore drill, create a new empty database, identify the snapshot and stor
 
 The restore script refuses a non-empty target. It also refuses the live database unless `ALLOW_LIVE_DATABASE_RESTORE` exactly matches the live database name. A successful backup is not considered production-ready until this restore drill passes.
 
-## Cutover order
+## Completed cutover record
 
-1. Deploy this stack on a preview hostname while the app still uses managed PostgreSQL. Validate login, Discover, event and organization pages, uploads, payments/webhooks, `/api/app-version`, and both WebSocket endpoints.
-2. Point only the apex and `www` records to the VM. Keep both app paths on managed PostgreSQL for at least 48 hours, making application rollback a DNS-only action.
-3. Put the old App Platform service in maintenance mode. During an announced maintenance window, freeze VM writes, take a final PostgreSQL 17 custom-format dump, restore it locally, compare every table and applied migration, switch `app.env` to the private PostgreSQL URL, and resume traffic.
-4. Observe for seven days, verify hourly backup age daily, and complete another restore drill. Only then is deletion of the old managed services eligible for approval.
-
-The full gates and rollback boundaries are maintained in `docs/ovh-vps-migration-execplan.md`.
+The public DNS, application runtime, PostgreSQL, and Redis cutover to OVH is
+complete. Do not treat a DigitalOcean App Platform service or managed database
+as current production. The historical gates, evidence, and rollback boundaries
+remain recorded in `docs/ovh-vps-migration-execplan.md`.
 
 ## Affiliate source discovery and intake automation
 
