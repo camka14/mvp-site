@@ -48,6 +48,23 @@ Use a non-root deployment account and keep the checkout at `/opt/bracketiq`:
 
 Install Docker Engine and the Compose plugin from Docker's official Ubuntu repository. Install the PostgreSQL 17 client and Restic from supported repositories. Enable unattended security upgrades. Initially rate-limit inbound TCP 22 with key-only authentication and Fail2ban; restrict it to a stable operator or VPN CIDR later if one is available. Allow TCP 80 and 443 plus UDP 443 publicly, and deny 3000, 5432, and 6379. Configure at least 2 GiB swap as an emergency cushion even though the selected VPS has 8 GiB RAM.
 
+## Trusted SSH management addresses
+
+Keep Fail2ban and the UFW SSH rate limit enabled. Add only trusted operator IP
+addresses (normally a single `/32` IPv4 or `/128` IPv6 address) to the durable
+Fail2ban allowlist:
+
+    curl --fail --silent --show-error https://api.ipify.org
+    sudo bracketiq-ssh-allowlist add 203.0.113.10
+    sudo bracketiq-ssh-allowlist list
+
+The helper validates the address, persists it in
+`/etc/fail2ban/jail.d/bracketiq-sshd-allowlist.local`, and restarts Fail2ban so
+the change takes effect. Run it from an already approved connection or the OVH
+web console before opening a new SSH session. Remove an obsolete address with
+`sudo bracketiq-ssh-allowlist remove <ip-or-cidr>`. Do not approve a broad ISP
+range merely to accommodate a changing residential address.
+
 Do not use a floating `latest` application tag. After the push-triggered `CI`
 workflow passes on `main`, publish an image with the manual GitHub workflow and
 copy the full commit-SHA tag into `deployment.env`. The publish workflow rejects

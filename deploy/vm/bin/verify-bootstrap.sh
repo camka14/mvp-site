@@ -75,6 +75,7 @@ ufw status
 
 printf '\nFail2ban\n'
 fail2ban-client status sshd
+printf '  Approved SSH management sources: %s\n' "$(fail2ban-client get sshd ignoreip | tr '\n' ' ')"
 
 printf '\nListening sockets\n'
 ss -lntup

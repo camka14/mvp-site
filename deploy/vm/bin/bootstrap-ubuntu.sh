@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+script_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Run this script as root (for example, sudo $0)." >&2
   exit 77
@@ -132,6 +134,13 @@ maxretry = 5
 findtime = 10m
 bantime = 1h
 EOF
+if [[ ! -f /etc/fail2ban/jail.d/bracketiq-sshd-allowlist.local ]]; then
+  cat > /etc/fail2ban/jail.d/bracketiq-sshd-allowlist.local <<'EOF'
+[sshd]
+ignoreip = 127.0.0.0/8 ::1
+EOF
+fi
+install -m 0750 "$script_dir/manage-ssh-allowlist.sh" /usr/local/sbin/bracketiq-ssh-allowlist
 systemctl enable fail2ban.service
 systemctl restart fail2ban.service
 
