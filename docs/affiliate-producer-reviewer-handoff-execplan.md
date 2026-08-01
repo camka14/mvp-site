@@ -17,9 +17,9 @@ The observable outcome is that a mapping package with an official logo and valid
 - [x] (2026-08-01 19:15Z) Updated reviewer skill, goal, deterministic approval preflight, guarded exact-commit application, and focused tests to keep disposable validation separate from live safety checks.
 - [x] (2026-08-01 19:20Z) Added a guarded dry-run-first requeue command for official-logo packages rejected or deferred because of the old handoff.
 - [x] (2026-08-01 20:05Z) Passed 22 focused tests, TypeScript, targeted ESLint, the skill validator, the complete CI/coverage suite, the production build, and diff validation.
-- [x] (2026-08-01 20:10Z) Committed the scoped handoff repair; push remains before deployment.
-- [ ] Deploy the exact tested application image, create a clean reviewer checkout with the producer checkout mounted read-only, and restart the approval loop.
-- [ ] Requeue the handoff-only cohort and prove at least one package completes review without a missing-commit or missing-review-scrape rejection.
+- [x] (2026-08-01 20:10Z) Committed and pushed the scoped handoff repair through `79feb1a2`; the full main CI run passed.
+- [x] (2026-08-01 20:12Z) Created a clean reviewer checkout with the producer checkout mounted read-only, preserved the disposable validation URL across the live queue handoff, and restarted the approval loop.
+- [x] (2026-08-01 20:13Z) Requeued 116 evidence-verifiable handoff-only decisions, left 59 manual-logo decisions and 14 genuine evidence failures untouched, and proved the formerly rejected Pro Skills Basketball Chicago package could be independently approved and guardedly applied.
 
 ## Surprises & Discoveries
 
@@ -43,6 +43,9 @@ The observable outcome is that a mapping package with an official logo and valid
 
 - Observation: the first restarted reviewer still queried production for disposable run IDs even though both Docker networks were correct.
   Evidence: `run-affiliate-approval-loop.ts` changed `process.env.DATABASE_URL` to live before spawning the Codex goal. The child evidence script inherited that live value, and dotenv correctly refused to overwrite it with the mounted disposable URL. Direct one-off evidence and direct disposable SQL both found the same two run IDs.
+
+- Observation: not every old handoff decision became eligible once the infrastructure was repaired.
+  Evidence: the guarded retry requeued 116 packages, skipped all 59 `MANUAL_REVIEW` logo packages, and left 14 official-logo packages terminal because their committed generated paths, review runs, source candidate count, or setup-script evidence still failed deterministic verification.
 
 ## Decision Log
 
@@ -72,7 +75,7 @@ The observable outcome is that a mapping package with an official logo and valid
 
 ## Outcomes & Retrospective
 
-The local implementation and all validation gates are complete. Twenty-two focused tests, TypeScript, targeted ESLint, whitespace validation, the repository-local skill validator, the complete Jest/coverage suite, and the production build pass. Commit, deployment, VM mount recreation, and live requeue acceptance remain. The approval loop is paused, so no new incorrect review decisions are being recorded. Mapping and capture work continue to populate the queue.
+The repaired reviewer handoff is running on the OVH VM. Twenty-two focused tests, TypeScript, targeted ESLint, whitespace validation, the repository-local skill validator, the complete Jest/coverage suite, the production build, and the main CI run pass. The live dry run and apply requeued 116 packages whose producer commits and disposable scrapes now verify while preserving the old decisions in history; 59 manual-logo packages and 14 packages with genuine evidence failures were not recycled. Luna independently approved the formerly rejected Pro Skills Basketball Chicago package using producer commit `af5514644307cc283b35eb0e3b7dc30ab774df54` and two disposable review scrapes. Guarded application then created one review-only candidate and left the live organization `UNLISTED` with its public page disabled, recurring scraping disabled, and mapping unvalidated. The approval loop, mapper, intake campaign timer, and daily scrape timer continue running.
 
 ## Context and Orientation
 

@@ -20,7 +20,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-07-31) Added a low-cost polling loop that launches Luna only when approval work is claimable and awaits the goal process before checking again.
 - [x] (2026-07-31) Added focused tests, validated the skill, and passed repository-wide checks.
 - [x] (2026-07-31) Prepared the scoped implementation commit without staging unrelated VM scrape-timer and legacy-source work.
-- [ ] (2026-08-01) Repair the producer-to-reviewer handoff so exact commits and disposable review scrapes are independently verifiable across isolated containers.
+- [x] (2026-08-01) Repaired the producer-to-reviewer handoff so exact commits and disposable review scrapes are independently verifiable across isolated containers; requeued 116 handoff-only decisions and completed one formerly rejected package through guarded live approval.
 
 ## Surprises & Discoveries
 
