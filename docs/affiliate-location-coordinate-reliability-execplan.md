@@ -9,13 +9,13 @@ After this change, an affiliate event, club, or rental with an evidenced address
 - [x] (2026-08-01 10:35 PDT) Confirmed the user-visible mismatch: New York results exist in text search but most do not appear in map-radius search.
 - [x] (2026-08-01 10:50 PDT) Audited the live OVH database. All 15 New York-related published affiliate events in the bounded audit had invalid coordinates, 81 of 82 matching organizations had invalid coordinates, and the app container had neither `GOOGLE_MAPS_API_KEY` nor `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` at runtime.
 - [x] (2026-08-01 11:00 PDT) Traced the write path to `src/server/affiliateImports/service.ts`, where geocoding failures become event coordinates `[0, 0]` or nullable organization/facility coordinates without blocking publication.
-- [x] (2026-08-01 11:35 PDT) Implemented a diagnostic server-side Google Places resolver with a compatibility Geocoding fallback, coordinate validation, and retry-safe caching.
-- [x] (2026-08-01 11:45 PDT) Added hard publication gates for affiliate events, clubs, and rentals, while leaving unresolved drafts reviewable.
-- [x] (2026-08-01 11:55 PDT) Added a dry-run-first repair command for existing affiliate event and organization coordinates.
-- [x] (2026-08-01 12:05 PDT) Updated ingestion and independent-review instructions so coordinate evidence is required and cross-entity coordinate substitution is forbidden.
-- [x] (2026-08-01 12:25 PDT) Passed focused Jest suites (70 tests), TypeScript, the full `npm run test:ci` suite including API-route coverage, and diff checks.
-- [ ] Commit and push the scoped implementation without staging unrelated work.
-- [ ] Deploy the passing image to OVH, configure the server-only key, run the live repair, and verify New York map results.
+- [x] (2026-08-01 09:55 PDT) Implemented a diagnostic server-side Google Places resolver with a compatibility Geocoding fallback, coordinate validation, and retry-safe caching.
+- [x] (2026-08-01 10:00 PDT) Added hard publication gates for affiliate events, clubs, and rentals, while leaving unresolved drafts reviewable.
+- [x] (2026-08-01 10:05 PDT) Added a dry-run-first repair command for existing affiliate event and organization coordinates.
+- [x] (2026-08-01 10:10 PDT) Updated ingestion and independent-review instructions so coordinate evidence is required and cross-entity coordinate substitution is forbidden.
+- [x] (2026-08-01 10:18 PDT) Passed focused Jest suites (53 tests), TypeScript, the full `npm run test:ci` suite including API-route coverage, the optimized production build, and diff checks.
+- [x] (2026-08-01 10:20 PDT) Committed the scoped implementation as `1b8f6e82` and pushed it to `main` without staging the unrelated legacy Portland files.
+- [x] (2026-08-01 10:52 PDT) Passed exact-commit CI, published and deployed the immutable OVH image, configured the server-only key for the app and agent dotenv files, repaired 46 events and 105 organizations, and verified the live New York radius API returns the screenshot listings with their resolved coordinates.
 
 ## Surprises & Discoveries
 
@@ -30,6 +30,12 @@ After this change, an affiliate event, club, or rental with an evidenced address
 
 - Observation: Published records without coordinates are not isolated to New York.
   Evidence: the live aggregate audit found 518 of 952 published affiliate events without valid coordinates. The repair command therefore supports bounded New York repair first and a later all-region pass using the same dry-run/apply contract.
+
+- Observation: Eight New York organization rows still have no stored address, city, location, or place evidence.
+  Evidence: the post-apply dry run selects only those eight rows, reports `NO_QUERIES` for each, and performs no provider call. They remain unchanged for agent evidence intake rather than receiving name-only guesses.
+
+- Observation: The first OVH Compose deploy command exited on a stale recreate-name conflict even though the new app container became healthy on the requested immutable image.
+  Evidence: the final container audit showed `bracketiq-production-app-1` healthy on `1b8f6e828e2adb6b556f528f03b7495e33c8d7c2`, and the public readiness endpoint returned HTTP 200 before repair work began.
 
 ## Decision Log
 
@@ -119,4 +125,8 @@ Do not commit keys, provider payloads, or full live row dumps. Commit only code,
 
 ## Outcomes & Retrospective
 
-The code implementation and repository validation are complete. Publication can no longer silently turn a failed place lookup into a public `[0, 0]` event, listed club, or active rental facility. Existing bad rows now have a source-evidence-only, dry-run-first repair path. Production repair and live-map verification remain blocked only on provisioning the separate server-side Google key; record final repaired counts, unresolved reasons, commit, CI run, deployed image, and UI verification after that key is configured.
+The implementation is live. Publication can no longer silently turn a failed place lookup into a public `[0, 0]` event, listed club, or active rental facility. The server key is present in the OVH app container and in the dotenv files used by the existing Luna ingestion and approval containers without restarting them.
+
+The New York dry run selected 159 missing rows. Google resolved 151: all 46 events and 105 of 113 organizations. Places Text Search resolved 143 and the Geocoding compatibility fallback resolved eight. The apply transaction wrote those 151 coordinate pairs. The second dry run found no remaining event repair and only eight organization rows with no source-backed location evidence, so those records were intentionally not guessed.
+
+The public radius endpoint centered on New York now returns 43 events within 100 miles. It includes Eastern New York ODP at Capelli Sports Complex (`[-74.3027817, 41.3512888]`), Eastern New York ODP at Saxon Wood Fields (`[-73.7451978, 40.9866807]`), and the Five-Star Brooklyn showcase (`[-73.954902, 40.6687669]`). The public organization page returns 17 New York-area coordinate-backed organizations in its first discovery page. Anonymous Playwright navigation redirects `/discover` to login, so the authenticated modal itself remains a short operator visual check; its exact data request has been verified live.
