@@ -44,6 +44,7 @@ npm install
   - `APPLE_MOBILE_BUNDLE_ID` (defaults to `com.razumly.mvp` if omitted)
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
   - `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` (optional; enables Google Maps Advanced Markers)
+  - `GOOGLE_MAPS_API_KEY` (server-only; enable Places API (New) and Geocoding API, and restrict it to the server egress IP)
   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - `STORAGE_PROVIDER` (`local` or `spaces`)
   - `STORAGE_ROOT` (for local storage)
@@ -138,4 +139,4 @@ STRIPE_WEBHOOK_ALLOW_UNVERIFIED_DEV=true
 - `public` — static assets
 
 ## Operations
-- BoldSign reconcile cron setup (DigitalOcean App Platform): `docs/ops/boldsign-reconcile-cron.md`
+- BoldSign reconcile schedule on the OVH VM: `docs/ops/boldsign-reconcile-cron.md`

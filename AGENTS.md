@@ -1,6 +1,6 @@
 ---
 name: "TypeScript Next.js Prisma Web App Guide"
-description: "A comprehensive development guide for building a full-stack web application using TypeScript, Next.js, Mantine UI, Prisma, and Postgres with DigitalOcean hosting considerations"
+description: "A comprehensive development guide for building a full-stack web application using TypeScript, Next.js, Mantine UI, Prisma, and Postgres with OVHcloud hosting considerations"
 category: "Web Development"
 author: "Agents.md Collection"
 authorUrl: "https://github.com/gakeez/agents_md_collection"
@@ -13,7 +13,7 @@ tags:
   - web-development
   - react
   - saas
-  - digitalocean
+  - ovhcloud
 lastUpdated: "2026-05-25"
 ---
 
@@ -85,7 +85,7 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 
 ### Live Database Access
 
-Current production runs on the OVH VM at `15.204.81.193`, not the retired DigitalOcean App Platform database. Access it with the dedicated operator key at `~/.ssh/id_ed25519_bracketiq_prod`. Use the `bracketiq` account for read-only application/container checks and the `ubuntu` operator account only for explicitly authorized system administration. The authoritative PostgreSQL database is private inside the `bracketiq-production-postgres-1` container and is not exposed publicly.
+Current production runs on the OVH VM at `15.204.81.193`. Access it with the dedicated operator key at `~/.ssh/id_ed25519_bracketiq_prod`. Use the `bracketiq` account for read-only application/container checks and the `ubuntu` operator account only for explicitly authorized system administration. The authoritative PostgreSQL database is private inside the `bracketiq-production-postgres-1` container and is not exposed publicly.
 
 ### Installation Steps
 

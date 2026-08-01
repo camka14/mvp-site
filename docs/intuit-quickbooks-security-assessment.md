@@ -42,7 +42,7 @@ Answers saved for the current BracketIQ app:
 5. Expected QuickBooks Online customers: `50`.
 6. QuickBooks user types: `Any admin of the QuickBooks Online company`.
 7. Other platforms: `Yes`.
-8. Other platform details: `Stripe for payments, DigitalOcean for hosting, database, and storage, Google/Gmail for authentication and email, Firebase for mobile push/auth support, BoldSign for document signing, OpenAI for the optional AI assistant, and Apple/Google mobile app platform services.`
+8. Other platform details: `Stripe for payments, OVHcloud for hosting and database, DigitalOcean Spaces for object storage, Google/Gmail for authentication and email, Firebase for mobile push/auth support, BoldSign for document signing, OpenAI for the optional AI assistant, and Apple/Google mobile app platform services.`
 
 ### Authorization And Authentication
 
@@ -114,8 +114,8 @@ Answers saved:
 ## Remaining Before Final Submission
 
 - Run and retain a production/staging security scan report for Intuit review.
-- Confirm DigitalOcean and any CDN/proxy layers enforce HTTPS, current TLS policy, and patched server/runtime images. DigitalOcean App Platform currently reports Node.js buildpack on Ubuntu 22, a managed Postgres 17 database, database SSL enabled via `PG_SSL_REJECT_UNAUTHORIZED=true`, two service instances, active healthy deployment, and domains for `bracket-iq.com` / `www.bracket-iq.com`.
-- DigitalOcean credential storage is owner-confirmed secure. Continue marking future credential-like DigitalOcean values as secret env vars; no DigitalOcean credential rotation/conversion action is tracked for this pass.
+- Confirm the OVH VM and any CDN/proxy layers enforce HTTPS, current TLS policy, and patched server/runtime images. Production currently uses the OVH Compose stack with PostgreSQL 17, Redis, Caddy TLS, and domains for `bracket-iq.com` / `www.bracket-iq.com`; DigitalOcean Spaces remains the object-storage provider.
+- OVH credential storage is owner-confirmed secure. Continue marking future credential-like OVH and storage-provider values as secret env vars; no credential rotation/conversion action is tracked for this pass.
 - Confirm production log retention/redaction policy and verify logs do not include credentials, Intuit tokens, QuickBooks payloads, or user financial data.
 - Update the questionnaire answer for app-level MFA to `Yes` for the current BracketIQ implementation. The basis is website TOTP authenticator-app MFA with QR setup, required code prompts for MFA-enabled website users, and server-side blocking before Stripe connected-account creation when MFA is not enrolled.
 - Keep the questionnaire answer for CAPTCHA as `No` unless CAPTCHA is implemented for authentication.
@@ -148,6 +148,6 @@ These answers cannot be proven from the repository alone:
 
 1. What recurring vulnerability review cadence should Samuel Razumovskiy commit to for the security team answer?
 2. Which production/staging security scan report will be retained for Intuit review, and where will it be stored?
-3. What log retention period should be documented for DigitalOcean/App Platform logs?
+3. What log retention period should be documented for OVH VM logs?
 4. Who verifies production logs do not contain credentials, Intuit tokens, QuickBooks payloads, or user financial data?
 5. Should the initial Intuit submission wait for a live sandbox JournalEntry sync test, or should the read/write Accounting API answers be revised before submission?

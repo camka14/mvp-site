@@ -140,8 +140,8 @@ The restore script refuses a non-empty target. It also refuses the live database
 ## Completed cutover record
 
 The public DNS, application runtime, PostgreSQL, and Redis cutover to OVH is
-complete. Do not treat a DigitalOcean App Platform service or managed database
-as current production. The historical gates, evidence, and rollback boundaries
+complete. Do not treat any retired hosted application or managed database as
+current production. The historical gates, evidence, and rollback boundaries
 remain recorded in `docs/ovh-vps-migration-execplan.md`.
 
 ## Affiliate source discovery and intake automation

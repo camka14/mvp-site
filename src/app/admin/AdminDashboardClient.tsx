@@ -63,6 +63,18 @@ type PageState<T> = {
   query: string;
 };
 
+type AdminDashboardCounts = {
+  events: number;
+  organizations: number;
+  teams: number;
+  verification: number;
+  claims: number;
+  fields: number;
+  users: number;
+  chats: number;
+  moderation: number;
+};
+
 type AdminFieldRow = Field & {
   organizationId?: string | null;
   organization?: Pick<Organization, '$id' | 'name'> | null;
@@ -276,7 +288,10 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [affiliateRefreshKey, setAffiliateRefreshKey] = useState(0);
   const [broadcastOverlayRefreshKey, setBroadcastOverlayRefreshKey] = useState(0);
   const [claimsRefreshKey, setClaimsRefreshKey] = useState(0);
-  const [claimsTotal, setClaimsTotal] = useState(0);
+  const [claimsTotal, setClaimsTotal] = useState<number | null>(null);
+  const [dashboardCounts, setDashboardCounts] = useState<AdminDashboardCounts | null>(null);
+  const [dashboardCountsLoading, setDashboardCountsLoading] = useState(false);
+  const [dashboardCountsError, setDashboardCountsError] = useState<string | null>(null);
   const [notificationDraft, setNotificationDraft] =
     useState<AdminNotificationDraft>(() => ({ ...DEFAULT_NOTIFICATION_DRAFT }));
   const [notificationState, setNotificationState] = useState<AdminNotificationState>({
@@ -287,6 +302,47 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     error: null,
     result: null,
   });
+
+  const loadDashboardCounts = useCallback(async () => {
+    setDashboardCountsLoading(true);
+    setDashboardCountsError(null);
+    try {
+      const res = await fetch('/api/admin/counts', { credentials: 'include' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to load admin dashboard counts.');
+      }
+
+      const nextCounts: AdminDashboardCounts = {
+        events: Number(payload.events ?? 0),
+        organizations: Number(payload.organizations ?? 0),
+        teams: Number(payload.teams ?? 0),
+        verification: Number(payload.verification ?? 0),
+        claims: Number(payload.claims ?? 0),
+        fields: Number(payload.fields ?? 0),
+        users: Number(payload.users ?? 0),
+        chats: Number(payload.chats ?? 0),
+        moderation: Number(payload.moderation ?? 0),
+      };
+
+      setDashboardCounts(nextCounts);
+      setClaimsTotal(nextCounts.claims);
+      setEventsState((previous) => ({ ...previous, total: nextCounts.events }));
+      setOrganizationsState((previous) => ({ ...previous, total: nextCounts.organizations }));
+      setTeamsState((previous) => ({ ...previous, total: nextCounts.teams }));
+      setVerificationState((previous) => ({ ...previous, total: nextCounts.verification }));
+      setFieldsState((previous) => ({ ...previous, total: nextCounts.fields }));
+      setUsersState((previous) => ({ ...previous, total: nextCounts.users }));
+      setChatsState((previous) => ({ ...previous, total: nextCounts.chats }));
+      setModerationState((previous) => ({ ...previous, total: nextCounts.moderation }));
+    } catch (error) {
+      setDashboardCountsError(
+        error instanceof Error ? error.message : 'Failed to load admin dashboard counts.',
+      );
+    } finally {
+      setDashboardCountsLoading(false);
+    }
+  }, []);
 
   const loadEvents = useCallback(async (offset = 0, query = eventsState.query) => {
     setEventsState((previous) => ({ ...previous, loading: true, error: null }));
@@ -916,6 +972,10 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   }, [router]);
 
   useEffect(() => {
+    void loadDashboardCounts();
+  }, [loadDashboardCounts]);
+
+  useEffect(() => {
     if (activeTab === 'events' && !eventsState.loaded) {
       void loadEvents(0);
     }
@@ -992,7 +1052,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     if (activeTab === 'claims') {
       return {
         items: [],
-        total: claimsTotal,
+        total: claimsTotal ?? 0,
         limit: DEFAULT_LIMIT,
         offset: 0,
         loading: false,
@@ -1054,6 +1114,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     } else {
       void loadUsers(usersState.offset, usersState.query);
     }
+    void loadDashboardCounts();
   }, [
     activeTab,
     chatsState.offset,
@@ -1066,6 +1127,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     loadEvents,
     loadFields,
     loadModeration,
+    loadDashboardCounts,
     loadNotificationAudience,
     loadOrganizations,
     loadTeams,
@@ -1188,17 +1250,25 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
               <Text size="sm" c="dimmed">Signed in as {initialAdminEmail}</Text>
             </Group>
 
+            {dashboardCountsError ? (
+              <Alert color="yellow" mb="md" title="Dashboard counts unavailable">
+                {dashboardCountsError} The tab contents will still load when selected.
+              </Alert>
+            ) : dashboardCountsLoading ? (
+              <Text size="xs" c="dimmed" mb="md">Updating dashboard counts…</Text>
+            ) : null}
+
             <Tabs value={activeTab} onChange={(value) => setActiveTab((value as AdminTab) || 'events')}>
               <Tabs.List mb="md">
-                <Tabs.Tab value="events">Events ({eventsState.total})</Tabs.Tab>
-                <Tabs.Tab value="organizations">Organizations ({organizationsState.total})</Tabs.Tab>
-                <Tabs.Tab value="teams">Teams ({teamsState.total})</Tabs.Tab>
-                <Tabs.Tab value="verification">Verification ({verificationState.total})</Tabs.Tab>
-                <Tabs.Tab value="claims">Claims ({claimsTotal})</Tabs.Tab>
-                <Tabs.Tab value="fields">Fields ({fieldsState.total})</Tabs.Tab>
-                <Tabs.Tab value="users">Users ({usersState.total})</Tabs.Tab>
-                <Tabs.Tab value="chats">Chats ({chatsState.total})</Tabs.Tab>
-                <Tabs.Tab value="moderation">Moderation ({moderationState.total})</Tabs.Tab>
+                <Tabs.Tab value="events">Events ({eventsState.loaded ? eventsState.total : dashboardCounts?.events ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="organizations">Organizations ({organizationsState.loaded ? organizationsState.total : dashboardCounts?.organizations ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="teams">Teams ({teamsState.loaded ? teamsState.total : dashboardCounts?.teams ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="verification">Verification ({verificationState.loaded ? verificationState.total : dashboardCounts?.verification ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="claims">Claims ({dashboardCounts?.claims ?? claimsTotal ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="fields">Fields ({fieldsState.loaded ? fieldsState.total : dashboardCounts?.fields ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="users">Users ({usersState.loaded ? usersState.total : dashboardCounts?.users ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="chats">Chats ({chatsState.loaded ? chatsState.total : dashboardCounts?.chats ?? '…'})</Tabs.Tab>
+                <Tabs.Tab value="moderation">Moderation ({moderationState.loaded ? moderationState.total : dashboardCounts?.moderation ?? '…'})</Tabs.Tab>
                 <Tabs.Tab value="notifications">Notifications</Tabs.Tab>
                 <Tabs.Tab value="affiliateImports">Affiliate imports</Tabs.Tab>
                 <Tabs.Tab value="broadcastOverlays">Broadcast overlays</Tabs.Tab>

@@ -91,9 +91,8 @@ export const resolvePrismaPgPoolConfig = (env: NodeJS.ProcessEnv = process.env):
   // Prevent requests from hanging indefinitely when the DB is unreachable.
   // Override via `PG_CONNECTION_TIMEOUT_MS` if you need a different value.
   const connectionTimeoutMillis = parseTimeoutMs(env.PG_CONNECTION_TIMEOUT_MS, 5_000);
-  // DigitalOcean's smallest managed Postgres plans reserve several of only 25
-  // connection slots. Keep each app replica's pool small so rolling deploys
-  // don't exhaust the database before traffic settles.
+  // Keep each app replica's pool small so rolling deploys and worker jobs do
+  // not exhaust the self-hosted OVH PostgreSQL connection budget.
   const max = parsePositiveInteger(env.PG_POOL_MAX, 3);
   const sslRejectUnauthorized = parseBoolean(env.PG_SSL_REJECT_UNAUTHORIZED);
   const caCertificate = getSslCaCertificate(env);

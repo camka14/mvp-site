@@ -3,8 +3,8 @@
  * organization-tag assignments to the live database.
  *
  * The local database remains the source of truth. The command is dry-run by
- * default and requires `--apply` before it writes to DigitalOcean Spaces or the
- * live database. Existing live logo objects are reused even when their original
+ * default and requires `--apply` before it writes to configured object storage
+ * or the live database. Existing live logo objects are reused even when their original
  * local upload files have been cleaned up. It never deletes live organizations
  * or published content.
  *

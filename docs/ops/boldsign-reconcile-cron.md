@@ -1,6 +1,6 @@
-# BoldSign Reconcile Cron (DigitalOcean App Platform)
+# BoldSign Reconcile Schedule (OVH VM)
 
-Use a scheduled job to invoke the reconcile endpoint every 30 minutes.
+Use a scheduled job on the OVH VM to invoke the reconcile endpoint every 30 minutes.
 
 ## Why
 - Webhooks are the primary synchronization path.
@@ -18,8 +18,9 @@ Set this on the app (run/build scope is fine):
 
 The reconcile endpoint will also allow admin-session calls, but cron should always use the bearer secret.
 
-## DigitalOcean Scheduled Job
-Create a job component in App Platform:
+## OVH VM Scheduled Job
+Create a systemd service and timer on the OVH VM, or add the equivalent command to
+the existing protected VM scheduler:
 - Schedule: `*/30 * * * *`
 - Time zone: `UTC` (or your preferred zone)
 - Run command:
