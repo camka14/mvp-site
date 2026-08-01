@@ -17,7 +17,7 @@ The behavior is observable in the Affiliate Imports admin panel. A scrape with o
 - [x] (2026-08-01 21:30Z) Updated producer and reviewer skills so a bad event does not reject a valid organization package.
 - [x] (2026-08-01 21:35Z) Added a dry-run-first producer repair queue and automatic reviewer-queue reopening after a repaired result.
 - [x] (2026-08-01 21:50Z) Passed 83 focused tests, TypeScript, the full `test:ci` suite, route coverage, and a production build.
-- [ ] Commit, push, deploy, run the live repair preview/apply, restart the workers, and prove live queue/process health.
+- [x] (2026-08-01 22:00Z) Committed and pushed `40ba2fb9`, passed main CI and the protected image publish, deployed the immutable image to OVH, requeued 67 narrowly eligible packages, and restarted both Luna workers with zero stale leases.
 
 ## Surprises & Discoveries
 
@@ -35,6 +35,12 @@ The behavior is observable in the Affiliate Imports admin panel. A scrape with o
 
 - Observation: the local machine's `DATABASE_URL_LIVE` still points at a DigitalOcean database endpoint that is not reachable from the current IP, so the new live repair preview cannot be run locally.
   Evidence: `npm run affiliate:mapping:retry-rejected -- --live` failed read-only with Prisma `P1001`; the same preview will run from the OVH application host after deployment.
+
+- Observation: the OVH application database is the internal non-TLS Postgres service, while the shared live-environment helper defaults live URLs without `sslmode=disable` to TLS.
+  Evidence: the first production preview failed read-only with Prisma `P1011`; rerunning with the existing OVH URL plus `sslmode=disable` succeeded without exposing or changing credentials.
+
+- Observation: the deployment interrupted the intake automation invocation that was already executing inside the old app container.
+  Evidence: systemd recorded exit 137 at the exact container recreation time; the timer stayed active, and manually restarting the service on the new healthy container resumed capture processing.
 
 ## Decision Log
 
@@ -56,7 +62,7 @@ The behavior is observable in the Affiliate Imports admin panel. A scrape with o
 
 ## Outcomes & Retrospective
 
-Implementation and local validation are complete. No migration was needed. Live deployment, repair-queue application, and worker health verification remain.
+Implementation, validation, and live rollout are complete. No migration was needed. Commit `40ba2fb9` is healthy on OVH, and both public health endpoints report success. The repair preview found 67 eligible package rejections (1 whole-package event-location rejection and 66 local-only setup-script rejections) while excluding 61 unrelated producer defects; all 67 eligible jobs were requeued with repair history preserved. The resulting mapping queue had 257 claimable jobs with zero active or stale leases before workers restarted. The reviewer then acquired exactly one lease under the new contract, and the producer goal started with the new event-location objective. Both the 15-minute intake timer and daily scrape timer are active.
 
 ## Context and Orientation
 
