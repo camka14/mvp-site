@@ -92,6 +92,8 @@ export const buildCodexAffiliateApprovalGoal = (
 export const buildCodexAffiliateApprovalArgs = (
   options: CodexAffiliateApprovalGoalOptions,
 ): string[] => [
+  '--ask-for-approval',
+  'never',
   'exec',
   '--cd',
   path.resolve(options.repositoryRoot),
@@ -105,7 +107,5 @@ export const buildCodexAffiliateApprovalArgs = (
   'goals',
   '--sandbox',
   options.containerIsolated ? 'danger-full-access' : 'workspace-write',
-  '--ask-for-approval',
-  'never',
   buildCodexAffiliateApprovalGoal(options),
 ];

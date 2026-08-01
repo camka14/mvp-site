@@ -17,6 +17,8 @@ describe('Codex affiliate approval goal', () => {
 
   it('pins one headless Luna x-high goal with bounded authority', () => {
     expect(buildCodexAffiliateApprovalArgs(options)).toEqual([
+      '--ask-for-approval',
+      'never',
       'exec',
       '--cd',
       path.resolve('/srv/bracketiq'),
@@ -30,8 +32,6 @@ describe('Codex affiliate approval goal', () => {
       'goals',
       '--sandbox',
       'workspace-write',
-      '--ask-for-approval',
-      'never',
       expect.stringMatching(/^Before doing any other work, call the create_goal tool /),
     ]);
     expect(CODEX_AFFILIATE_APPROVAL_MODEL).toBe('gpt-5.6-luna');
