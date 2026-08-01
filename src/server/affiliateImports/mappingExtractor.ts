@@ -16,6 +16,8 @@ const nullableFieldNames = [
   'city',
   'venueName',
   'address',
+  'locationSource',
+  'locationEvidence',
   'startsAt',
   'endsAt',
   'timeZone',

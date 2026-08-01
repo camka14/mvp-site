@@ -47,13 +47,15 @@ A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
 `identityIndependent`, `packageValidationPassed`, `officialLogoVerified`,
 `duplicateSafetyVerified`, and `storedEvidenceSufficient`.
 
-For a mapping approval, `packageValidationPassed` also means that every
-evidence-backed event, club, and rental location has been independently checked
-against the persisted target coordinates. Null, malformed, out-of-range, and
-`[0, 0]` coordinates fail package validation when the source identifies a
-resolvable place. Cite the stored intake artifact plus the candidate/target ID
-or focused test output in `evidenceReferences`; never treat an unstored browser
-impression or a nearby organization's coordinates as proof.
+For a mapping approval, `packageValidationPassed` also means accepted event
+locations were independently checked and rejected event-location failures are
+visible in both review-scrape logs. Null, malformed, out-of-range, and `[0, 0]`
+coordinates fail accepted-event validation. A source-organization location is
+valid for an event only when the candidate explicitly records
+`locationSource: "SOURCE_ORGANIZATION"`, a non-empty stored-evidence note, and
+the referenced canonical organization has valid coordinates. Cite the stored
+intake artifact plus candidate/target or rejection-log evidence. Correctly
+filtered bad events do not invalidate an otherwise valid organization package.
 
 The mapping-package evidence command is the authoritative bridge between the
 producer and reviewer containers. Its producer-commit and file hashes come from

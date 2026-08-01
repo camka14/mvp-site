@@ -70,6 +70,9 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('organization setup');
     expect(goal).toContain('official normalized logo');
     expect(goal).toContain('two duplicate-safe review scrapes');
+    expect(goal).toContain('Keep valid organizations reviewable when individual events lack locations');
+    expect(goal).toContain('SOURCE_ORGANIZATION fallback with stored evidence');
+    expect(goal).toContain('Setup scripts must support guarded --live');
     expect(goal).toContain('TEAM-only');
     expect(goal).toContain('Do not publish candidates or organizations');
     expect(goal).toContain('source-scoped commit');

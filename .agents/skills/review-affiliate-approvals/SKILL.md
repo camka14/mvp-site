@@ -74,16 +74,21 @@ organization to be unlisted, its public page disabled, recurring scraping
 disabled, and its mapping unvalidated. Do not reject a valid package merely
 because those rows have not been created before approval.
 
-For every produced event, club, or rental with an evidenced address, city,
-venue, or facility, independently compare the stored evidence with the
-candidate and backing target. The target must have finite in-range coordinates
-in `[longitude, latitude]` order and must not contain `[0, 0]`. A missing or
-denied server-side Places result, coordinates copied from an unrelated source
-organization, or an unresolvable evidenced address requires `REJECT` when the
-producer must fix the package and `DEFER` when additional evidence or human
-judgment is required. A source that genuinely has no identifiable location may
-remain reviewable only when the limitation is explicit and publication stays
-disabled.
+Review organization validity separately from candidate-event validity. Do not
+reject an otherwise valid organization/source package merely because the
+review scrapes rejected events without usable locations. Confirm that those
+events were excluded from candidate/target persistence and that both scrape
+runs contain stable title-and-reason rejection summaries.
+
+For every accepted event with an evidenced address or venue, independently
+compare the evidence with its finite, in-range `[longitude, latitude]`
+coordinates. Source-organization coordinates are valid only when the candidate
+explicitly records `locationSource: "SOURCE_ORGANIZATION"`, has a non-empty
+evidence note showing the event is held there, and the canonical organization's
+location is itself valid. A city match, common owner, or nearby organization is
+not enough. Reject the package when an invalid event slipped through, when an
+organization fallback is unevidenced, or when scrape failures were hidden; do
+not reject it simply because invalid events were correctly filtered and logged.
 
 - `APPROVE` only when every required check in the result schema is true.
 - `REJECT` for a concrete defect that requires new producer work.

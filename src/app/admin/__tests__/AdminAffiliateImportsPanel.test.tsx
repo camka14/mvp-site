@@ -190,4 +190,41 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/admin/affiliate-intakes', { credentials: 'include' });
     });
   });
+
+  it('keeps latest automatic scrape location failures visible after loading sources', async () => {
+    const rowsWithFailure = [{
+      ...sourceRows[0],
+      lastScrapedAt: '2026-08-01T18:00:00.000Z',
+      lastScrapeRun: {
+        status: 'SUCCEEDED',
+        candidateCount: 1,
+        logs: {
+          rejectedCount: 1,
+          rejectedCandidates: [{
+            title: 'New York Open Play',
+            reasons: ['missing event venue or address'],
+          }],
+        },
+      },
+    }];
+    const fetchMock = jest.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/admin/affiliate-sources') {
+        return Promise.resolve(jsonResponse({ sources: rowsWithFailure }));
+      }
+      if (url.startsWith('/api/admin/affiliate-discoveries')) {
+        return Promise.resolve(jsonResponse({ candidates: [] }));
+      }
+      if (url === '/api/admin/affiliate-intakes') {
+        return Promise.resolve(jsonResponse({ intakes: [] }));
+      }
+      return Promise.resolve(jsonResponse({ error: `Unexpected fetch ${url}` }, false));
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    renderPanel();
+
+    expect(await screen.findByText('Candidate failures')).toBeInTheDocument();
+    expect(screen.getByText(/New York Open Play: missing event venue or address/)).toBeInTheDocument();
+  });
 });

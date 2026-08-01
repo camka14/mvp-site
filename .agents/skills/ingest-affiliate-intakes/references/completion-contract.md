@@ -18,7 +18,8 @@ Every successful checkpoint must contain:
 4. Official action URLs and source provenance.
 5. An official logo reference normalized to an opaque 1024 by 1024 asset, or an explicit manual-review result that prevents publication.
 6. Focused tests and stored-fixture extraction evidence.
-7. Two review scrapes proving stable, duplicate-safe output.
+7. Two review scrapes proving stable, duplicate-safe accepted output and stable
+   candidate-level rejection summaries.
 8. A source registry note and a source-scoped commit.
 9. A compact result JSON suitable for `affiliate:mapping:complete`.
 
@@ -26,9 +27,24 @@ Every successful checkpoint must contain:
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.
 
-For each event, club, or rental whose stored evidence identifies an address, city, venue, or facility, run the normal server-side Google Places resolver and inspect the persisted target. Coordinates must contain finite longitude then latitude, remain within geographic bounds, and must not equal `[0, 0]`. `REVIEW_REQUIRED` is invalid when the resolver is missing credentials, is denied, or cannot resolve an otherwise evidenced location. Fix the input or record a concrete blocked/failed result. When the source truly provides no identifiable location, preserve that limitation without inventing coordinates and keep the target unpublishable.
+For each event with an evidenced address, venue, or facility, run the normal
+server-side Google Places resolver. Coordinates must contain finite longitude
+then latitude, remain within geographic bounds, and must not equal `[0, 0]`.
+City-only event text is not a sufficient map location.
 
-Never use source-organization coordinates as a facility fallback, directory coordinates as a club fallback, or one event venue as another event's fallback merely to pass this check.
+An event may use the canonical source organization's location only when stored
+evidence supports that the event occurs there. Record that decision on the
+candidate with `locationSource: "SOURCE_ORGANIZATION"` plus a non-empty
+`locationEvidence` note. A shared owner, nearby venue, directory parent, or city
+match is not evidence. Never use one event venue as another event's fallback.
+
+The scrape must exclude an event when its event-specific location cannot be
+resolved or when it has neither an event location nor an evidence-backed source
+organization fallback. Record the title and reason in the scrape run. These
+candidate-level rejections do not invalidate an otherwise correct organization,
+source, mapping, logo, or duplicate-safe package. A package is not
+`REVIEW_REQUIRED` if bad events were persisted as candidates or targets, or if
+the rejection log is missing.
 
 Never infer a year for an ambiguous event date. Never convert a stale tryout, evaluation, deadline, or registration page into a current event. Use evergreen rows only for stable ongoing programs with explicit `NO_FIXED_DATE` or `ONGOING` display.
 

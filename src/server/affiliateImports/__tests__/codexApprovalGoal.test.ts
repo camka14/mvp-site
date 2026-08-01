@@ -54,6 +54,9 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('expected NOT_APPLIED state, not a rejection reason');
     expect(goal).toContain('guarded APPROVE completion creates the package');
     expect(goal).toContain('do not exist in production');
+    expect(goal).toContain('Review organization validity independently from child event validity');
+    expect(goal).toContain('events without usable locations were correctly excluded and logged');
+    expect(goal).toContain('explicit SOURCE_ORGANIZATION mode');
     expect(goal).toContain('Never publish an organization or candidate');
   });
 

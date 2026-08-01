@@ -3,7 +3,9 @@
 import {
   buildAffiliateEventLocationQueries,
   buildAffiliatePlaceLocationQueries,
+  buildAffiliateSpecificEventLocationQueries,
   normalizeAffiliateCoordinates,
+  normalizeAffiliateLocationSource,
 } from '@/server/affiliateImports/locationResolution';
 
 describe('affiliate location resolution inputs', () => {
@@ -30,6 +32,23 @@ describe('affiliate location resolution inputs', () => {
       'Eastern New York Youth Soccer Association ODP, Eastern New York',
       'Eastern New York',
     ]);
+  });
+
+  it('requires a venue or street address for a specific event location', () => {
+    expect(buildAffiliateSpecificEventLocationQueries({ city: 'Houston, TX' })).toEqual([]);
+    expect(buildAffiliateSpecificEventLocationQueries({
+      venueName: 'Major Owens Center',
+      city: 'Brooklyn, NY',
+    })).toEqual([
+      'Major Owens Center, Brooklyn, NY',
+      'Major Owens Center',
+    ]);
+  });
+
+  it('normalizes source-organization fallback as an explicit mode', () => {
+    expect(normalizeAffiliateLocationSource('SOURCE_ORGANIZATION')).toBe('SOURCE_ORGANIZATION');
+    expect(normalizeAffiliateLocationSource('candidate')).toBe('CANDIDATE');
+    expect(normalizeAffiliateLocationSource(null)).toBe('CANDIDATE');
   });
 
   it('does not use a context-free organization name as a coordinate query', () => {

@@ -13,6 +13,10 @@ const prismaMock = {
     update: jest.fn(),
     findUnique: jest.fn(),
   },
+  affiliateApprovalJobs: {
+    findUnique: jest.fn(),
+    update: jest.fn(),
+  },
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
@@ -79,6 +83,51 @@ describe('affiliate source mapping queue', () => {
     expect(prismaMock.affiliateSourceIntakes.update).toHaveBeenCalledWith({
       where: { id: 'intake_1' },
       data: { status: 'EXPANDED' },
+    });
+  });
+
+  it('preserves repair history and reopens a rejected approval after a repaired package completes', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      resultSummary: {
+        mappingRepairHistory: [{ repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION' }],
+      },
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1', intakeId: 'intake_1', status: 'REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+    prismaMock.affiliateApprovalJobs.findUnique.mockResolvedValue({
+      id: 'approval_1', status: 'REJECTED',
+    });
+    prismaMock.affiliateApprovalJobs.update.mockResolvedValue({});
+
+    await finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    });
+
+    expect(prismaMock.affiliateSourceMappingJobs.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        resultSummary: expect.objectContaining({
+          mappingRepairHistory: [{ repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION' }],
+        }),
+      }),
+    }));
+    expect(prismaMock.affiliateApprovalJobs.update).toHaveBeenCalledWith({
+      where: { id: 'approval_1' },
+      data: {
+        status: 'QUEUED',
+        claimedAt: null,
+        leaseExpiresAt: null,
+        reviewerId: null,
+        decision: null,
+        errorMessage: null,
+        finishedAt: null,
+      },
     });
   });
 });

@@ -1,4 +1,5 @@
 import { isValidGeocodeCoordinates, type GeocodeCoordinates } from '@/server/geocoding';
+import type { AffiliateLocationSource } from './types';
 
 const nullableString = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -23,6 +24,37 @@ const uniqueStrings = (values: Array<string | null | undefined>): string[] => {
 export const normalizeAffiliateCoordinates = (value: unknown): GeocodeCoordinates | null => {
   if (!isValidGeocodeCoordinates(value)) return null;
   return [Number(value[0]), Number(value[1])];
+};
+
+export const normalizeAffiliateLocationSource = (value: unknown): AffiliateLocationSource => (
+  value === 'SOURCE_ORGANIZATION' ? 'SOURCE_ORGANIZATION' : 'CANDIDATE'
+);
+
+export const buildAffiliateSpecificEventLocationQueries = (params: {
+  venueName?: string | null;
+  address?: string | null;
+  city?: string | null;
+}): string[] => {
+  const venueName = nullableString(params.venueName);
+  const address = nullableString(params.address);
+  const city = nullableString(params.city);
+  const specificAddress = address && (!city || address.toLowerCase() !== city.toLowerCase())
+    ? address
+    : null;
+  const fullAddress = specificAddress && city && !specificAddress.toLowerCase().includes(city.toLowerCase())
+    ? `${specificAddress}, ${city}`
+    : specificAddress;
+
+  return uniqueStrings([
+    venueName && fullAddress && !fullAddress.toLowerCase().includes(venueName.toLowerCase())
+      ? `${venueName}, ${fullAddress}`
+      : null,
+    fullAddress,
+    venueName && city && !venueName.toLowerCase().includes(city.toLowerCase())
+      ? `${venueName}, ${city}`
+      : null,
+    venueName,
+  ]);
 };
 
 export const buildAffiliateEventLocationQueries = (params: {

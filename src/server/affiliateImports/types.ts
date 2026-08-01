@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export type AffiliateListingKind = 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB';
 export type AffiliateDateDisplayMode = 'SCHEDULED' | 'NO_FIXED_DATE' | 'ONGOING';
+export type AffiliateLocationSource = 'CANDIDATE' | 'SOURCE_ORGANIZATION';
 
 export type ScrapedPage = {
   url: string;
@@ -75,6 +76,8 @@ const affiliateManualCandidateSchema = z.object({
   city: optionalNullableStringSchema,
   venueName: optionalNullableStringSchema,
   address: optionalNullableStringSchema,
+  locationSource: z.enum(['CANDIDATE', 'SOURCE_ORGANIZATION']).optional(),
+  locationEvidence: optionalNullableStringSchema,
   startsAt: optionalNullableStringSchema,
   endsAt: optionalNullableStringSchema,
   timeZone: optionalNullableStringSchema,
@@ -97,6 +100,14 @@ const affiliateManualCandidateSchema = z.object({
   logoOriginalName: optionalNullableStringSchema,
   divisions: z.array(affiliateManualDivisionSchema).optional(),
   warnings: z.array(z.string()).optional(),
+}).superRefine((candidate, context) => {
+  if (candidate.locationSource === 'SOURCE_ORGANIZATION' && !candidate.locationEvidence?.trim()) {
+    context.addIssue({
+      code: 'custom',
+      path: ['locationEvidence'],
+      message: 'Source-organization event locations require a stored-evidence explanation.',
+    });
+  }
 });
 
 export const affiliateScrapeMappingSchema = z.object({
@@ -116,6 +127,8 @@ export const affiliateScrapeMappingSchema = z.object({
     city: fieldMappingSchema.optional(),
     venueName: fieldMappingSchema.optional(),
     address: fieldMappingSchema.optional(),
+    locationSource: fieldMappingSchema.optional(),
+    locationEvidence: fieldMappingSchema.optional(),
     startsAt: fieldMappingSchema.optional(),
     endsAt: fieldMappingSchema.optional(),
     timeZone: fieldMappingSchema.optional(),
@@ -164,6 +177,8 @@ export type AffiliateCandidateInput = {
   city?: string | null;
   venueName?: string | null;
   address?: string | null;
+  locationSource?: AffiliateLocationSource | string | null;
+  locationEvidence?: string | null;
   startsAt?: string | null;
   endsAt?: string | null;
   timeZone?: string | null;

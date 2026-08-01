@@ -1,5 +1,5 @@
 import { TextDecoder, TextEncoder } from 'util';
-import type { AffiliateScrapeMapping, ScrapedPage } from '../types';
+import { parseAffiliateScrapeMapping, type AffiliateScrapeMapping, type ScrapedPage } from '../types';
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
@@ -250,6 +250,37 @@ describe('extractAffiliateCandidatesFromPage', () => {
         dateDisplayText: 'Ongoing rental availability',
       }),
     ]);
+  });
+
+  it('requires evidence when a manual event uses the source organization location', () => {
+    const base = {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: 'body',
+      fields: {
+        title: { selector: 'body' },
+        officialActionUrl: { selector: 'body' },
+      },
+      manualCandidates: [{
+        title: 'Organization-hosted clinic',
+        officialActionUrl: 'https://example.com/register',
+        locationSource: 'SOURCE_ORGANIZATION',
+      }],
+    };
+
+    expect(() => parseAffiliateScrapeMapping(base)).toThrow(
+      'Source-organization event locations require a stored-evidence explanation.',
+    );
+    expect(parseAffiliateScrapeMapping({
+      ...base,
+      manualCandidates: [{
+        ...base.manualCandidates[0],
+        locationEvidence: 'The stored clinic page says the session is held at the club facility.',
+      }],
+    }).manualCandidates?.[0]).toEqual(expect.objectContaining({
+      locationSource: 'SOURCE_ORGANIZATION',
+      locationEvidence: expect.stringContaining('held at the club facility'),
+    }));
   });
 
   it('parses explicit and compact date ranges', () => {

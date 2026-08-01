@@ -16,10 +16,12 @@ const prismaMock = {
   affiliateScrapeRuns: {
     create: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
   },
   affiliateScrapeSources: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
   },
   organizations: {
@@ -87,6 +89,7 @@ import {
   approveAffiliateSourceAutomation,
   deleteAffiliateCandidate,
   listAffiliateCandidates,
+  listAffiliateSources,
   publishAffiliateCandidate,
   reclassifyAffiliateCandidate,
   runAffiliateSourceScrape,
@@ -168,6 +171,46 @@ describe('affiliate import service', () => {
       orderBy: { updatedAt: 'desc' },
       take: 100,
     });
+  });
+
+  it('returns the latest scrape rejection details with each affiliate source', async () => {
+    prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([{
+      id: 'source_1',
+      name: 'Example Source',
+      status: 'ACTIVE',
+      activeMappingId: 'mapping_1',
+      lastScrapeRunId: 'run_1',
+    }]);
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_1',
+      version: 2,
+      validatedAt: null,
+    });
+    prismaMock.affiliateScrapeRuns.findMany.mockResolvedValue([{
+      id: 'run_1',
+      status: 'SUCCEEDED',
+      candidateCount: 1,
+      logs: {
+        rejectedCount: 1,
+        rejectedCandidates: [{
+          title: 'Locationless Event',
+          reasons: ['missing event venue or address'],
+        }],
+      },
+    }]);
+
+    const sources = await listAffiliateSources();
+
+    expect(prismaMock.affiliateScrapeRuns.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['run_1'] } },
+    }));
+    expect(sources[0]).toEqual(expect.objectContaining({
+      activeMappingVersion: 2,
+      lastScrapeRun: expect.objectContaining({
+        id: 'run_1',
+        logs: expect.objectContaining({ rejectedCount: 1 }),
+      }),
+    }));
   });
 
   it('validates a reviewed mapping and stores an automatic import baseline', async () => {
@@ -447,6 +490,8 @@ describe('affiliate import service', () => {
             dateDisplayMode: 'NO_FIXED_DATE',
             dateDisplayText: 'Seasonal registration',
             priceText: 'From $1,695 per team',
+            locationSource: 'SOURCE_ORGANIZATION',
+            locationEvidence: 'The stored season page identifies GPSD as the league host and venue.',
             divisions: [
               {
                 name: 'Open',
@@ -467,7 +512,14 @@ describe('affiliate import service', () => {
         ],
       },
     });
-    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_gpsd', ownerId: 'owner_1' });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_gpsd',
+      ownerId: 'owner_1',
+      name: 'Greater Portland Soccer District',
+      location: 'Portland, OR',
+      address: '123 Soccer Way, Portland, OR 97201',
+      coordinates: [-122.6765, 45.5231],
+    });
     prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_1' });
     prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_1', ...data }));
     prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
@@ -497,12 +549,27 @@ describe('affiliate import service', () => {
     expect(prismaMock.events.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: 'GPSD Fall Adult Outdoor Soccer League',
+        location: 'Greater Portland Soccer District',
+        address: '123 Soccer Way, Portland, OR 97201',
+        coordinates: [-122.6765, 45.5231],
         price: 169500,
         priceText: '$1695.00 - $2295.00',
         description: 'Pricing details: From $1,695 per team',
         singleDivision: false,
         registrationByDivisionType: true,
         dateDisplayMode: 'NO_FIXED_DATE',
+      }),
+    });
+    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        rawPayload: expect.objectContaining({
+          locationResolution: expect.objectContaining({
+            mode: 'SOURCE_ORGANIZATION',
+            organizationId: 'org_gpsd',
+            evidence: expect.stringContaining('stored season page'),
+            coordinates: [-122.6765, 45.5231],
+          }),
+        }),
       }),
     });
     expect(prismaMock.divisions.upsert).toHaveBeenCalledWith(expect.objectContaining({
@@ -525,6 +592,95 @@ describe('affiliate import service', () => {
         ageDivisionTypeId: '65plus',
         ratingType: 'AGE',
         gender: 'C',
+      }),
+    }));
+  });
+
+  it('keeps a valid club candidate when a child event has no usable location', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_club_with_event',
+      name: 'Example Athletic Club',
+      sourceKey: 'example-athletic-club',
+      activeMappingId: 'mapping_club_with_event',
+      listUrl: 'https://example.com/programs',
+      organizationId: 'org_source',
+    });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_club_with_event',
+      sourceId: 'source_club_with_event',
+      mapping: {
+        kind: 'CLUB',
+        listUrl: 'https://example.com/programs',
+        itemSelector: 'body',
+        fields: {
+          title: { selector: 'body' },
+          officialActionUrl: { selector: 'body' },
+        },
+        manualCandidates: [
+          {
+            listingKind: 'CLUB',
+            title: 'Example Athletic Club',
+            officialActionUrl: 'https://example.com/',
+            sourceUrl: 'https://example.com/about',
+            city: 'New York, NY',
+            address: '20 W 34th St, New York, NY 10001',
+          },
+          {
+            listingKind: 'EVENT',
+            title: 'Locationless Club Clinic',
+            officialActionUrl: 'https://example.com/register',
+            sourceUrl: 'https://example.com/clinic',
+            startsAt: '2099-08-15T18:00:00.000Z',
+            city: 'New York, NY',
+          },
+        ],
+      },
+    });
+    prismaMock.organizations.findUnique
+      .mockResolvedValue({ id: 'org_source', ownerId: 'owner_1' })
+      .mockResolvedValueOnce({ id: 'org_source', ownerId: 'owner_1' })
+      .mockResolvedValueOnce(null);
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_club_with_event' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({
+      id: 'run_club_with_event',
+      ...data,
+    }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }));
+    prismaMock.sports.findFirst.mockResolvedValue(null);
+
+    const result = await runAffiliateSourceScrape('source_club_with_event', {
+      client: {
+        fetchPage: async () => ({
+          url: 'https://example.com/programs',
+          finalUrl: 'https://example.com/programs',
+          statusCode: 200,
+          fetchedAt: '2026-08-01T00:00:00.000Z',
+          body: '<html><body>Example Athletic Club programs</body></html>',
+        }),
+      },
+    });
+
+    expect(result.candidates).toHaveLength(1);
+    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ listingKind: 'CLUB', title: 'Example Athletic Club' }),
+    });
+    expect(prismaMock.organizations.upsert).toHaveBeenCalledTimes(1);
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(result.run).toEqual(expect.objectContaining({
+      itemCount: 2,
+      candidateCount: 1,
+      logs: expect.objectContaining({
+        rejectedCount: 1,
+        rejectedCandidates: [{
+          title: 'Locationless Club Clinic',
+          reasons: ['missing event venue or address'],
+        }],
       }),
     }));
   });
@@ -1342,6 +1498,7 @@ describe('affiliate import service', () => {
           title: { selector: '.title' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Example Sports Complex' },
         },
       },
     });
@@ -1427,6 +1584,7 @@ describe('affiliate import service', () => {
           title: { selector: '.title' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Example Sports Complex' },
         },
       },
     });
@@ -1527,6 +1685,7 @@ describe('affiliate import service', () => {
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
           city: { selector: 'body', mode: 'literal', value: 'Portland' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Automatic Sports Complex' },
         },
       },
     });
@@ -1618,6 +1777,7 @@ describe('affiliate import service', () => {
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
           city: { selector: 'body', mode: 'literal', value: 'New York, NY' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Unresolved Sports Complex' },
         },
       },
     });
@@ -1637,7 +1797,7 @@ describe('affiliate import service', () => {
     prismaMock.events.findFirst.mockResolvedValue(null);
     geocodeAddressToCoordinatesMock.mockResolvedValue(null);
 
-    await expect(runAffiliateSourceScrape('source_automatic_unresolved', {
+    const result = await runAffiliateSourceScrape('source_automatic_unresolved', {
       importMode: 'AUTOMATIC',
       client: {
         fetchPage: async () => ({
@@ -1648,11 +1808,21 @@ describe('affiliate import service', () => {
           body: '<div class="event"><span class="title">Unresolved automatic league</span><span class="start">2099-01-01T18:00:00.000Z</span><a href="/register">Register</a></div>',
         }),
       },
-    })).rejects.toThrow('Affiliate event cannot be published without valid non-zero coordinates.');
-
-    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ status: 'DISCOVERED', title: 'Unresolved automatic league' }),
     });
+
+    expect(result.candidates).toHaveLength(0);
+    expect(result.run).toEqual(expect.objectContaining({
+      status: 'SUCCEEDED',
+      candidateCount: 0,
+      logs: expect.objectContaining({
+        rejectedCount: 1,
+        rejectedCandidates: [{
+          title: 'Unresolved automatic league',
+          reasons: ['event venue or address could not be resolved'],
+        }],
+      }),
+    }));
+    expect(prismaMock.affiliateImportCandidates.create).not.toHaveBeenCalled();
     expect(prismaMock.affiliateImportCandidates.update).not.toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'PUBLISHED' }),
     }));
@@ -1685,6 +1855,7 @@ describe('affiliate import service', () => {
           title: { selector: '.title' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Example Sports Complex' },
         },
       },
     });
@@ -1814,6 +1985,7 @@ describe('affiliate import service', () => {
             transform: 'absoluteUrl',
           },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Example Sports Complex' },
         },
         detailPage: {
           urlField: 'sourceUrl',
@@ -1923,6 +2095,7 @@ describe('affiliate import service', () => {
             transform: 'absoluteUrl',
           },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Example Sports Complex' },
           formatLabel: { selector: ':scope', mode: 'literal', value: 'class' },
           priceText: { selector: '.price' },
           description: { selector: '.description' },
@@ -2170,6 +2343,7 @@ describe('affiliate import service', () => {
           priceText: { selector: '.price' },
           description: { selector: '.description' },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: 'body', mode: 'literal', value: 'Portland Softball Complex' },
         },
       },
     });

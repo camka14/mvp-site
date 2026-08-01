@@ -6,7 +6,14 @@ const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000;
 const mappingDb = () => ({
   intakes: (prisma as any).affiliateSourceIntakes,
   jobs: (prisma as any).affiliateSourceMappingJobs,
+  approvals: (prisma as any).affiliateApprovalJobs,
 });
+
+const recordValue = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
 
 export const claimNextAffiliateSourceIntakeForMapping = async (options: {
   workerId: string;
@@ -111,16 +118,26 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   resultSummary?: Record<string, unknown> | null;
   errorMessage?: string | null;
 }) => {
-  const { intakes, jobs } = mappingDb();
+  const { intakes, jobs, approvals } = mappingDb();
   const job = await jobs.findUnique({ where: { id: input.jobId } });
   if (!job) throw new Error('Affiliate source mapping job not found.');
+  const previousEnvelope = recordValue(job.resultSummary);
+  const repairHistory = Array.isArray(previousEnvelope.mappingRepairHistory)
+    ? previousEnvelope.mappingRepairHistory
+    : [];
+  const nextResultSummary = input.resultSummary
+    ? {
+        ...input.resultSummary,
+        ...(repairHistory.length ? { mappingRepairHistory: repairHistory } : {}),
+      }
+    : undefined;
   const updated = await jobs.update({
     where: { id: job.id },
     data: {
       status: input.status,
       branch: input.branch?.trim() || null,
       commit: input.commit?.trim() || null,
-      resultSummary: input.resultSummary ?? undefined,
+      resultSummary: nextResultSummary,
       errorMessage: input.errorMessage?.trim() || null,
       finishedAt: new Date(),
       leaseExpiresAt: null,
@@ -134,5 +151,29 @@ export const finishAffiliateSourceMappingClaim = async (input: {
         : input.status,
     },
   });
+  if (input.status === 'REVIEW_REQUIRED') {
+    const approval = await approvals.findUnique({
+      where: {
+        subjectType_subjectKey: {
+          subjectType: 'MAPPING_PACKAGE',
+          subjectKey: job.id,
+        },
+      },
+    });
+    if (approval && ['REJECTED', 'DEFERRED'].includes(approval.status)) {
+      await approvals.update({
+        where: { id: approval.id },
+        data: {
+          status: 'QUEUED',
+          claimedAt: null,
+          leaseExpiresAt: null,
+          reviewerId: null,
+          decision: null,
+          errorMessage: null,
+          finishedAt: null,
+        },
+      });
+    }
+  }
   return updated;
 };

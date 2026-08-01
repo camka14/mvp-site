@@ -38,6 +38,7 @@ type AdminAffiliateSourceRow = {
   lastScrapedAt?: string | null;
   autoScrapeEnabled?: boolean | null;
   scrapeIntervalMinutes?: number | null;
+  lastScrapeRun?: AdminAffiliateScrapeRunRow | null;
 };
 
 type AdminAffiliateCandidateRow = {
@@ -63,6 +64,8 @@ type AdminAffiliateCandidateRow = {
 };
 
 type AdminAffiliateScrapeRunRow = {
+  status?: string | null;
+  errorMessage?: string | null;
   itemCount?: number | null;
   candidateCount?: number | null;
   logs?: {
@@ -70,6 +73,7 @@ type AdminAffiliateScrapeRunRow = {
     updatedCandidateCount?: number;
     rejectedCount?: number;
     rejectionSummary?: Record<string, number>;
+    rejectedCandidates?: Array<{ title?: string; reasons?: string[] }>;
   } | null;
 };
 
@@ -242,6 +246,24 @@ const scrapeResultMessage = (result: LastScrapeResult): string => {
     pieces.push(`${result.rejectedCount} rejected${reasons ? `: ${reasons}` : ''}`);
   }
   return pieces.join(' • ');
+};
+
+const persistentScrapeIssueMessage = (run?: AdminAffiliateScrapeRunRow | null): string | null => {
+  if (!run) return null;
+  if (run.status === 'FAILED') {
+    return formatOptionalText(run.errorMessage);
+  }
+  const logs = run.logs && typeof run.logs === 'object' ? run.logs : null;
+  const rejectedCount = numberFromUnknown(logs?.rejectedCount);
+  if (!rejectedCount) return null;
+  const examples = Array.isArray(logs?.rejectedCandidates)
+    ? logs.rejectedCandidates.slice(0, 2).map((candidate) => {
+        const title = formatOptionalText(candidate.title);
+        const reasons = Array.isArray(candidate.reasons) ? candidate.reasons.filter(Boolean).join(', ') : '';
+        return reasons ? `${title}: ${reasons}` : title;
+      })
+    : [];
+  return `${rejectedCount} event${rejectedCount === 1 ? '' : 's'} rejected${examples.length ? ` — ${examples.join(' • ')}` : ''}`;
 };
 
 export default function AdminAffiliateImportsPanel({ active, refreshKey }: AdminAffiliateImportsPanelProps) {
@@ -714,7 +736,25 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
                   ) : 'Missing'}
                 </Table.Td>
                 <Table.Td>{formatScrapeInterval(source.autoScrapeEnabled, source.scrapeIntervalMinutes)}</Table.Td>
-                <Table.Td>{formatDateTime(source.lastScrapedAt)}</Table.Td>
+                <Table.Td>
+                  <Stack gap={4}>
+                    <Text size="sm">{formatDateTime(source.lastScrapedAt)}</Text>
+                    {persistentScrapeIssueMessage(source.lastScrapeRun) ? (
+                      <>
+                        <Badge
+                          size="xs"
+                          color={source.lastScrapeRun?.status === 'FAILED' ? 'red' : 'yellow'}
+                          variant="light"
+                        >
+                          {source.lastScrapeRun?.status === 'FAILED' ? 'Scrape failed' : 'Candidate failures'}
+                        </Badge>
+                        <Text size="xs" c="dimmed" lineClamp={3}>
+                          {persistentScrapeIssueMessage(source.lastScrapeRun)}
+                        </Text>
+                      </>
+                    ) : null}
+                  </Stack>
+                </Table.Td>
                 <Table.Td>
                   <Group gap="xs">
                     <Button

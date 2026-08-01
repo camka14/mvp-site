@@ -22,7 +22,9 @@ import { inferAffiliateEventTagNames } from './tags';
 import {
   buildAffiliateEventLocationQueries,
   buildAffiliatePlaceLocationQueries,
+  buildAffiliateSpecificEventLocationQueries,
   normalizeAffiliateCoordinates,
+  normalizeAffiliateLocationSource,
 } from './locationResolution';
 import {
   AFFILIATE_AUTOMATION_BASELINE_METADATA_KEY,
@@ -296,11 +298,29 @@ const candidatePersistenceData = (params: {
 };
 
 export const listAffiliateSources = async () => {
-  const { sources, mappings } = affiliatePrisma();
+  const { sources, mappings, runs } = affiliatePrisma();
   const rows = await sources.findMany({
     where: { status: 'ACTIVE' },
     orderBy: { name: 'asc' },
   });
+  const lastRunIds = rows
+    .map((source: any) => nullableString(source.lastScrapeRunId))
+    .filter((runId: string | null): runId is string => Boolean(runId));
+  const lastRuns = lastRunIds.length
+    ? await runs.findMany({
+        where: { id: { in: lastRunIds } },
+        select: {
+          id: true,
+          status: true,
+          finishedAt: true,
+          itemCount: true,
+          candidateCount: true,
+          errorMessage: true,
+          logs: true,
+        },
+      })
+    : [];
+  const lastRunById = new Map(lastRuns.map((run: any) => [run.id, run]));
   return Promise.all(rows.map(async (source: any) => {
     const mapping = source.activeMappingId
       ? await mappings.findUnique({
@@ -312,6 +332,9 @@ export const listAffiliateSources = async () => {
       ...source,
       activeMappingVersion: mapping?.version ?? null,
       activeMappingValidatedAt: mapping?.validatedAt ?? null,
+      lastScrapeRun: nullableString(source.lastScrapeRunId)
+        ? lastRunById.get(source.lastScrapeRunId) ?? null
+        : null,
     };
   }));
 };
@@ -1165,6 +1188,147 @@ const geocodeFirstAvailableAddress = async (queries: string[]): Promise<[number,
   return null;
 };
 
+const candidateLocationEvidence = (candidate: AffiliateCandidateInput | any): string | null => {
+  const fields = rawExtractedCandidateFields(candidate);
+  return nullableString(candidate?.locationEvidence) ?? nullableString(fields.locationEvidence);
+};
+
+const candidateLocationSource = (candidate: AffiliateCandidateInput | any) => {
+  const fields = rawExtractedCandidateFields(candidate);
+  return normalizeAffiliateLocationSource(candidate?.locationSource ?? fields.locationSource);
+};
+
+const candidateResolvedCoordinates = (candidate: AffiliateCandidateInput | any): [number, number] | null => {
+  const rawPayload = recordValue(candidate?.rawPayload);
+  const resolution = recordValue(rawPayload.locationResolution);
+  return normalizeAffiliateCoordinates(resolution.coordinates);
+};
+
+type AffiliateSourceOrganizationLocation = {
+  id: string;
+  name?: string | null;
+  location?: string | null;
+  address?: string | null;
+  coordinates?: unknown;
+};
+
+const withCandidateLocationResolution = (params: {
+  candidate: AffiliateCandidateInput;
+  coordinates: [number, number];
+  mode: 'CANDIDATE' | 'SOURCE_ORGANIZATION';
+  query: string | null;
+  evidence: string | null;
+  organization?: AffiliateSourceOrganizationLocation | null;
+}): AffiliateCandidateInput => {
+  const organization = params.organization;
+  return {
+    ...params.candidate,
+    ...(params.mode === 'SOURCE_ORGANIZATION'
+      ? {
+          venueName: nullableString(params.candidate.venueName) ?? nullableString(organization?.name),
+          address: nullableString(params.candidate.address) ?? nullableString(organization?.address),
+          city: nullableString(params.candidate.city) ?? nullableString(organization?.location),
+        }
+      : {}),
+    rawPayload: {
+      ...(params.candidate.rawPayload ?? {}),
+      locationResolution: {
+        mode: params.mode,
+        coordinates: params.coordinates,
+        query: params.query,
+        evidence: params.evidence,
+        organizationId: params.mode === 'SOURCE_ORGANIZATION' ? organization?.id ?? null : null,
+      },
+    },
+  };
+};
+
+const resolveAffiliateEventCandidateLocation = async (params: {
+  candidate: AffiliateCandidateInput;
+  sourceOrganization: AffiliateSourceOrganizationLocation | null;
+}): Promise<{ candidate: AffiliateCandidateInput; reasons: string[] }> => {
+  const { candidate, sourceOrganization } = params;
+  if (candidate.listingKind !== 'EVENT') {
+    return { candidate, reasons: [] };
+  }
+
+  const locationSource = candidateLocationSource(candidate);
+  const evidence = candidateLocationEvidence(candidate);
+  const candidateQueries = buildAffiliateSpecificEventLocationQueries({
+    venueName: nullableString(candidate.venueName),
+    address: nullableString(candidate.address),
+    city: nullableString(candidate.city),
+  });
+  if (candidateQueries.length) {
+    for (const query of candidateQueries) {
+      const coordinates = await geocodeAddressToCoordinates(query);
+      if (coordinates) {
+        return {
+          candidate: withCandidateLocationResolution({
+            candidate,
+            coordinates,
+            mode: 'CANDIDATE',
+            query,
+            evidence,
+          }),
+          reasons: [],
+        };
+      }
+    }
+    return { candidate, reasons: ['event venue or address could not be resolved'] };
+  }
+
+  if (locationSource !== 'SOURCE_ORGANIZATION') {
+    return { candidate, reasons: ['missing event venue or address'] };
+  }
+  if (!evidence) {
+    return { candidate, reasons: ['source organization location evidence is required'] };
+  }
+  if (!sourceOrganization) {
+    return { candidate, reasons: ['source organization location is unavailable'] };
+  }
+
+  const existingCoordinates = normalizeAffiliateCoordinates(sourceOrganization.coordinates);
+  if (existingCoordinates) {
+    return {
+      candidate: withCandidateLocationResolution({
+        candidate,
+        coordinates: existingCoordinates,
+        mode: 'SOURCE_ORGANIZATION',
+        query: null,
+        evidence,
+        organization: sourceOrganization,
+      }),
+      reasons: [],
+    };
+  }
+
+  const organizationQueries = buildAffiliatePlaceLocationQueries({
+    name: nullableString(sourceOrganization.name),
+    location: nullableString(sourceOrganization.location),
+    address: nullableString(sourceOrganization.address),
+    city: nullableString(sourceOrganization.location),
+  });
+  for (const query of organizationQueries) {
+    const coordinates = await geocodeAddressToCoordinates(query);
+    if (coordinates) {
+      return {
+        candidate: withCandidateLocationResolution({
+          candidate,
+          coordinates,
+          mode: 'SOURCE_ORGANIZATION',
+          query,
+          evidence,
+          organization: sourceOrganization,
+        }),
+        reasons: [],
+      };
+    }
+  }
+
+  return { candidate, reasons: ['source organization location could not be resolved'] };
+};
+
 const assertAffiliateCoordinatesForPublication = (params: {
   coordinates: unknown;
   targetLabel: 'event' | 'organization' | 'rental facility';
@@ -1211,12 +1375,14 @@ const buildAffiliateEventData = async (
   const address = nullableString(candidate.address);
   const city = nullableString(candidate.city);
   const geocodeQueries = buildAffiliateEventLocationQueries({
-    location,
+    location: nullableString(candidate.venueName),
     address,
     city,
   });
   const coordinates =
-    (await geocodeFirstAvailableAddress(geocodeQueries)) ?? normalizeAffiliateCoordinates(fallbackCoordinates);
+    candidateResolvedCoordinates(candidate)
+    ?? (await geocodeFirstAvailableAddress(geocodeQueries))
+    ?? normalizeAffiliateCoordinates(fallbackCoordinates);
   if (state === 'PUBLISHED') {
     assertAffiliateCoordinatesForPublication({
       coordinates,
@@ -1897,9 +2063,9 @@ export const runAffiliateSourceScrape = async (
   if (automaticallyPublishCandidates && !mappingRow.validatedAt) {
     throw new Error('Automatic imports require an explicitly validated active mapping.');
   }
-  if (mapping.kind === 'EVENT' || mapping.kind === 'TEAM' || mapping.kind === 'CLUB') {
-    await assertSourceOrganization(source);
-  }
+  const sourceOrganization = mapping.kind === 'EVENT' || mapping.kind === 'TEAM' || mapping.kind === 'CLUB'
+    ? await loadSourceOrganization(source)
+    : null;
   const run = await runs.create({
     data: {
       id: createId(),
@@ -1926,14 +2092,23 @@ export const runAffiliateSourceScrape = async (
     );
     const now = new Date();
     const rejectedCandidates: Array<{ title: string; reasons: string[] }> = [];
-    const importableCandidates = extractedCandidates.filter((candidate) => {
+    const importableCandidates: AffiliateCandidateInput[] = [];
+    for (const candidate of extractedCandidates) {
       const reasons = candidateImportRejectionReasons(candidate, now);
       if (reasons.length) {
         rejectedCandidates.push({ title: candidate.title, reasons });
-        return false;
+        continue;
       }
-      return true;
-    });
+      const locationResult = await resolveAffiliateEventCandidateLocation({
+        candidate,
+        sourceOrganization,
+      });
+      if (locationResult.reasons.length) {
+        rejectedCandidates.push({ title: candidate.title, reasons: locationResult.reasons });
+        continue;
+      }
+      importableCandidates.push(locationResult.candidate);
+    }
     const rejectionSummary = rejectedCandidates.reduce<Record<string, number>>((summary, candidate) => {
       candidate.reasons.forEach((reason) => {
         summary[reason] = (summary[reason] ?? 0) + 1;
