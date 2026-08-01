@@ -115,6 +115,7 @@ export const ModelName = {
   AffiliateSourceDiscoveryResults: 'AffiliateSourceDiscoveryResults',
   AffiliateSourceDomainPolicies: 'AffiliateSourceDomainPolicies',
   AffiliateSourceMappingJobs: 'AffiliateSourceMappingJobs',
+  AffiliateApprovalJobs: 'AffiliateApprovalJobs',
   AffiliateImportCandidates: 'AffiliateImportCandidates',
   EventTags: 'EventTags',
   EventTagAssignments: 'EventTagAssignments',
@@ -1603,6 +1604,25 @@ export const AffiliateSourceMappingJobsScalarFieldEnum = {
 } as const
 
 export type AffiliateSourceMappingJobsScalarFieldEnum = (typeof AffiliateSourceMappingJobsScalarFieldEnum)[keyof typeof AffiliateSourceMappingJobsScalarFieldEnum]
+
+
+export const AffiliateApprovalJobsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  subjectType: 'subjectType',
+  subjectKey: 'subjectKey',
+  status: 'status',
+  claimedAt: 'claimedAt',
+  leaseExpiresAt: 'leaseExpiresAt',
+  reviewerId: 'reviewerId',
+  attemptCount: 'attemptCount',
+  decision: 'decision',
+  errorMessage: 'errorMessage',
+  finishedAt: 'finishedAt'
+} as const
+
+export type AffiliateApprovalJobsScalarFieldEnum = (typeof AffiliateApprovalJobsScalarFieldEnum)[keyof typeof AffiliateApprovalJobsScalarFieldEnum]
 
 
 export const AffiliateImportCandidatesScalarFieldEnum = {

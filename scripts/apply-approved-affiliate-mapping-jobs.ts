@@ -35,6 +35,7 @@ if (apply && !approvedBy) {
 }
 
 const requestedJobId = readOption('--job');
+const approvalJobId = readOption('--approval-job');
 const parsedLimit = Number.parseInt(readOption('--limit') ?? '', 10);
 const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined;
 
@@ -86,6 +87,27 @@ const main = async () => {
     const applied: Array<Record<string, unknown>> = [];
 
     for (const candidate of candidates) {
+      if (approvalJobId) {
+        const approvalJob = await db.affiliateApprovalJobs.findUnique({
+          where: { id: approvalJobId },
+          select: {
+            id: true,
+            subjectType: true,
+            subjectKey: true,
+            status: true,
+            reviewerId: true,
+          },
+        });
+        if (
+          !approvalJob
+          || approvalJob.subjectType !== 'MAPPING_PACKAGE'
+          || approvalJob.subjectKey !== candidate.jobId
+          || approvalJob.status !== 'CLAIMED'
+          || approvalJob.reviewerId !== approvedBy
+        ) {
+          throw new Error(`Mapping job ${candidate.jobId} is not owned by the supplied approval claim.`);
+        }
+      }
       const setupScript = resolveApprovedAffiliateSetupScript(
         repositoryRoot,
         candidate.setupScript,

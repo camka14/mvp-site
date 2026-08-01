@@ -338,6 +338,11 @@ export type AffiliateSourceDomainPolicies = Prisma.AffiliateSourceDomainPolicies
  */
 export type AffiliateSourceMappingJobs = Prisma.AffiliateSourceMappingJobsModel
 /**
+ * Model AffiliateApprovalJobs
+ *
+ */
+export type AffiliateApprovalJobs = Prisma.AffiliateApprovalJobsModel
+/**
  * Model AffiliateImportCandidates
  *
  */

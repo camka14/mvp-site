@@ -2075,6 +2075,27 @@ model AffiliateSourceMappingJobs {
   @@index([leaseExpiresAt])
 }
 
+model AffiliateApprovalJobs {
+  id             String    @id
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  subjectType    String
+  subjectKey     String
+  status         String    @default("QUEUED")
+  claimedAt      DateTime?
+  leaseExpiresAt DateTime?
+  reviewerId     String?
+  attemptCount   Int       @default(0)
+  decision       Json?
+  errorMessage   String?
+  finishedAt     DateTime?
+
+  @@unique([subjectType, subjectKey])
+  @@index([status, createdAt])
+  @@index([leaseExpiresAt])
+  @@index([subjectType, status])
+}
+
 model AffiliateImportCandidates {
   id                       String    @id
   createdAt                DateTime  @default(now())

@@ -35,6 +35,7 @@ import {
   enqueueAffiliateSourceUrl,
   findAffiliateSourceUrlDuplicate,
 } from './sourceUrlIntake';
+import { findAffiliateIntakeIdsForPolicyKey } from './sourcePolicyIntakes';
 
 const DISCOVERY_LOCK_ID = 4201072126;
 const DEFAULT_SUMMARY_RECIPIENT = 'samuel.r@razumly.com';
@@ -401,7 +402,11 @@ export const applyAffiliateSourceDomainPolicy = async (
     where: { policyKey, matchingIntakeId: { not: null } },
     select: { id: true, matchingIntakeId: true },
   });
-  const intakeIds = Array.from(new Set(resultRows.map((row: any) => row.matchingIntakeId).filter(Boolean))) as string[];
+  const directIntakeIds = await findAffiliateIntakeIdsForPolicyKey(prisma as any, policyKey);
+  const intakeIds = Array.from(new Set([
+    ...resultRows.map((row: any) => row.matchingIntakeId).filter(Boolean),
+    ...directIntakeIds,
+  ])).sort() as string[];
   for (const intakeId of intakeIds) {
     await reviewAffiliateSourceIntakePolicy(intakeId, {
       complianceStatus: review.status,

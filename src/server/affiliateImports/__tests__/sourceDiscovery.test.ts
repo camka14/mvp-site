@@ -107,8 +107,12 @@ const prismaMock = {
   affiliateSourceIntakes: {
     findUnique: jest.fn(async ({ where }) => where.id === 'intake_1' ? { id: 'intake_1' } : null),
     findFirst: jest.fn(async () => null),
+    findMany: jest.fn(async () => []),
   },
-  affiliateSourceIntakePages: { findUnique: jest.fn(async () => null) },
+  affiliateSourceIntakePages: {
+    findUnique: jest.fn(async () => null),
+    findMany: jest.fn(async () => []),
+  },
   affiliateSourceIntakeRuns: { findFirst: jest.fn(async () => null) },
   affiliateScrapeSources: { findFirst: jest.fn(async () => null) },
   organizations: { findFirst: jest.fn(async () => null) },
@@ -161,6 +165,8 @@ describe('affiliate source discovery orchestration', () => {
     campaign.queryCursor = 0;
     campaign.sourceTypeHints = ['CLUB'];
     prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceIntakes.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([]);
     queuedRuns.splice(0, queuedRuns.length,
       { id: 'run_1', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
       { id: 'run_2', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
@@ -273,6 +279,35 @@ describe('affiliate source discovery orchestration', () => {
     expect(currentPolicy).toMatchObject({ status: 'BLOCKED' });
     expect(createIntakeMock).not.toHaveBeenCalled();
     expect(queueIntakeMock).not.toHaveBeenCalled();
+  });
+
+  it('allows and queues a directory child intake without a discovery-result link', async () => {
+    prismaMock.affiliateSourceIntakes.findMany.mockResolvedValue([
+      { id: 'directory_child_1', baseUrl: 'https://club.example.test' },
+    ]);
+    prismaMock.affiliateSourceIntakePages.findMany.mockImplementation(async ({ where }: any) => (
+      where?.intakeId === 'directory_child_1'
+        ? [{ id: 'page_child_1' }]
+        : [{ intakeId: 'directory_child_1', canonicalUrl: 'https://club.example.test/events' }]
+    ));
+
+    const result = await applyAffiliateSourceDomainPolicy('example.test', {
+      status: 'ALLOWED',
+      termsUrl: 'https://club.example.test/terms',
+      robotsSummary: 'Public listing pages are crawlable.',
+    }, 'codex-luna-approval-vm-1');
+
+    expect(result.intakeIds).toEqual(['directory_child_1']);
+    expect(reviewPolicyMock).toHaveBeenCalledWith(
+      'directory_child_1',
+      expect.objectContaining({ complianceStatus: 'ALLOWED' }),
+      'codex-luna-approval-vm-1',
+    );
+    expect(queueIntakeMock).toHaveBeenCalledWith(
+      'directory_child_1',
+      ['page_child_1'],
+      'codex-luna-approval-vm-1',
+    );
   });
 
   it('does not advance the campaign query cursor when every provider query fails', async () => {

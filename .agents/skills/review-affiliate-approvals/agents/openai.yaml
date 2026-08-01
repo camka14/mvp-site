@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Affiliate Approvals"
+  short_description: "Drain affiliate approval queues independently"
+  default_prompt: "Use $review-affiliate-approvals to drain the eligible affiliate approval queue safely."
