@@ -47,6 +47,14 @@ A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
 `identityIndependent`, `packageValidationPassed`, `officialLogoVerified`,
 `duplicateSafetyVerified`, and `storedEvidenceSufficient`.
 
+A producer result with `logoDisposition = MANUAL_REVIEW` is never approved as
+written. The reviewer must still inspect the stored logo and branding evidence.
+Use `REJECT` when that evidence contains an official organization mark that the
+producer can normalize and commit in a repair pass. Use `DEFER` when the stored
+evidence contains no verifiable official mark and a human must supply or approve
+new evidence. Do not use an unrelated platform logo, photograph, generated
+initials, or fabricated brand mark.
+
 For a mapping approval, `packageValidationPassed` also means accepted event
 locations were independently checked and rejected event-location failures are
 visible in both review-scrape logs. Null, malformed, out-of-range, and `[0, 0]`

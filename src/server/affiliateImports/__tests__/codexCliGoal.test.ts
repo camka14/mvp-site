@@ -77,6 +77,8 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
     expect(goal).toContain('differing division prices must produce a compact event range');
     expect(goal).toContain('Setup scripts must support guarded --live');
+    expect(goal).toContain('MANUAL_LOGO_REVIEW');
+    expect(goal).toContain('inspect stored branding');
     expect(goal).toContain('TEAM-only');
     expect(goal).toContain('Do not publish candidates or organizations');
     expect(goal).toContain('source-scoped commit');

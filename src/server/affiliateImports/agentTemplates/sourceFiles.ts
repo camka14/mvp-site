@@ -95,12 +95,14 @@ export const renderAffiliateGeneratedSetup = (
  * Owns source ${input.sourceId}, mapping ${input.mappingId}, and private source
  * organization ${input.organizationId}. Owner: samuel.r@razumly.com.
  *
- * This script is local-only. Without --scrape it idempotently creates or repairs
- * the private organization, disabled source, and unvalidated mapping. With
- * --scrape it performs one REVIEW-mode scrape; it never publishes candidates.
+ * Without --scrape this script idempotently creates or repairs the private
+ * organization, disabled source, and unvalidated mapping. Pass --live only
+ * through the guarded approval boundary. With --scrape it performs one
+ * REVIEW-mode scrape; it never publishes candidates.
  * Official logo normalization and rendered-fit review remain manual gates.
  */
 import dotenv from 'dotenv';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import {
   ${symbolName}_LOGO_EVIDENCE,
   ${symbolName}_MAPPING,
@@ -116,7 +118,8 @@ dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 if (process.argv.includes('--live')) {
-  throw new Error('Generated agent setup scripts are local-only until human review.');
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
+  process.env.STORAGE_PROVIDER = 'spaces';
 }
 
 type PrismaClientInstance = typeof import('../src/lib/prisma').prisma;

@@ -23,7 +23,9 @@ Also read `/Users/elesesy/.codex/skills/affiliate-scrape-source-builder/SKILL.md
 
 1. Use the exact queue-status, claim, URL-enqueue, capture-processing, and complete commands in the active goal. Keep `--live` only when the goal supplied it; otherwise use the local commands and do not add live access.
 2. Stop successfully only when `claimableJobs`, `eligibleReadyIntakesWithoutJob`, `claimedWithoutLease`, `queuedCaptureRuns`, and `runningCaptureRuns` are all zero.
-3. Claim exactly one intake with the goal's stable worker ID.
+3. Claim exactly one intake with the goal's stable worker ID. If the claim
+   includes `repairContext`, treat its `repairReason` as required producer work
+   and create a new source-scoped commit before resubmitting.
 4. Work only from the exported stored evidence. Do not make a new public-site request when the intake already answers the question.
 5. Complete the entire intake checkpoint before claiming another.
 6. Record the result using the goal's exact completion command and a JSON artifact that passes `codexAffiliateIngestionResultSchema`.
@@ -57,6 +59,16 @@ Create or repair everything needed for review:
 - a compact result JSON and a source-scoped commit.
 
 Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and keep the organization unpublishable.
+
+For a `MANUAL_LOGO_REVIEW` repair, inspect every stored `LOGO_CANDIDATE`,
+`PAGE_BRANDING`, `PAGE_IMAGES`, screenshot, HTML/CSS reference, structured-data
+logo, Open Graph image, and favicon before concluding that the logo is missing.
+Open and visually inspect plausible image artifacts. Normalize or crop only a
+verified first-party organization mark and update the setup script, fixture,
+result disposition, and rendered-fit evidence in a new commit. If no official
+mark can be verified, record which artifacts were inspected and why each is
+insufficient; finish without inventing a mark and do not recycle the same
+evidence indefinitely.
 
 Treat organization validity separately from child event validity. A valid
 organization package is not failed merely because one or more extracted events

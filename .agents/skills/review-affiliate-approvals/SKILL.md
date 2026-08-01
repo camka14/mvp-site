@@ -108,6 +108,15 @@ not enough. Reject the package when an invalid event slipped through, when an
 organization fallback is unevidenced, or when scrape failures were hidden; do
 not reject it simply because invalid events were correctly filtered and logged.
 
+For a package whose producer result says `logoDisposition = MANUAL_REVIEW`,
+inspect all stored branding and image evidence named by the package. If a
+first-party official mark is present but the producer failed to normalize,
+assign, or commit it, `REJECT` with that exact producer repair. If no official
+mark can be verified from the stored evidence, `DEFER` for a human evidence
+decision instead of treating the organization identity itself as invalid. A
+reviewer never edits the package, approves a logo-less package, or invents a
+brand mark.
+
 - `APPROVE` only when every required check in the result schema is true.
 - `REJECT` for a concrete defect that requires new producer work.
 - `DEFER` when evidence is incomplete or the decision needs a human.

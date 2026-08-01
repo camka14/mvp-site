@@ -64,6 +64,14 @@ The goal agent must follow `$ingest-affiliate-intakes` and the affiliate source 
 
 The goal agent must follow the skill's organization-logo workflow. It must find an official logo or official rendered brand mark, never invent one, run `npm run affiliate:logo-fit`, inspect all card/detail/icon/marker surfaces, and make the setup script reproduce the approved asset. Image tools may normalize or crop official evidence but must not generate a new brand identity. If no official logo is supportable, record `MANUAL_REVIEW` and keep the organization unpublishable.
 
+When a requeued claim contains `repairContext`, the agent must repair the named
+defect rather than rebuilding the prior result unchanged. For
+`MANUAL_LOGO_REVIEW`, exhaust and visually inspect the stored branding, image,
+logo-candidate, screenshot, HTML/CSS, structured-data, metadata, and favicon
+evidence. Commit a verified official normalized asset or official screenshot
+crop when supportable. If none is supportable, record the exact evidence gap
+and stop the package from cycling; never invent a replacement mark.
+
 ## Completion Gate
 
 The coordinator may mark a source complete only when:

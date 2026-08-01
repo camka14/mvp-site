@@ -32,7 +32,18 @@ describe('affiliate source mapping queue', () => {
 
   it('claims a queued mapping job once and marks the intake in progress', async () => {
     prismaMock.affiliateSourceMappingJobs.findFirst.mockResolvedValue({
-      id: 'job_1', intakeId: 'intake_1', status: 'QUEUED', createdAt: new Date(),
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'QUEUED',
+      createdAt: new Date(),
+      resultSummary: {
+        mappingRepairHistory: [{
+          repairReason: 'MANUAL_LOGO_REVIEW',
+          queuedAt: '2026-08-01T23:00:00.000Z',
+          priorMappingErrorMessage: 'Official logo verification failed.',
+          approvalJobId: 'approval_1',
+        }],
+      },
     });
     prismaMock.affiliateSourceMappingJobs.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
@@ -47,6 +58,12 @@ describe('affiliate source mapping queue', () => {
 
     expect(claimed).toEqual(expect.objectContaining({
       jobId: 'job_1', intakeId: 'intake_1', sourceKey: 'river-city-soccer', workerId: 'worker-1',
+      repairContext: {
+        repairReason: 'MANUAL_LOGO_REVIEW',
+        queuedAt: '2026-08-01T23:00:00.000Z',
+        priorMappingErrorMessage: 'Official logo verification failed.',
+        approvalJobId: 'approval_1',
+      },
     }));
     expect(prismaMock.affiliateSourceMappingJobs.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: 'job_1' }),

@@ -86,7 +86,9 @@ describe('affiliate mapping deterministic generator', () => {
     expect(setup).toContain('validatedAt: null');
     expect(setup).toContain("importMode: 'REVIEW'");
     expect(setup).toContain("process.argv.includes('--scrape')");
-    expect(setup).toContain('Generated agent setup scripts are local-only');
+    expect(setup).toContain('configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE)');
+    expect(setup).toContain("process.env.STORAGE_PROVIDER = 'spaces'");
+    expect(setup).not.toContain('Generated agent setup scripts are local-only');
     expect(setup).not.toContain('autoScrapeEnabled: true');
     expect(setup).not.toContain("update: { logoId: null");
     for (const file of first.filter((candidateFile) => candidateFile.path.endsWith('.ts'))) {

@@ -15,6 +15,24 @@ const recordValue = (value: unknown): Record<string, unknown> => (
     : {}
 );
 
+const stringValue = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim() ? value.trim() : null
+);
+
+const latestMappingRepairContext = (resultSummary: unknown) => {
+  const history = recordValue(resultSummary).mappingRepairHistory;
+  if (!Array.isArray(history) || history.length === 0) return null;
+  const latest = recordValue(history[history.length - 1]);
+  const repairReason = stringValue(latest.repairReason);
+  if (!repairReason) return null;
+  return {
+    repairReason,
+    queuedAt: stringValue(latest.queuedAt),
+    priorMappingErrorMessage: stringValue(latest.priorMappingErrorMessage),
+    approvalJobId: stringValue(latest.approvalJobId),
+  };
+};
+
 export const claimNextAffiliateSourceIntakeForMapping = async (options: {
   workerId: string;
   intakeId?: string;
@@ -83,6 +101,7 @@ export const claimNextAffiliateSourceIntakeForMapping = async (options: {
       sourceKey: intake.sourceKey,
       workerId,
       leaseExpiresAt,
+      repairContext: latestMappingRepairContext(job.resultSummary),
     };
   }
   return null;

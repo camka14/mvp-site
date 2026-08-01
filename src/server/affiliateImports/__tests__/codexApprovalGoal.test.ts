@@ -61,6 +61,8 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('Preserve the exact organization division label as display name');
     expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
     expect(goal).toContain('differing division prices require a compact event range');
+    expect(goal).toContain('For MANUAL_REVIEW logos');
+    expect(goal).toContain('DEFER when no official mark can be verified');
     expect(goal).toContain('Never publish an organization or candidate');
   });
 

@@ -1,3 +1,5 @@
+import { codexAffiliateIngestionResultSchema } from './codexIngestionResult';
+
 type JsonRecord = Record<string, unknown>;
 
 const recordValue = (value: unknown): JsonRecord => (
@@ -14,7 +16,8 @@ const stringValues = (value: unknown): string[] => {
 
 export type AffiliateMappingProducerRepairReason =
   | 'LIVE_SETUP_UNSUPPORTED'
-  | 'EVENT_LOCATION_PACKAGE_REJECTION';
+  | 'EVENT_LOCATION_PACKAGE_REJECTION'
+  | 'MANUAL_LOGO_REVIEW';
 
 export const affiliateMappingProducerRepairEligibility = (input: {
   approvalStatus: unknown;
@@ -55,6 +58,21 @@ export const affiliateMappingProducerRepairEligibility = (input: {
       eligible: true,
       reason: 'producer-repair-required',
       repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION',
+    };
+  }
+
+  const result = codexAffiliateIngestionResultSchema.safeParse(
+    recordValue(input.resultSummary).result,
+  );
+  const manualLogoReview = result.success
+    && result.data.status === 'REVIEW_REQUIRED'
+    && result.data.logoDisposition === 'MANUAL_REVIEW'
+    && /(?:official\s+logo|logoDisposition|manual[_ -]?review|brand(?:ing)?\s+(?:asset|mark|evidence))/i.test(evidence);
+  if (manualLogoReview) {
+    return {
+      eligible: true,
+      reason: 'producer-repair-required',
+      repairReason: 'MANUAL_LOGO_REVIEW',
     };
   }
 

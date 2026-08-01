@@ -21,6 +21,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-07-31) Added focused tests, validated the skill, and passed repository-wide checks.
 - [x] (2026-07-31) Prepared the scoped implementation commit without staging unrelated VM scrape-timer and legacy-source work.
 - [x] (2026-08-01) Repaired the producer-to-reviewer handoff so exact commits and disposable review scrapes are independently verifiable across isolated containers; requeued 116 handoff-only decisions and completed one formerly rejected package through guarded live approval.
+- [ ] (2026-08-01) Repair generated guarded-live setup compatibility, requeue producer-fixable terminal packages, and route unresolved manual-logo packages through a fresh producer evidence pass before independent re-review.
 
 ## Surprises & Discoveries
 
@@ -41,6 +42,9 @@ The reviewer may allow or block an intake domain after checking stored robots an
 
 - Observation: the deployed reviewer looked for producer commits in its own checkout and disposable review-scrape IDs in production, causing systematic false rejections.
   Evidence: every official-logo rejection or deferral cited commit/package and review-scrape visibility, while the claimed runs exist in `bracketiq-affiliate-codex-postgres` and the commits exist in the mapper checkout.
+
+- Observation: 65 rejected packages were blocked only because the exact setup script refused guarded `--live` application, while 58 rejected packages cited unresolved manual-logo evidence.
+  Evidence: the live approval-job audit on 2026-08-01 grouped blocking issues across all terminal mapping-package reviews.
 
 ## Decision Log
 
@@ -75,6 +79,10 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - Decision: Refresh policy evidence through a bounded, SSRF-safe repository command before Luna makes a terminal domain decision.
   Rationale: the initial intake preflight stored robots evidence and likely policy URLs, but did not capture the policy bodies Luna needs to distinguish allow, block, and defer safely.
   Date/Author: 2026-07-31 / Codex
+
+- Decision: Send `MANUAL_REVIEW` logo packages back to the producer when stored official evidence may be repairable, and defer only when no official mark can be verified.
+  Rationale: the independent reviewer must not edit producer files, while approving a logo-less package would violate the guarded live application checks. A producer repair preserves evidence, image normalization, and commit ownership.
+  Date/Author: 2026-08-01 / Codex
 
 ## Outcomes & Retrospective
 
@@ -165,3 +173,5 @@ Revision note (2026-07-31): Created the plan after auditing existing intake poli
 Revision note (2026-07-31): Recorded the completed queue, bounded policy evidence, independent Luna skill/goal, single-child polling invariant, and validation results. Deployment and authenticated VM execution remain intentionally separate from this code commit.
 
 Revision note (2026-08-01): Recorded the cross-container evidence mismatch and the required read-only producer/disposable-database handoff repair.
+
+Revision note (2026-08-01): Recorded the guarded-live setup and manual-logo recovery cohort and the producer-repair routing decision.

@@ -71,6 +71,14 @@ Prefer stored logo candidates, page branding, page images, HTML/CSS references, 
 
 Normalize official artwork without inventing a new identity. Use a full-canvas opaque background, preserve aspect ratio, and verify card, detail, list icon, and map marker fit. If no official mark can be verified, record `MANUAL_REVIEW` and stop publication.
 
+When a claimed job has `repairContext.repairReason = MANUAL_LOGO_REVIEW`, the
+producer must perform a fresh evidence pass over every stored logo, branding,
+image, screenshot, HTML/CSS, metadata, and favicon artifact. A repaired result
+requires a new commit and `OFFICIAL_ASSET` or `OFFICIAL_SCREENSHOT_CROP` backed
+by stable stored evidence. If all candidates remain insufficient, report the
+exact inspected artifacts and keep the package unpublishable rather than
+fabricating a logo or resubmitting an unchanged manual-review result.
+
 ## Result states
 
 Use `REVIEW_REQUIRED` only when the package, tests, and validation artifacts exist. Use `EXPANDED` only when a directory intake has produced at least one accepted, reused, or already-known official organization URL through the governed URL-intake command. Use `FAILED` for a claimed intake that cannot be mapped or expanded safely and include a concrete policy, evidence, parsing, or infrastructure reason. Release a claim only for a transient interruption that another run can safely resume.
