@@ -23,6 +23,7 @@ const main = async () => {
     finishedAt: result.finishedAt.toISOString(),
     lockAcquired: result.lockAcquired,
     dryRun: result.dryRun,
+    reconciledSourceOrganizationCount: result.reconciledSourceOrganizationCount,
     dueSourceCount: result.dueSourceCount,
     lightweightSourceCount: result.lightweightSourceCount,
     emailSent: result.emailSent,

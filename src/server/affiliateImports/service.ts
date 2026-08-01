@@ -1373,6 +1373,20 @@ const assertSourceOrganization = async (source: { organizationId?: string | null
   await loadSourceOrganization(source);
 };
 
+const markSourceOrganizationListedForPublishedContent = async (
+  source: { organizationId?: string | null },
+) => {
+  const organization = await loadSourceOrganization(source);
+  const { organizations } = affiliatePrisma();
+  await organizations.update({
+    where: { id: organization.id },
+    data: {
+      status: 'LISTED',
+      updatedAt: new Date(),
+    },
+  });
+};
+
 const buildAffiliateTeamData = async (
   candidate: any,
   source: { id: string; organizationId?: string | null; name?: string | null },
@@ -2014,6 +2028,9 @@ export const runAffiliateSourceScrape = async (
         const event = await upsertAffiliateEventForCandidate(saved, source, {
           state: saved.status === 'PUBLISHED' ? 'PUBLISHED' : 'UNPUBLISHED',
         });
+        if (saved.status === 'PUBLISHED') {
+          await markSourceOrganizationListedForPublishedContent(source);
+        }
         const savedWithEvent = await candidates.update({
           where: { id: saved.id },
           data: { publishedEventId: event.id },
@@ -2032,6 +2049,9 @@ export const runAffiliateSourceScrape = async (
         const facility = await upsertAffiliateFacilityForCandidate(saved, source, {
           status: saved.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT',
         });
+        if (saved.status === 'PUBLISHED') {
+          await markSourceOrganizationListedForPublishedContent(source);
+        }
         const savedWithFacility = await candidates.update({
           where: { id: saved.id },
           data: { publishedFacilityId: facility.id },
@@ -2306,6 +2326,7 @@ export const publishAffiliateCandidate = async (
     const event = await upsertAffiliateEventForCandidate(candidate, source, {
       state: 'PUBLISHED',
     });
+    await markSourceOrganizationListedForPublishedContent(source);
     await candidates.update({
       where: { id: candidateId },
       data: {
@@ -2344,6 +2365,7 @@ export const publishAffiliateCandidate = async (
       throw new Error('Affiliate scrape source not found.');
     }
     const facility = await upsertAffiliateFacilityForCandidate(candidate, source, { status: 'ACTIVE' });
+    await markSourceOrganizationListedForPublishedContent(source);
     await candidates.update({
       where: { id: candidateId },
       data: {

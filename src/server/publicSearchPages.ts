@@ -931,6 +931,7 @@ const buildClubResults = ({
   locationSlug?: string;
 }): PublicSearchResult[] => (
   organizations
+    .filter((organization) => organization.publicPageEnabled)
     .filter((organization) => organizationMatchesSport(organization, sport))
     .filter((organization) => resultMatchesLocation(
       locationSlug,
@@ -1287,7 +1288,7 @@ export const listPublicSearchPageSummaries = async (): Promise<PublicSearchPageS
 export const listRegularOrganizationProfileSitemapEntries = async (): Promise<MetadataRoute.Sitemap> => {
   const organizations = await loadSearchableOrganizations();
   return organizations
-    .filter((organization) => !(organization.slug && organization.publicPageEnabled))
+    .filter((organization) => organization.publicPageEnabled && !organization.slug)
     .map((organization) => ({
       url: absoluteUrl(regularOrganizationPath(organization.id)),
       lastModified: organization.updatedAt,
@@ -1426,7 +1427,7 @@ export const getRegularOrganizationSeoData = async (organizationId: string): Pro
     location: normalizeString(row.location),
     website: normalizeString(row.website),
     updatedAt: toDate(row.updatedAt),
-    indexable: row.status === DEFAULT_ORGANIZATION_STATUS,
+    indexable: row.status === DEFAULT_ORGANIZATION_STATUS && publicPageEnabled,
   };
 };
 

@@ -44,7 +44,7 @@ Search existing organizations, sources, mappings, setup scripts, generated sourc
 Create or repair everything needed for review:
 
 - an idempotent source setup script and package command;
-- the canonical organization draft with website, description, sport, city, and address when evidenced;
+- the canonical organization draft with website, description, sport, city, and address when evidenced; for US locations, persist the city as `City, ST` whenever the stored evidence establishes the state so public search and sitemap location filters can classify it, but never infer a missing state;
 - a generic mapping, manual candidates, or a clearly justified custom extractor;
 - official outbound action URLs;
 - an official logo asset or official screenshot crop normalized to an opaque 1024 by 1024 image;

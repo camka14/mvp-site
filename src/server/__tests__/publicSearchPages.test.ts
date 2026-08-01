@@ -316,6 +316,12 @@ describe('publicSearchPages', () => {
         organizationName: 'Northside Pickleball',
       }),
     ]);
+
+    await expect(getPublicSearchPage({
+      kind: 'clubs',
+      sportSlug: 'pickleball',
+      locationSlug: 'seattle-wa',
+    })).resolves.toBeNull();
   });
 
   it('links facility results to the enabled public organization page', async () => {
@@ -352,7 +358,7 @@ describe('publicSearchPages', () => {
     expect(prismaMock.organizations.findMany).toHaveBeenCalledTimes(1);
   });
 
-  it('indexes listed organizations on either their enabled custom page or regular profile', async () => {
+  it('indexes only organizations that explicitly enable a public page', async () => {
     mockBaseInventory();
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
@@ -372,11 +378,7 @@ describe('publicSearchPages', () => {
       getRegularOrganizationSeoData('org_1'),
     ]);
 
-    expect(entries).toEqual([
-      expect.objectContaining({
-        url: 'https://bracket-iq.com/organizations/org_2',
-      }),
-    ]);
+    expect(entries).toEqual([]);
     expect(enabledSeo).toEqual(expect.objectContaining({
       canonicalPath: '/o/river-city',
       indexable: true,
@@ -398,7 +400,7 @@ describe('publicSearchPages', () => {
 
     await expect(getRegularOrganizationSeoData('org_2')).resolves.toEqual(expect.objectContaining({
       canonicalPath: '/organizations/org_2',
-      indexable: true,
+      indexable: false,
     }));
   });
 

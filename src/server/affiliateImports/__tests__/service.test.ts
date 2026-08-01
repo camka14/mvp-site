@@ -25,6 +25,7 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
+    update: jest.fn(),
     upsert: jest.fn(),
     deleteMany: jest.fn(),
   },
@@ -97,6 +98,10 @@ describe('affiliate import service', () => {
     prismaMock.facilities.findUnique.mockResolvedValue(null);
     prismaMock.facilities.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.organizations.findFirst.mockResolvedValue(null);
+    prismaMock.organizations.update.mockImplementation(async ({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }));
     prismaMock.organizations.upsert.mockImplementation(async ({ create, update }) => ({
       ...create,
       ...update,
@@ -705,6 +710,13 @@ describe('affiliate import service', () => {
       }),
     });
     expect(geocodeAddressToCoordinatesMock).toHaveBeenCalledWith('819 NW Corporate Dr, Troutdale, OR 97060');
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith({
+      where: { id: 'org_troutdale' },
+      data: {
+        status: 'LISTED',
+        updatedAt: expect.any(Date),
+      },
+    });
     expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
       where: { id: 'candidate_1' },
       data: {
@@ -717,6 +729,58 @@ describe('affiliate import service', () => {
       eventType: 'LEAGUE',
       hostId: null,
       organizationId: 'org_troutdale',
+    }));
+  });
+
+  it('lists the source organization when publishing affiliate rental candidates', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_rental',
+      sourceId: 'source_rental',
+      listingKind: 'RENTAL',
+      title: 'Downtown Soccer Field Rental',
+      venueName: 'Downtown Sports Center',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR 97201',
+      officialActionUrl: 'https://example.com/rentals',
+      publishedFacilityId: null,
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rental',
+      name: 'Downtown Sports Center Rentals',
+      sourceKey: 'downtown-sports-center-rentals',
+      organizationId: 'org_downtown',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_downtown',
+      ownerId: 'owner_1',
+      coordinates: [-122.6765, 45.5231],
+    });
+    prismaMock.facilities.findUnique.mockResolvedValue(null);
+    prismaMock.facilities.upsert.mockImplementation(async ({ create }) => create);
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_rental' });
+
+    const facility = await publishAffiliateCandidate('candidate_rental', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.facilities.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        organizationId: 'org_downtown',
+        status: 'ACTIVE',
+      }),
+      update: expect.objectContaining({
+        organizationId: 'org_downtown',
+        status: 'ACTIVE',
+      }),
+    }));
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith({
+      where: { id: 'org_downtown' },
+      data: {
+        status: 'LISTED',
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(facility).toEqual(expect.objectContaining({
+      organizationId: 'org_downtown',
+      status: 'ACTIVE',
     }));
   });
 
@@ -1394,6 +1458,13 @@ describe('affiliate import service', () => {
     });
     expect(prismaMock.events.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ state: 'PUBLISHED' }),
+    });
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith({
+      where: { id: 'org_automatic' },
+      data: {
+        status: 'LISTED',
+        updatedAt: expect.any(Date),
+      },
     });
     expect(prismaMock.affiliateScrapeRuns.update).toHaveBeenLastCalledWith({
       where: { id: 'run_automatic' },

@@ -12,7 +12,11 @@ const prismaMock = {
     findUnique: jest.fn(),
   },
   affiliateImportCandidates: {
+    findMany: jest.fn(),
     count: jest.fn(),
+  },
+  organizations: {
+    updateMany: jest.fn(),
   },
 };
 
@@ -71,7 +75,9 @@ describe('scheduled affiliate scrapes', () => {
       sourceId: String(where.id).replace(/^mapping_/, ''),
       validatedAt: new Date('2026-07-01T12:00:00.000Z'),
     }));
+    prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([]);
     prismaMock.affiliateImportCandidates.count.mockResolvedValue(0);
+    prismaMock.organizations.updateMany.mockResolvedValue({ count: 0 });
     runAffiliateSourceScrapeMock.mockResolvedValue({
       run: {
         id: 'run_1',
@@ -242,6 +248,49 @@ describe('scheduled affiliate scrapes', () => {
       [4201042026],
     );
     expect(mockPgClient.end).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles organizations attached to previously published events and rentals', async () => {
+    prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([
+      { sourceId: 'source_event' },
+      { sourceId: 'source_rental' },
+      { sourceId: 'source_event' },
+    ]);
+    prismaMock.affiliateScrapeSources.findMany.mockImplementation(async ({ where }) => (
+      where?.id?.in
+        ? [
+            { organizationId: 'org_event' },
+            { organizationId: 'org_rental' },
+            { organizationId: 'org_event' },
+          ]
+        : []
+    ));
+    prismaMock.organizations.updateMany.mockResolvedValue({ count: 2 });
+
+    const result = await runDueAffiliateScrapes({
+      now: new Date('2026-07-04T12:00:00.000Z'),
+      sendSummary: false,
+    });
+
+    expect(prismaMock.affiliateImportCandidates.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'PUBLISHED',
+        listingKind: { in: ['EVENT', 'RENTAL'] },
+      },
+      select: { sourceId: true },
+      distinct: ['sourceId'],
+    });
+    expect(prismaMock.organizations.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['org_event', 'org_rental'] },
+        status: { not: 'LISTED' },
+      },
+      data: {
+        status: 'LISTED',
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(result.reconciledSourceOrganizationCount).toBe(2);
   });
 
   it('checks non-daily sources lightly and reports detected changes without a full scrape', async () => {

@@ -89,6 +89,7 @@ export type LightweightSourceCheckResult = {
 export type RunDueAffiliateScrapesResult = {
   startedAt: Date;
   finishedAt: Date;
+  reconciledSourceOrganizationCount: number;
   dueSourceCount: number;
   lightweightSourceCount: number;
   results: ScheduledScrapeResultRow[];
@@ -257,6 +258,46 @@ const pendingApprovalCountForSource = async (sourceId: string): Promise<number> 
     },
   })
 );
+
+const reconcilePublishedSourceOrganizations = async (): Promise<number> => {
+  const publishedCandidates: Array<{ sourceId: string }> = await (prisma as any).affiliateImportCandidates.findMany({
+    where: {
+      status: 'PUBLISHED',
+      listingKind: { in: ['EVENT', 'RENTAL'] },
+    },
+    select: { sourceId: true },
+    distinct: ['sourceId'],
+  });
+  const sourceIds = Array.from(new Set(publishedCandidates.map((candidate) => candidate.sourceId)));
+  if (!sourceIds.length) {
+    return 0;
+  }
+
+  const sources: Array<{ organizationId?: string | null }> = await (prisma as any).affiliateScrapeSources.findMany({
+    where: { id: { in: sourceIds } },
+    select: { organizationId: true },
+  });
+  const organizationIds = Array.from(new Set(
+    sources
+      .map((source) => source.organizationId?.trim())
+      .filter((organizationId): organizationId is string => Boolean(organizationId)),
+  ));
+  if (!organizationIds.length) {
+    return 0;
+  }
+
+  const result = await (prisma as any).organizations.updateMany({
+    where: {
+      id: { in: organizationIds },
+      status: { not: 'LISTED' },
+    },
+    data: {
+      status: 'LISTED',
+      updatedAt: new Date(),
+    },
+  });
+  return typeof result?.count === 'number' ? result.count : 0;
+};
 
 const loadScheduledSources = async (
   now: Date,
@@ -578,6 +619,7 @@ const buildSummaryText = (result: RunDueAffiliateScrapesResult): string => {
     '',
     `Started: ${result.startedAt.toISOString()}`,
     `Finished: ${result.finishedAt.toISOString()}`,
+    `Published source organizations reconciled for search: ${result.reconciledSourceOrganizationCount}`,
     `Full scrapes due: ${result.dueSourceCount}`,
     `Full scrapes succeeded: ${succeeded}`,
     `Full scrapes failed: ${failed}`,
@@ -638,6 +680,7 @@ export const runDueAffiliateScrapes = async (
     return {
       startedAt,
       finishedAt,
+      reconciledSourceOrganizationCount: 0,
       dueSourceCount: 0,
       lightweightSourceCount: 0,
       results: [],
@@ -650,6 +693,9 @@ export const runDueAffiliateScrapes = async (
 
   try {
     const { dueSources, lightweightSources } = await loadScheduledSources(startedAt, options.limit);
+    const reconciledSourceOrganizationCount = options.dryRun
+      ? 0
+      : await reconcilePublishedSourceOrganizations();
     const results: ScheduledScrapeResultRow[] = [];
     for (const source of dueSources) {
       if (options.dryRun) {
@@ -691,6 +737,7 @@ export const runDueAffiliateScrapes = async (
     const result: RunDueAffiliateScrapesResult = {
       startedAt,
       finishedAt,
+      reconciledSourceOrganizationCount,
       dueSourceCount: dueSources.length,
       lightweightSourceCount: lightweightSources.length,
       results,
