@@ -38,9 +38,34 @@ Normalize official artwork without inventing a new identity. Use a full-canvas o
 
 ## Result states
 
-Use `REVIEW_REQUIRED` only when the package, tests, and validation artifacts exist. Use `FAILED` for a claimed intake that cannot be mapped safely and include a concrete policy, evidence, parsing, or infrastructure reason. Release a claim only for a transient interruption that another run can safely resume.
+Use `REVIEW_REQUIRED` only when the package, tests, and validation artifacts exist. Use `EXPANDED` only when a directory intake has produced at least one accepted, reused, or already-known official organization URL through the governed URL-intake command. Use `FAILED` for a claimed intake that cannot be mapped or expanded safely and include a concrete policy, evidence, parsing, or infrastructure reason. Release a claim only for a transient interruption that another run can safely resume.
 
 Do not let failed or blocked rows prevent queue exhaustion. Do not turn them into positive training examples.
+
+## Directory expansion contract
+
+Directory proposals must be written to a JSON file and submitted with the exact command supplied by the active goal. The command writes the schema-validated `EXPANDED` result file named by `--result`; pass that file to the normal mapping-completion command without hand-editing it. The proposal file shape is:
+
+    {
+      "schemaVersion": 1,
+      "parentJobId": "claimed mapping job id",
+      "parentIntakeId": "claimed directory intake id",
+      "proposals": [
+        {
+          "url": "https://official-club.example/",
+          "organizationName": "Official Club",
+          "region": "Portland, Oregon",
+          "targetKindHints": ["CLUB"],
+          "sportHints": ["Soccer"],
+          "evidenceUrl": "https://stored-directory.example/clubs",
+          "depth": 1
+        }
+      ]
+    }
+
+Every `evidenceUrl` must be a page in the parent intake. `depth` is one for an official site found in the claimed directory and two for an official site reached through one child directory. Depth greater than two, a parent self-link, a `TEAM` target, or a URL without stored evidence is rejected. The command may create review-required intakes, but it queues capture only for domains with a current `ALLOWED` policy. Do not edit the domain policy to make a batch proceed.
+
+An `EXPANDED` completion result has no branch, commit, generated paths, candidates, logo, or review scrapes. It includes the enqueue summary under `directoryExpansion` and uses `MANUAL_REVIEW` as the non-applicable logo disposition. Directory-expansion results are terminal queue bookkeeping and must be excluded from positive mapping training data.
 
 ## Final stopping condition
 
@@ -53,5 +78,7 @@ The goal is complete only when:
     claimableJobs = 0
     eligibleReadyIntakesWithoutJob = 0
     claimedWithoutLease = 0
+    queuedCaptureRuns = 0
+    runningCaptureRuns = 0
 
-Active leases owned by another worker are not available work. Report them separately and do not steal them before expiry.
+When capture runs remain, process them with the exact intake-processing command supplied by the goal and then check queue status again. Active mapping leases owned by another worker are not available work. Report them separately and do not steal them before expiry.

@@ -103,7 +103,9 @@ const main = async () => {
         result,
         authority: result.status === 'REVIEW_REQUIRED'
           ? 'review-required'
-          : 'terminal-failure',
+          : result.status === 'EXPANDED'
+            ? 'directory-expanded'
+            : 'terminal-failure',
       },
       errorMessage: result.errorMessage,
     });

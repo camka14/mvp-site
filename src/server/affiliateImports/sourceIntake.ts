@@ -76,6 +76,7 @@ const VALID_INTAKE_STATUSES = new Set([
   'FAILED',
   'READY_FOR_MAPPING',
   'MAPPING_IN_PROGRESS',
+  'EXPANDED',
 ]);
 
 type JsonRecord = Record<string, unknown>;

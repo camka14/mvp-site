@@ -21,15 +21,19 @@ Also read `/Users/elesesy/.codex/skills/affiliate-scrape-source-builder/SKILL.md
 
 ## Run the queue
 
-1. Use the exact queue-status, claim, and complete commands in the active goal. Keep `--live` only when the goal supplied it; otherwise use the local commands and do not add live access.
-2. Stop successfully only when `claimableJobs`, `eligibleReadyIntakesWithoutJob`, and `claimedWithoutLease` are all zero.
+1. Use the exact queue-status, claim, URL-enqueue, capture-processing, and complete commands in the active goal. Keep `--live` only when the goal supplied it; otherwise use the local commands and do not add live access.
+2. Stop successfully only when `claimableJobs`, `eligibleReadyIntakesWithoutJob`, `claimedWithoutLease`, `queuedCaptureRuns`, and `runningCaptureRuns` are all zero.
 3. Claim exactly one intake with the goal's stable worker ID.
 4. Work only from the exported stored evidence. Do not make a new public-site request when the intake already answers the question.
 5. Complete the entire intake checkpoint before claiming another.
 6. Record the result using the goal's exact completion command and a JSON artifact that passes `codexAffiliateIngestionResultSchema`.
 7. Re-run the queue status and continue.
 
-Do not retry historical failed capture intakes. Do not claim blocked, incomplete, held-out test, duplicate, already promoted, or `TEAM`-only rows. If exclusion is discovered only after claiming, record `FAILED` with a precise non-training reason so the row cannot loop. If a claimed intake otherwise cannot be completed, create a result artifact explaining the exact evidence or policy gap and record it as failed or release it once for a genuinely transient interruption; do not loop on it.
+When the stored intake is an aggregator or club directory, do not create a scraper package for the directory merely to end the claim. Inspect its stored HTML, Markdown, and link artifacts and identify the evidenced official organization websites. Write a proposal JSON using the exact batch contract in `references/completion-contract.md`, submit it through the goal's `affiliate:intakes:enqueue-urls` command, and pass the schema-validated result JSON written by that command to the normal completion command to record the parent job as `EXPANDED`. Do not visit those child sites directly: the shared intake service will deduplicate them, apply the existing policy gate, and queue ScrapingDog for current allowed domains. Run the goal's `affiliate:intakes:process` command while allowed captures are queued, then map the child intakes produced by successful captures.
+
+Expand at most two directory levels. Reject links back to the parent intake, unsupported `TEAM` targets, intermediary/search URLs presented as official sites, and URLs not evidenced by a stored parent page. New or expired domain policies remain review-required; never auto-approve them. Blocked policies never enter capture.
+
+Do not retry historical failed capture intakes. Do not claim blocked, incomplete, held-out test, duplicate, already promoted, or `TEAM`-only rows. If exclusion is discovered only after claiming, record `FAILED` with a precise non-training reason so the row cannot loop. A valid directory expansion is `EXPANDED`, not `FAILED` and not a positive mapping-training example. If a claimed intake otherwise cannot be completed, create a result artifact explaining the exact evidence or policy gap and record it as failed or release it once for a genuinely transient interruption; do not loop on it.
 
 ## Complete one intake
 
@@ -62,7 +66,7 @@ The goal may produce review-ready code, local database records, fixtures, and va
 - push, deploy, or alter production application code outside the source package;
 - change live organization/source/mapping rows unless the launch command and active user authorization explicitly allow live application.
 
-A `REVIEW_REQUIRED` queue result is not approval. Human or independent reviewer approval remains mandatory before publication or training eligibility.
+A `REVIEW_REQUIRED` queue result is not approval. An `EXPANDED` result only records that child URLs were submitted; it is not a source mapping or a training example. Human or independent reviewer approval remains mandatory before publication or training eligibility.
 
 ## Report progress
 
@@ -75,4 +79,5 @@ At exhaustion, report:
 - candidate and validation summaries;
 - official-logo results and manual-review gaps;
 - final queue status;
+- directory-expansion counts and child URLs awaiting policy review;
 - decisions still requiring the user.

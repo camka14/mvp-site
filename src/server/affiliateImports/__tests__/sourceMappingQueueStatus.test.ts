@@ -8,13 +8,14 @@ describe('affiliate mapping queue status', () => {
   it('separates claimable work, active leases, terminal jobs, and ready orphan intakes', () => {
     const status = summarizeAffiliateMappingQueue({
       intakes: [
-        { id: 'queued-intake', status: 'READY_FOR_MAPPING' },
-        { id: 'expired-intake', status: 'MAPPING_IN_PROGRESS' },
-        { id: 'active-intake', status: 'MAPPING_IN_PROGRESS' },
-        { id: 'orphan-ready', status: 'READY_FOR_MAPPING' },
-        { id: 'review-intake', status: 'REVIEW_REQUIRED' },
-        { id: 'failed-intake', status: 'FAILED' },
+        { id: 'queued-intake', status: 'READY_FOR_MAPPING', complianceStatus: 'ALLOWED' },
+        { id: 'expired-intake', status: 'MAPPING_IN_PROGRESS', complianceStatus: 'ALLOWED' },
+        { id: 'active-intake', status: 'MAPPING_IN_PROGRESS', complianceStatus: 'ALLOWED' },
+        { id: 'orphan-ready', status: 'READY_FOR_MAPPING', complianceStatus: 'ALLOWED' },
+        { id: 'review-intake', status: 'REVIEW_REQUIRED', complianceStatus: 'NEEDS_REVIEW' },
+        { id: 'failed-intake', status: 'FAILED', complianceStatus: 'ALLOWED' },
       ],
+      captureRuns: [],
       jobs: [
         { id: 'queued', intakeId: 'queued-intake', status: 'QUEUED', leaseExpiresAt: null },
         {
@@ -61,9 +62,10 @@ describe('affiliate mapping queue status', () => {
   it('reports exhaustion even when historical failed and reviewed work remains', () => {
     const status = summarizeAffiliateMappingQueue({
       intakes: [
-        { id: 'review-intake', status: 'REVIEW_REQUIRED' },
-        { id: 'failed-intake', status: 'FAILED' },
+        { id: 'review-intake', status: 'REVIEW_REQUIRED', complianceStatus: 'NEEDS_REVIEW' },
+        { id: 'failed-intake', status: 'FAILED', complianceStatus: 'ALLOWED' },
       ],
+      captureRuns: [],
       jobs: [
         {
           id: 'review',
@@ -84,17 +86,52 @@ describe('affiliate mapping queue status', () => {
 
   it('surfaces malformed claimed jobs without pretending they are claimable', () => {
     const status = summarizeAffiliateMappingQueue({
-      intakes: [{ id: 'stuck-intake', status: 'MAPPING_IN_PROGRESS' }],
+      intakes: [{ id: 'stuck-intake', status: 'MAPPING_IN_PROGRESS', complianceStatus: 'ALLOWED' }],
       jobs: [{
         id: 'stuck',
         intakeId: 'stuck-intake',
         status: 'CLAIMED',
         leaseExpiresAt: null,
       }],
+      captureRuns: [],
     }, now);
 
     expect(status.claimedWithoutLease).toBe(1);
     expect(status.claimableJobs).toBe(0);
     expect(status.complete).toBe(false);
+  });
+
+  it('waits for allowed capture work but ignores historical or policy-blocked runs', () => {
+    const active = summarizeAffiliateMappingQueue({
+      intakes: [
+        { id: 'allowed', status: 'READY', complianceStatus: 'ALLOWED' },
+        { id: 'blocked', status: 'BLOCKED', complianceStatus: 'BLOCKED' },
+      ],
+      jobs: [{
+        id: 'expanded',
+        intakeId: 'blocked',
+        status: 'EXPANDED',
+        leaseExpiresAt: null,
+      }],
+      captureRuns: [
+        { id: 'queued', intakeId: 'allowed', status: 'QUEUED' },
+        { id: 'blocked-running', intakeId: 'blocked', status: 'RUNNING' },
+        { id: 'historical', intakeId: 'allowed', status: 'SUCCEEDED' },
+      ],
+    }, now);
+
+    expect(active).toEqual(expect.objectContaining({
+      complete: false,
+      queuedCaptureRuns: 1,
+      runningCaptureRuns: 0,
+      activeCaptureRuns: 1,
+      expandedJobs: 1,
+    }));
+
+    expect(summarizeAffiliateMappingQueue({
+      intakes: [{ id: 'allowed', status: 'READY', complianceStatus: 'ALLOWED' }],
+      jobs: [],
+      captureRuns: [{ id: 'historical', intakeId: 'allowed', status: 'SUCCEEDED' }],
+    }, now).complete).toBe(true);
   });
 });

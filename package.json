@@ -38,6 +38,7 @@
     "affiliate:discovery:setup": "tsx scripts/setup-affiliate-source-discovery-campaigns.ts",
     "affiliate:discovery:sync-live": "tsx scripts/sync-affiliate-discovery-state-to-live.ts",
     "affiliate:intake:automation": "tsx scripts/run-affiliate-intake-automation.ts",
+    "affiliate:intakes:enqueue-urls": "tsx scripts/enqueue-affiliate-source-urls.ts",
     "affiliate:mapping:claim": "tsx scripts/claim-affiliate-source-mapping.ts",
     "affiliate:mapping:complete": "tsx scripts/complete-affiliate-source-mapping.ts",
     "affiliate:mapping:queue-status": "tsx scripts/report-affiliate-mapping-queue.ts",

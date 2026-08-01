@@ -51,6 +51,8 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('claimableJobs=0');
     expect(goal).toContain('eligibleReadyIntakesWithoutJob=0');
     expect(goal).toContain('claimedWithoutLease=0');
+    expect(goal).toContain('queuedCaptureRuns=0');
+    expect(goal).toContain('runningCaptureRuns=0');
     expect(goal).toContain('affiliate:mapping:queue-status -- --live');
     expect(goal).toContain(
       'affiliate:mapping:claim -- --live --worker=codex-luna-vm-1',
@@ -58,6 +60,13 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain(
       'affiliate:mapping:complete -- --live --job=<job-id> --result=<result-json>',
     );
+    expect(goal).toContain(
+      'affiliate:intakes:enqueue-urls -- --live --input=<proposal-json> --result=<result-json> --job=<job-id> --worker=codex-luna-vm-1',
+    );
+    expect(goal).toContain(
+      'affiliate:intakes:process -- --live --limit=25 --summary',
+    );
+    expect(goal).toContain('Complete that parent job as EXPANDED');
     expect(goal).toContain('organization setup');
     expect(goal).toContain('official normalized logo');
     expect(goal).toContain('two duplicate-safe review scrapes');
@@ -76,6 +85,9 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).not.toContain('affiliate:mapping:queue-status --');
     expect(goal).toContain(
       'affiliate:mapping:claim -- --worker=codex-luna-vm-1',
+    );
+    expect(goal).toContain(
+      'affiliate:intakes:enqueue-urls -- --input=<proposal-json> --result=<result-json> --job=<job-id> --worker=codex-luna-vm-1',
     );
   });
 

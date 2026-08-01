@@ -105,7 +105,7 @@ export const releaseAffiliateSourceMappingClaim = async (
 
 export const finishAffiliateSourceMappingClaim = async (input: {
   jobId: string;
-  status: 'REVIEW_REQUIRED' | 'APPROVED' | 'FAILED';
+  status: 'REVIEW_REQUIRED' | 'EXPANDED' | 'APPROVED' | 'FAILED';
   branch?: string | null;
   commit?: string | null;
   resultSummary?: Record<string, unknown> | null;
@@ -128,7 +128,11 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   });
   await intakes.update({
     where: { id: job.intakeId },
-    data: { status: input.status === 'APPROVED' ? 'PROMOTED' : input.status },
+    data: {
+      status: input.status === 'APPROVED'
+        ? 'PROMOTED'
+        : input.status,
+    },
   });
   return updated;
 };

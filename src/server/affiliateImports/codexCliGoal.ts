@@ -45,11 +45,26 @@ export const buildCodexAffiliateIngestionObjective = (
     'affiliate:mapping:complete',
     [...liveArguments, '--job=<job-id>', '--result=<result-json>'],
   );
+  const enqueueUrlsCommand = npmRunCommand(
+    'affiliate:intakes:enqueue-urls',
+    [
+      ...liveArguments,
+      '--input=<proposal-json>',
+      '--result=<result-json>',
+      '--job=<job-id>',
+      `--worker=${workerId}`,
+    ],
+  );
+  const processCapturesCommand = npmRunCommand(
+    'affiliate:intakes:process',
+    [...liveArguments, '--limit=25', '--summary'],
+  );
 
   return [
     'Process every eligible BracketIQ affiliate source intake without stopping',
     'until the read-only queue report proves claimableJobs=0 and',
-    'eligibleReadyIntakesWithoutJob=0 and claimedWithoutLease=0.',
+    'eligibleReadyIntakesWithoutJob=0 and claimedWithoutLease=0 and',
+    'queuedCaptureRuns=0 and runningCaptureRuns=0.',
     `Use ${CODEX_AFFILIATE_INGESTION_SKILL} and read`,
     '.agents/skills/ingest-affiliate-intakes/SKILL.md, its completion contract,',
     'AGENTS.md, and docs/affiliate-source-rollout-agent-goal.md before acting.',
@@ -57,6 +72,11 @@ export const buildCodexAffiliateIngestionObjective = (
     `Check progress with ${queueStatusCommand}.`,
     `Claim one intake at a time with ${claimCommand}`,
     `and record each terminal result with ${completeCommand}.`,
+    'When stored evidence is a directory or aggregator, extract every evidenced',
+    'official organization URL into the proposal contract and enqueue it with',
+    `${enqueueUrlsCommand}. Complete that parent job as EXPANDED, then run`,
+    `${processCapturesCommand} while allowed capture work remains and continue`,
+    'claiming the mapping jobs produced by successful child captures.',
     'For each eligible intake create the complete review-ready organization package:',
     'organization setup, EVENT/RENTAL/CLUB mapping or justified extractor, official',
     'outbound URLs, official normalized logo or explicit manual-review disposition,',
@@ -69,8 +89,9 @@ export const buildCodexAffiliateIngestionObjective = (
     'Do not publish candidates or organizations, enable automation, mark mappings',
     'validated, promote training data, push, deploy, or mutate live organization,',
     'source, mapping, or candidate rows.',
-    'The live flag, when present, authorizes only intake evidence reads and mapping-job',
-    'queue transitions.',
+    'The live flag, when present, authorizes intake evidence reads, directory URL intake',
+    'and policy-preflight rows, capture queue/artifact writes, and mapping-job transitions.',
+    'It does not authorize organization, source, mapping, candidate, or publication writes.',
     'Keep output/affiliate-codex-ingestion/progress.jsonl current and finish with a',
     'compact report of review-ready, skipped, and failed intakes plus the final queue status.',
   ].join(' ');

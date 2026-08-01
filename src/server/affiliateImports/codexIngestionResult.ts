@@ -11,13 +11,24 @@ const reviewScrapeSchema = z.object({
   passed: z.boolean(),
 }).strict();
 
+const directoryExpansionSchema = z.object({
+  submitted: z.number().int().positive(),
+  created: z.number().int().nonnegative(),
+  reused: z.number().int().nonnegative(),
+  captureQueued: z.number().int().nonnegative(),
+  reviewRequired: z.number().int().nonnegative(),
+  blocked: z.number().int().nonnegative(),
+  duplicate: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+}).strict();
+
 export const codexAffiliateIngestionResultSchema = z.object({
   schemaVersion: z.literal(1),
   jobId: nonEmptyString,
   intakeId: nonEmptyString,
   sourceKey: nonEmptyString,
   workerId: nonEmptyString,
-  status: z.enum(['REVIEW_REQUIRED', 'FAILED']),
+  status: z.enum(['REVIEW_REQUIRED', 'EXPANDED', 'FAILED']),
   branch: nonEmptyString.nullable(),
   commit: gitCommit.nullable(),
   generatedPaths: z.array(nonEmptyString).default([]),
@@ -34,6 +45,7 @@ export const codexAffiliateIngestionResultSchema = z.object({
     duplicateSafe: z.boolean(),
     warnings: z.array(nonEmptyString).default([]),
   }).strict(),
+  directoryExpansion: directoryExpansionSchema.nullable().optional(),
   errorMessage: nonEmptyString.nullable(),
 }).strict().superRefine((result, context) => {
   if (result.status === 'FAILED') {
@@ -45,6 +57,53 @@ export const codexAffiliateIngestionResultSchema = z.object({
       });
     }
     return;
+  }
+  if (result.status === 'EXPANDED') {
+    const expansion = result.directoryExpansion;
+    if (!expansion) {
+      context.addIssue({
+        code: 'custom',
+        path: ['directoryExpansion'],
+        message: 'EXPANDED ingestion results require a directory expansion summary.',
+      });
+      return;
+    }
+    if (expansion.created + expansion.reused + expansion.duplicate + expansion.rejected !== expansion.submitted) {
+      context.addIssue({
+        code: 'custom',
+        path: ['directoryExpansion'],
+        message: 'Directory expansion outcomes must account for every submitted URL.',
+      });
+    }
+    if (expansion.created + expansion.reused + expansion.duplicate === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['directoryExpansion'],
+        message: 'EXPANDED ingestion results require at least one accepted, reused, or duplicate URL.',
+      });
+    }
+    if (
+      result.branch
+      || result.commit
+      || result.generatedPaths.length
+      || result.candidateCount !== 0
+      || result.reviewScrapes.length
+      || result.errorMessage
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['status'],
+        message: 'EXPANDED ingestion results cannot claim mapping artifacts, candidates, scrapes, commits, or errors.',
+      });
+    }
+    return;
+  }
+  if (result.directoryExpansion) {
+    context.addIssue({
+      code: 'custom',
+      path: ['directoryExpansion'],
+      message: 'Directory expansion summaries are only valid for EXPANDED results.',
+    });
   }
   if (!result.commit) {
     context.addIssue({
@@ -123,3 +182,33 @@ export const codexAffiliateIngestionResultSchema = z.object({
 export type CodexAffiliateIngestionResult = z.infer<
   typeof codexAffiliateIngestionResultSchema
 >;
+
+export const buildCodexAffiliateDirectoryExpansionResult = (input: {
+  jobId: string;
+  intakeId: string;
+  sourceKey: string;
+  workerId: string;
+  directoryExpansion: z.infer<typeof directoryExpansionSchema>;
+  warnings?: string[];
+}): CodexAffiliateIngestionResult => codexAffiliateIngestionResultSchema.parse({
+  schemaVersion: 1,
+  jobId: input.jobId,
+  intakeId: input.intakeId,
+  sourceKey: input.sourceKey,
+  workerId: input.workerId,
+  status: 'EXPANDED',
+  branch: null,
+  commit: null,
+  generatedPaths: [],
+  logoDisposition: 'MANUAL_REVIEW',
+  candidateCount: 0,
+  reviewScrapes: [],
+  validation: {
+    testsPassed: true,
+    diffCheckPassed: true,
+    duplicateSafe: true,
+    warnings: input.warnings ?? [],
+  },
+  directoryExpansion: input.directoryExpansion,
+  errorMessage: null,
+});

@@ -18,7 +18,10 @@ const prismaMock = {
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/id', () => ({ createId: () => 'generated_job' }));
 
-import { claimNextAffiliateSourceIntakeForMapping } from '@/server/affiliateImports/sourceMappingQueue';
+import {
+  claimNextAffiliateSourceIntakeForMapping,
+  finishAffiliateSourceMappingClaim,
+} from '@/server/affiliateImports/sourceMappingQueue';
 
 describe('affiliate source mapping queue', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -53,5 +56,29 @@ describe('affiliate source mapping queue', () => {
   it('returns null when no claimable job exists', async () => {
     prismaMock.affiliateSourceMappingJobs.findFirst.mockResolvedValue(null);
     expect(await claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' })).toBeNull();
+  });
+
+  it('records a directory expansion as a terminal non-mapping intake result', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1', intakeId: 'intake_1', status: 'CLAIMED',
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1', intakeId: 'intake_1', status: 'EXPANDED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'EXPANDED',
+      resultSummary: { submitted: 3 },
+    })).resolves.toEqual(expect.objectContaining({ status: 'EXPANDED' }));
+    expect(prismaMock.affiliateSourceMappingJobs.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'job_1' },
+      data: expect.objectContaining({ status: 'EXPANDED', leaseExpiresAt: null }),
+    }));
+    expect(prismaMock.affiliateSourceIntakes.update).toHaveBeenCalledWith({
+      where: { id: 'intake_1' },
+      data: { status: 'EXPANDED' },
+    });
   });
 });

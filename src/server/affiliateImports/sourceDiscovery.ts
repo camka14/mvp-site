@@ -12,14 +12,11 @@ import {
 } from './affiliateProviderFactory';
 import type { AffiliateFirecrawlClient } from './firecrawlClient';
 import {
-  addAffiliateSourceIntakePage,
-  createAffiliateSourceIntake,
   processNextAffiliateSourceIntakeRun,
   queueAffiliateSourceIntakeRun,
   reviewAffiliateSourceIntakePolicy,
 } from './sourceIntake';
 import {
-  affiliateIntakeUrlKey,
   fetchBoundedPublicResource,
 } from './sourceIntakeUrlSafety';
 import {
@@ -34,6 +31,10 @@ import {
   type AffiliateSourceDiscoveryCampaignInput,
   type AffiliateSourceDomainPolicyReview,
 } from './sourceDiscoveryTypes';
+import {
+  enqueueAffiliateSourceUrl,
+  findAffiliateSourceUrlDuplicate,
+} from './sourceUrlIntake';
 
 const DISCOVERY_LOCK_ID = 4201072126;
 const DEFAULT_SUMMARY_RECIPIENT = 'samuel.r@razumly.com';
@@ -62,8 +63,6 @@ const db = () => ({
   intakes: (prisma as any).affiliateSourceIntakes,
   pages: (prisma as any).affiliateSourceIntakePages,
   intakeRuns: (prisma as any).affiliateSourceIntakeRuns,
-  sources: (prisma as any).affiliateScrapeSources,
-  organizations: (prisma as any).organizations,
   sports: (prisma as any).sports,
 });
 
@@ -75,30 +74,9 @@ const recordValue = (value: unknown): JsonRecord => (
   value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {}
 );
 
-const sourceKeyPart = (value: string): string => value
-  .toLowerCase()
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '')
-  .slice(0, 70);
-
 const nextRunAt = (from: Date, intervalMinutes: number): Date => (
   new Date(from.getTime() + intervalMinutes * 60_000)
 );
-
-const policyIsCurrentAndAllowed = (policy: any, now: Date): boolean => (
-  policy?.status === 'ALLOWED'
-  && (!policy.expiresAt || new Date(policy.expiresAt).getTime() > now.getTime())
-);
-
-const inferredPageRole = (url: string): string => {
-  const path = new URL(url).pathname.toLowerCase();
-  if (/terms|privacy|legal|polic/.test(path)) return 'POLICY';
-  if (/rent|book|reserv/.test(path)) return 'RENTAL';
-  if (/register|signup|tryout|evaluation/.test(path)) return 'REGISTRATION';
-  if (/director|find-a-club|clubs/.test(path)) return 'DIRECTORY';
-  if (path === '/' || !path) return 'HOME';
-  return 'LISTING';
-};
 
 const policyExpiry = (now: Date): Date => new Date(now.getTime() + POLICY_EXPIRY_DAYS * 86_400_000);
 
@@ -243,32 +221,6 @@ const exactUrlVariants = (value: string): string[] => {
   return Array.from(variants);
 };
 
-const duplicateMatchForUrl = async (canonicalUrl: string) => {
-  const urlKey = affiliateIntakeUrlKey(canonicalUrl);
-  const page = await db().pages.findUnique({ where: { urlKey } });
-  if (page) return { status: 'DUPLICATE', matchingIntakeId: page.intakeId, reason: 'EXISTING_INTAKE_PAGE' };
-
-  const urlVariants = exactUrlVariants(canonicalUrl);
-  const source = await db().sources.findFirst({
-    where: {
-      OR: [
-        { listUrl: { in: urlVariants } },
-        { baseUrl: { in: urlVariants } },
-      ],
-    },
-    select: { id: true },
-  });
-  if (source) return { status: 'DUPLICATE', matchingSourceId: source.id, reason: 'EXISTING_APPROVED_SOURCE' };
-
-  const organization = await db().organizations.findFirst({
-    where: { website: { in: urlVariants } },
-    select: { id: true },
-  });
-  return organization
-    ? { status: 'REVIEW_REQUIRED', matchingOrganizationId: organization.id, reason: 'EXISTING_ORGANIZATION_WEBSITE' }
-    : null;
-};
-
 const findSiteIntake = async (
   policyKey: string,
   canonicalUrl: string,
@@ -294,36 +246,6 @@ const findSiteIntake = async (
   });
 };
 
-const preflightPolicyEvidence = async (
-  canonicalUrl: string,
-  fetchResource: typeof fetchBoundedPublicResource,
-): Promise<JsonRecord> => {
-  const origin = new URL(canonicalUrl).origin;
-  const robotsUrl = new URL('/robots.txt', origin).toString();
-  const likelyTermsUrls = [
-    new URL('/terms', origin).toString(),
-    new URL('/terms-of-service', origin).toString(),
-    new URL('/privacy', origin).toString(),
-  ];
-  try {
-    const robots = await fetchResource(robotsUrl, { maxBytes: 512 * 1024, timeoutMs: 15_000 });
-    return {
-      robotsUrl,
-      robotsStatusCode: robots.statusCode,
-      robotsText: robots.body.toString('utf8').slice(0, 20_000),
-      likelyTermsUrls,
-      checkedAt: new Date().toISOString(),
-    };
-  } catch (error) {
-    return {
-      robotsUrl,
-      robotsError: error instanceof Error ? error.message : 'Robots preflight failed.',
-      likelyTermsUrls,
-      checkedAt: new Date().toISOString(),
-    };
-  }
-};
-
 const queueAllowedIntake = async (intakeId: string, userId: string): Promise<void> => {
   const active = await db().intakeRuns.findFirst({
     where: { intakeId, status: { in: ['QUEUED', 'RUNNING'] } },
@@ -344,7 +266,6 @@ const promoteDiscoveryResult = async (
   dependencies: Pick<DiscoveryDependencies, 'fetchResource' | 'now'> = {},
   requestedIntakeId?: string | null,
 ) => {
-  const now = dependencies.now?.() ?? new Date();
   const result = await db().results.findUnique({ where: { id: resultId } });
   if (!result) throw new Error('Affiliate source discovery result not found.');
   if (!['NEW', 'REVIEW_REQUIRED'].includes(result.status)) {
@@ -355,8 +276,7 @@ const promoteDiscoveryResult = async (
   if (!campaign) throw new Error('Affiliate source discovery campaign not found.');
   const resultMetadata = recordValue(result.metadata);
   const discoveryProvider = stringValue(resultMetadata.provider)?.toUpperCase();
-
-  let intake = requestedIntakeId
+  const existingIntake = requestedIntakeId
     ? await db().intakes.findUnique({ where: { id: requestedIntakeId } })
     : result.matchingIntakeId
       ? await db().intakes.findUnique({ where: { id: result.matchingIntakeId } })
@@ -366,13 +286,22 @@ const promoteDiscoveryResult = async (
         campaign.id,
         campaign.region,
       );
-  if (requestedIntakeId && !intake) {
+  if (requestedIntakeId && !existingIntake) {
     throw new Error('Requested affiliate source intake not found.');
   }
-  const pageInput = {
+  const host = new URL(result.canonicalUrl).hostname.replace(/^www\./, '');
+  const proposedName = stringValue(result.title)?.replace(/\s+[|–—-]\s+.*$/, '').trim() || host;
+  const outcome = await enqueueAffiliateSourceUrl({
     url: result.canonicalUrl,
-    role: inferredPageRole(result.canonicalUrl),
+    organizationName: proposedName,
+    region: campaign.region,
     targetKindHints: result.sourceTypeHints,
+    sportHints: result.sportHints,
+    evidenceUrl: null,
+    depth: 0,
+  }, {
+    userId,
+    requestedIntakeId: existingIntake?.id ?? null,
     discoverySource: discoveryProvider === 'SCRAPINGDOG'
       ? 'SCRAPINGDOG_SEARCH'
       : discoveryProvider === 'FIRECRAWL'
@@ -386,64 +315,28 @@ const promoteDiscoveryResult = async (
       score: result.score,
       reasonCodes: result.reasonCodes,
     },
-  };
-  if (intake) {
-    await addAffiliateSourceIntakePage(intake.id, pageInput);
-  } else {
-    const host = new URL(result.canonicalUrl).hostname.replace(/^www\./, '');
-    const proposedName = stringValue(result.title)?.replace(/\s+[|–—-]\s+.*$/, '').trim() || host;
-    const sourceKey = [sourceKeyPart(campaign.region), sourceKeyPart(proposedName), sourceKeyPart(result.policyKey)]
-      .filter(Boolean)
-      .join('-')
-      .slice(0, 100);
-    intake = await createAffiliateSourceIntake({
-      name: proposedName,
-      sourceKey,
-      region: campaign.region,
-      baseUrl: new URL(result.canonicalUrl).origin,
-      targetKindHints: result.sourceTypeHints,
-      notes: `Discovered by campaign ${campaign.name}.`,
-      pages: [pageInput],
-    }, userId);
-  }
-
-  const fetchResource = dependencies.fetchResource ?? fetchBoundedPublicResource;
-  let policy = await db().policies.findUnique({ where: { policyKey: result.policyKey } });
-  if (!policy) {
-    const evidence = await preflightPolicyEvidence(result.canonicalUrl, fetchResource);
-    policy = await db().policies.create({
-      data: {
-        id: createId(),
-        policyKey: result.policyKey,
-        status: 'NEEDS_REVIEW',
-        robotsSummary: stringValue(evidence.robotsError) ?? `robots.txt HTTP ${String(evidence.robotsStatusCode ?? 'unknown')}`,
-        evidence,
-      },
-    });
-  }
-
-  let resultStatus = 'INTAKE_CREATED';
-  if (policy.status === 'BLOCKED') {
-    await reviewAffiliateSourceIntakePolicy(intake.id, {
-      complianceStatus: 'BLOCKED',
-      termsUrl: policy.termsUrl,
-      notes: policy.restrictionNotes,
-    }, policy.reviewedByUserId ?? userId);
-    resultStatus = 'BLOCKED';
-  } else if (policyIsCurrentAndAllowed(policy, now)) {
-    await reviewAffiliateSourceIntakePolicy(intake.id, {
-      complianceStatus: 'ALLOWED',
-      termsUrl: policy.termsUrl,
-      notes: policy.restrictionNotes,
-    }, policy.reviewedByUserId ?? userId);
-    await queueAllowedIntake(intake.id, userId);
-  } else {
-    resultStatus = 'REVIEW_REQUIRED';
-  }
+  }, dependencies);
+  const resultStatus = outcome.action.endsWith('BLOCKED')
+    ? 'BLOCKED'
+    : outcome.action.endsWith('REVIEW_REQUIRED')
+      ? 'REVIEW_REQUIRED'
+      : outcome.action === 'DUPLICATE'
+        ? 'DUPLICATE'
+        : 'INTAKE_CREATED';
   await db().results.update({
     where: { id: result.id },
-    data: { status: resultStatus, matchingIntakeId: intake.id },
+    data: {
+      status: resultStatus,
+      matchingIntakeId: outcome.intakeId,
+      matchingSourceId: outcome.matchingSourceId,
+      matchingOrganizationId: outcome.matchingOrganizationId,
+    },
   });
+  if (!outcome.intakeId) {
+    throw new Error(`Discovery result resolved to ${outcome.reason ?? outcome.action} without an intake.`);
+  }
+  const intake = await db().intakes.findUnique({ where: { id: outcome.intakeId } });
+  if (!intake) throw new Error('Promoted affiliate source intake not found.');
   return intake;
 };
 
@@ -556,7 +449,7 @@ const persistDiscoveryResult = async (input: {
     ?? `https://invalid-source.invalid/${affiliateDiscoveryUrlKey(originalUrl)}`;
   const urlKey = affiliateDiscoveryUrlKey(fallbackCanonical);
   const duplicate = evaluation.canonicalUrl && evaluation.policyKey
-    ? await duplicateMatchForUrl(evaluation.canonicalUrl)
+    ? await findAffiliateSourceUrlDuplicate(evaluation.canonicalUrl)
     : null;
   const siteIntake = !duplicate && evaluation.canonicalUrl && evaluation.policyKey
     ? await findSiteIntake(

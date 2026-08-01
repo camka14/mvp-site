@@ -1,6 +1,9 @@
 /** @jest-environment node */
 
-import { codexAffiliateIngestionResultSchema } from '../codexIngestionResult';
+import {
+  buildCodexAffiliateDirectoryExpansionResult,
+  codexAffiliateIngestionResultSchema,
+} from '../codexIngestionResult';
 
 const HASH = 'a'.repeat(64);
 const successfulResult = {
@@ -106,5 +109,77 @@ describe('Codex affiliate ingestion result', () => {
       status: 'FAILED',
       errorMessage: null,
     })).toThrow('require an error message');
+  });
+
+  it('accepts a directory expansion only when every submitted URL is accounted for', () => {
+    const expanded = {
+      ...successfulResult,
+      status: 'EXPANDED',
+      branch: null,
+      commit: null,
+      generatedPaths: [],
+      logoDisposition: 'MANUAL_REVIEW',
+      candidateCount: 0,
+      reviewScrapes: [],
+      validation: {
+        testsPassed: true,
+        diffCheckPassed: true,
+        duplicateSafe: true,
+        warnings: [],
+      },
+      directoryExpansion: {
+        submitted: 5,
+        created: 2,
+        reused: 1,
+        captureQueued: 2,
+        reviewRequired: 1,
+        blocked: 0,
+        duplicate: 1,
+        rejected: 1,
+      },
+      errorMessage: null,
+    };
+
+    expect(codexAffiliateIngestionResultSchema.parse(expanded)).toEqual(expanded);
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...expanded,
+      directoryExpansion: { ...expanded.directoryExpansion, submitted: 6 },
+    })).toThrow('account for every submitted URL');
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...expanded,
+      directoryExpansion: {
+        ...expanded.directoryExpansion,
+        created: 0,
+        reused: 0,
+        duplicate: 0,
+        rejected: 5,
+      },
+    })).toThrow('at least one accepted, reused, or duplicate URL');
+  });
+
+  it('builds the exact terminal result written by the directory enqueue command', () => {
+    expect(buildCodexAffiliateDirectoryExpansionResult({
+      jobId: 'job_1',
+      intakeId: 'intake_1',
+      sourceKey: 'directory-source',
+      workerId: 'codex-luna-vm-1',
+      directoryExpansion: {
+        submitted: 2,
+        created: 1,
+        reused: 0,
+        captureQueued: 1,
+        reviewRequired: 0,
+        blocked: 0,
+        duplicate: 1,
+        rejected: 0,
+      },
+      warnings: [],
+    })).toEqual(expect.objectContaining({
+      status: 'EXPANDED',
+      branch: null,
+      commit: null,
+      generatedPaths: [],
+      directoryExpansion: expect.objectContaining({ submitted: 2, duplicate: 1 }),
+    }));
   });
 });

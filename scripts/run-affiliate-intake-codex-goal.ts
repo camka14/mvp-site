@@ -83,9 +83,9 @@ const main = async () => {
     goal,
     authority: useLiveIntakes
       ? containerIsolated
-        ? 'container-isolated-live-intake-read-and-mapping-queue-only'
-        : 'live-intake-read-and-mapping-queue-only'
-      : 'local-intake-and-mapping-queue-only',
+        ? 'container-isolated-live-directory-intake-capture-and-mapping-queue'
+        : 'live-directory-intake-capture-and-mapping-queue'
+      : 'local-directory-intake-capture-and-mapping-queue',
   }, null, 2));
 
   if (isDryRun) return;

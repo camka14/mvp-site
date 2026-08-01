@@ -1,6 +1,6 @@
 # Goal: Exhaust the eligible affiliate intake queue
 
-Work through every eligible `AffiliateSourceIntakes` mapping job and leave each one either fully configured for repeatable affiliate scraping and organization review, accurately marked failed/blocked, or explicitly deferred with a concrete reason. Stop only when `npm run affiliate:mapping:queue-status -- --live` reports `claimableJobs = 0`, `eligibleReadyIntakesWithoutJob = 0`, and `claimedWithoutLease = 0`.
+Work through every eligible `AffiliateSourceIntakes` mapping job and leave each one either fully configured for repeatable affiliate scraping and organization review, expanded into evidenced official organization intakes, accurately marked failed/blocked, or explicitly deferred with a concrete reason. Stop only when `npm run affiliate:mapping:queue-status -- --live` reports `claimableJobs = 0`, `eligibleReadyIntakesWithoutJob = 0`, `claimedWithoutLease = 0`, `queuedCaptureRuns = 0`, and `runningCaptureRuns = 0`.
 
 Use the existing process and data contract as authoritative:
 
@@ -12,7 +12,7 @@ Use the existing process and data contract as authoritative:
 
 Also use `/Users/elesesy/.codex/skills/affiliate-scrape-source-builder/SKILL.md` and its `references/import-contract.md` when that user-level skill exists. The repository-local skill and completion contract remain authoritative on the VM.
 
-Do not redesign the importer, add schema fields, or change affiliate data structures unless the user explicitly requests it.
+Do not redesign the importer or add schema fields unless the user explicitly requests it. Directory child URLs use the existing intake/page/run records through `npm run affiliate:intakes:enqueue-urls`; do not add them to campaign cursors by hand.
 
 ## Evidence Source
 
@@ -21,7 +21,7 @@ Use the live database-backed intake as the primary source of website information
 1. Find the intake with `npm run affiliate:intake:export -- --live --list --search <name-or-host>` when the key is unknown.
 2. Export the stored run with `npm run affiliate:intake:export -- --live --url <public-url>` or `--source-key <key>`. Use `--run-id <id>` when reproducing an exact reviewed run.
 3. Read `manifest.json` and `source-evidence.json`, then inspect stored `PAGE_SCREENSHOT`, `PAGE_HTML`, `PAGE_MARKDOWN`, `PAGE_LINKS`, `PAGE_IMAGES`, `PAGE_BRANDING`, `LOGO_CANDIDATE`, robots, and provider-envelope artifacts as applicable.
-4. If the intake is missing, unreviewed, failed, or lacks the page needed for a safe mapping, record the exact gap and skip it for this goal. Do not retry a known failing source or silently replace the intake workflow with an undocumented browser scrape.
+4. If the intake is missing, unreviewed, failed, or lacks the page needed for a safe mapping or directory expansion, record the exact gap and skip it for this goal. Do not retry a known failing source or silently replace the intake workflow with an undocumented browser scrape.
 5. Use a direct browser or ScrapingDog request only as a documented supplemental check when the stored evidence cannot answer a specific mapping question. Do not use it to bypass a blocked policy decision.
 
 Every checked-in setup script must define or clearly comment a `sourceEvidence` object containing the live intake source key, run ID, capture timestamp, provider, source page URLs, and artifact kinds used. Persist that object in the existing `AffiliateScrapeSources.metadata.sourceEvidence` JSON. The source-registry note must cite the same intake/run so the origin of descriptions, dates, prices, divisions, locations, action URLs, and logo choices is reproducible.
@@ -41,6 +41,10 @@ Never scrape a `Blocked` source. If robots, terms, authentication, bot protectio
 Exclude held-out test domains and `TEAM`-only sources. Never create affiliate teams; classify supported evidence as `EVENT`, `RENTAL`, or `CLUB`. If either exclusion is discovered only after the row is claimed, finish it as `FAILED` with a specific held-out or unsupported-kind reason so it cannot become a positive training example or loop back into the claimable queue.
 
 The registry and `output/affiliate-codex-ingestion/progress.jsonl` are the progress trackers. Update both after every source rather than waiting until the end of a batch.
+
+For a stored aggregator or club directory, extract all evidenced official organization websites to the proposal JSON contract in the repository-local skill. Submit them with the exact `affiliate:intakes:enqueue-urls` command in the active goal, then pass the schema-validated result file written by that command to `affiliate:mapping:complete` to complete the directory job as `EXPANDED`. The enqueue service owns canonicalization, deduplication, compliance reuse, and capture queueing. It queues ScrapingDog only for current `ALLOWED` domains; new or expired policies remain review-required and blocked policies remain blocked. Do not change policy decisions to force capture. Do not expand more than two directory levels or submit `TEAM` targets.
+
+When queue status reports allowed queued/running captures, run the goal's `affiliate:intakes:process` command and recheck status. Successful captures create their own mapping jobs, which the same Luna goal must continue claiming without another prompt.
 
 ## Per-Source Workflow
 
@@ -82,7 +86,7 @@ After committing, record the terminal queue result:
 
     npm run affiliate:mapping:complete -- --live --job=<job-id> --result=<result-json>
 
-Use `REVIEW_REQUIRED` only for a passing package. Use `FAILED` with an exact evidence, policy, parser, or infrastructure reason when a claimed intake cannot be completed safely. Failed rows are not positive training examples and do not prevent queue exhaustion.
+Use `REVIEW_REQUIRED` only for a passing package. Use `EXPANDED` only for a directory whose proposal command accepted, reused, or deduplicated at least one evidenced official URL. Use `FAILED` with an exact evidence, policy, parser, or infrastructure reason when a claimed intake cannot be completed safely. Expanded and failed rows are not positive mapping-training examples and do not prevent queue exhaustion.
 
 ## Source Handoff
 
@@ -98,6 +102,6 @@ After each batch, report:
 - test results and commit hashes;
 - decisions requiring user input.
 
-After every terminal result, run the queue status again and continue until all three completion counts are zero. Historical failed/reviewed jobs and active leases owned by another worker remain visible in the final report but are not available work. A claimed job with no lease is malformed rather than complete and must be reported for operator repair.
+After every terminal result, run the queue status again and continue until all five completion counts are zero. Process allowed capture runs before concluding that no new mapping jobs exist. Historical expanded/failed/reviewed jobs and active leases owned by another worker remain visible in the final report but are not available work. A claimed job with no lease is malformed rather than complete and must be reported for operator repair.
 
-Do not push, deploy, modify live organization/source/mapping/candidate rows, publish candidates, approve training data, or enable live schedules unless the active user request explicitly authorizes those actions.
+The live goal may create/reuse intake pages, policy-preflight rows, capture runs, and stored capture artifacts through the governed commands. Do not push, deploy, modify live organization/source/mapping/candidate rows, publish candidates, approve training data, alter domain-policy decisions, or enable live schedules unless the active user request explicitly authorizes those actions.

@@ -1,6 +1,7 @@
 export type AffiliateMappingQueueIntakeRow = {
   id: string;
   status: string;
+  complianceStatus: string;
 };
 
 export type AffiliateMappingQueueJobRow = {
@@ -10,13 +11,20 @@ export type AffiliateMappingQueueJobRow = {
   leaseExpiresAt: Date | null;
 };
 
+export type AffiliateMappingQueueCaptureRunRow = {
+  id: string;
+  intakeId: string;
+  status: string;
+};
+
 export type AffiliateMappingQueueStatusRows = {
   intakes: AffiliateMappingQueueIntakeRow[];
   jobs: AffiliateMappingQueueJobRow[];
+  captureRuns: AffiliateMappingQueueCaptureRunRow[];
 };
 
 export type AffiliateMappingQueueStatus = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   evaluatedAt: string;
   complete: boolean;
   claimableJobs: number;
@@ -28,6 +36,10 @@ export type AffiliateMappingQueueStatus = {
   readyIntakeIdsWithoutJob: string[];
   reviewRequiredJobs: number;
   failedJobs: number;
+  expandedJobs: number;
+  queuedCaptureRuns: number;
+  runningCaptureRuns: number;
+  activeCaptureRuns: number;
   intakeStatusCounts: Record<string, number>;
   jobStatusCounts: Record<string, number>;
 };
@@ -64,14 +76,27 @@ export const summarizeAffiliateMappingQueue = (
     .map((intake) => intake.id)
     .sort();
   const claimableJobs = queuedJobs + expiredLeases;
+  const allowedIntakeIds = new Set(
+    input.intakes
+      .filter((intake) => intake.complianceStatus === 'ALLOWED')
+      .map((intake) => intake.id),
+  );
+  const queuedCaptureRuns = input.captureRuns.filter((run) => (
+    run.status === 'QUEUED' && allowedIntakeIds.has(run.intakeId)
+  )).length;
+  const runningCaptureRuns = input.captureRuns.filter((run) => (
+    run.status === 'RUNNING' && allowedIntakeIds.has(run.intakeId)
+  )).length;
+  const activeCaptureRuns = queuedCaptureRuns + runningCaptureRuns;
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     evaluatedAt: now.toISOString(),
     complete: (
       claimableJobs === 0
       && readyIntakeIdsWithoutJob.length === 0
       && claimedWithoutLease === 0
+      && activeCaptureRuns === 0
     ),
     claimableJobs,
     queuedJobs,
@@ -82,6 +107,10 @@ export const summarizeAffiliateMappingQueue = (
     readyIntakeIdsWithoutJob,
     reviewRequiredJobs: input.jobs.filter((job) => job.status === 'REVIEW_REQUIRED').length,
     failedJobs: input.jobs.filter((job) => job.status === 'FAILED').length,
+    expandedJobs: input.jobs.filter((job) => job.status === 'EXPANDED').length,
+    queuedCaptureRuns,
+    runningCaptureRuns,
+    activeCaptureRuns,
     intakeStatusCounts: countStatuses(input.intakes.map((intake) => intake.status)),
     jobStatusCounts: countStatuses(input.jobs.map((job) => job.status)),
   };
