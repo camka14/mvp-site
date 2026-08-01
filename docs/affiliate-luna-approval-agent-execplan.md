@@ -20,6 +20,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-07-31) Added a low-cost polling loop that launches Luna only when approval work is claimable and awaits the goal process before checking again.
 - [x] (2026-07-31) Added focused tests, validated the skill, and passed repository-wide checks.
 - [x] (2026-07-31) Prepared the scoped implementation commit without staging unrelated VM scrape-timer and legacy-source work.
+- [ ] (2026-08-01) Repair the producer-to-reviewer handoff so exact commits and disposable review scrapes are independently verifiable across isolated containers.
 
 ## Surprises & Discoveries
 
@@ -38,6 +39,9 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - Observation: the official Codex manual documents `codex exec` as the supported non-interactive interface, `workspace-write` as the preferred explicit sandbox for unattended edits, and persisted goals as stable.
   Evidence: the current Codex manual's CLI, non-interactive, and configuration sections were checked before finalizing the launcher arguments.
 
+- Observation: the deployed reviewer looked for producer commits in its own checkout and disposable review-scrape IDs in production, causing systematic false rejections.
+  Evidence: every official-logo rejection or deferral cited commit/package and review-scrape visibility, while the claimed runs exist in `bracketiq-affiliate-codex-postgres` and the commits exist in the mapper checkout.
+
 ## Decision Log
 
 - Decision: Create a separate durable `AffiliateApprovalJobs` queue instead of overloading mapping-job status or embedding leases inside policy JSON.
@@ -51,6 +55,10 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - Decision: Require a different reviewer identity from the producer identity recorded in a mapping package.
   Rationale: an agent should not independently approve its own work. The deterministic completion service enforces this even if the prompt is ignored.
   Date/Author: 2026-07-31 / Codex
+
+- Decision: Verify immutable producer files through a read-only producer mount and review scrapes through the disposable database.
+  Rationale: independent review requires access to producer evidence, not duplication into the reviewer's checkout or production. Production remains authoritative for safety state and guarded application only.
+  Date/Author: 2026-08-01 / Codex
 
 - Decision: Let Luna choose `ALLOW`, `BLOCK`, or `DEFER` for domain policy and `APPROVE`, `REJECT`, or `DEFER` for mapping packages, but validate every decision through a strict JSON schema and server-side preconditions.
   Rationale: the model handles evidence interpretation while code owns identities, allowed transitions, and side effects.
@@ -148,9 +156,12 @@ The public commands are:
     npm run affiliate:approvals:queue-status -- --live
     npm run affiliate:approvals:claim -- --live --worker=<reviewer-id>
     npm run affiliate:approvals:complete -- --live --job=<approval-job-id> --result=<review-json>
+    npm run affiliate:approvals:package-evidence -- --live --job=<mapping-job-id>
     npm run affiliate:approvals:codex-goal -- --live --worker=<reviewer-id>
     npm run affiliate:approvals:loop -- --live --interval-seconds=300
 
 Revision note (2026-07-31): Created the plan after auditing existing intake policy and mapping-package approval boundaries. The design uses a separate durable approval queue so reviewer identity and side effects remain independently auditable.
 
 Revision note (2026-07-31): Recorded the completed queue, bounded policy evidence, independent Luna skill/goal, single-child polling invariant, and validation results. Deployment and authenticated VM execution remain intentionally separate from this code commit.
+
+Revision note (2026-08-01): Recorded the cross-container evidence mismatch and the required read-only producer/disposable-database handoff repair.

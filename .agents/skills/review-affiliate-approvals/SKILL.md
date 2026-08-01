@@ -46,6 +46,28 @@ intake evidence, commit, changed-file scope, test evidence, parser/mapping,
 official-logo proof, two stable duplicate-safe scrapes, candidate count,
 location resolution, and live safety state.
 
+Run the mapping-package evidence command from the goal before deciding. The
+command verifies the exact producer commit and generated files through the
+read-only producer repository, and verifies both review-scrape rows through the
+disposable validation database. Inspect producer files with the exact commit
+identifiers reported by that command; do not require the commit or generated
+paths to exist in the reviewer's own checkout.
+
+Keep the evidence stores separate. The disposable database proves extraction,
+candidate content, and duplicate safety. The live database proves only queue
+identity and the unpublished, disabled, unvalidated safety state before guarded
+application. A disposable review-scrape ID is not expected to exist in live,
+and its absence there is not a rejection or deferral reason.
+
+Before a package is approved for the first time, an evidence-matched live
+source and organization normally do not exist. Treat the evidence command's
+`NOT_APPLIED` live-safety state as expected unless it finds a conflicting or
+already-published record. `APPROVE` invokes the guarded application boundary,
+which creates the review state and then deterministically requires the
+organization to be unlisted, its public page disabled, recurring scraping
+disabled, and its mapping unvalidated. Do not reject a valid package merely
+because those rows have not been created before approval.
+
 For every produced event, club, or rental with an evidenced address, city,
 venue, or facility, independently compare the stored evidence with the
 candidate and backing target. The target must have finite in-range coordinates

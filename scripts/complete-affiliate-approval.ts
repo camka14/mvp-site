@@ -2,7 +2,14 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { Client } from 'pg';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
+import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
+import {
+  inspectAffiliateDisposableReviewScrapes,
+  inspectAffiliateProducerPackage,
+  resolveAffiliateProducerRepositoryRoot,
+} from '../src/server/affiliateImports/producerPackageEvidence';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -15,6 +22,7 @@ const readOption = (name: string): string | undefined => {
 };
 
 const useLive = process.argv.includes('--live');
+const disposableDatabaseUrl = process.env.DATABASE_URL?.trim();
 if (useLive) {
   configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
@@ -41,7 +49,31 @@ const main = async () => {
   const { completeAffiliateApproval } = await import(
     '../src/server/affiliateImports/approvalQueue'
   );
+  let disposable: Client | null = null;
   try {
+    if (result.subjectType === 'MAPPING_PACKAGE' && result.decision === 'APPROVE') {
+      if (!disposableDatabaseUrl) {
+        throw new Error('Disposable DATABASE_URL is required for mapping approval.');
+      }
+      const mappingJob = await (prisma as any).affiliateSourceMappingJobs.findUnique({
+        where: { id: result.subjectKey },
+      });
+      if (!mappingJob) throw new Error('Affiliate source mapping job not found.');
+      const envelope = mappingJob.resultSummary && typeof mappingJob.resultSummary === 'object'
+        ? mappingJob.resultSummary as Record<string, unknown>
+        : {};
+      const ingestionResult = codexAffiliateIngestionResultSchema.parse(envelope.result);
+      inspectAffiliateProducerPackage({
+        repositoryRoot: resolveAffiliateProducerRepositoryRoot(),
+        result: ingestionResult,
+      });
+      disposable = new Client({ connectionString: disposableDatabaseUrl });
+      await disposable.connect();
+      await inspectAffiliateDisposableReviewScrapes({
+        queryable: disposable,
+        result: ingestionResult,
+      });
+    }
     const updated = await completeAffiliateApproval(result, {
       applyMappingPackage: async (mappingJobId, reviewerId, approvalResult) => {
         if (!useLive) {
@@ -69,6 +101,7 @@ const main = async () => {
       resultPath: absoluteResultPath,
     }, null, 2));
   } finally {
+    await disposable?.end().catch(() => undefined);
     await (prisma as any).$disconnect();
   }
 };

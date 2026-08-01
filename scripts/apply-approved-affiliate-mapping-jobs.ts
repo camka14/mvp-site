@@ -8,6 +8,11 @@ import {
   resolveApprovedAffiliateSetupScript,
   selectAffiliateMappingLiveApprovalCandidates,
 } from '../src/server/affiliateImports/codexIngestionApproval';
+import {
+  inspectAffiliateProducerPackage,
+  materializeAffiliateProducerCommit,
+  resolveAffiliateProducerRepositoryRoot,
+} from '../src/server/affiliateImports/producerPackageEvidence';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -80,6 +85,9 @@ const main = async () => {
     }
 
     const repositoryRoot = process.cwd();
+    const producerRepositoryRoot = process.env.AFFILIATE_PRODUCER_REPOSITORY_ROOT?.trim()
+      ? resolveAffiliateProducerRepositoryRoot()
+      : repositoryRoot;
     const tsxExecutable = path.join(repositoryRoot, 'node_modules', '.bin', 'tsx');
     if (!fs.existsSync(tsxExecutable)) {
       throw new Error(`tsx executable was not found at ${tsxExecutable}`);
@@ -108,23 +116,39 @@ const main = async () => {
           throw new Error(`Mapping job ${candidate.jobId} is not owned by the supplied approval claim.`);
         }
       }
-      const setupScript = resolveApprovedAffiliateSetupScript(
-        repositoryRoot,
-        candidate.setupScript,
-      );
-      if (!fs.existsSync(setupScript)) {
-        throw new Error(`Approved setup script is missing: ${candidate.setupScript}`);
-      }
-      const child = spawnSync(tsxExecutable, [setupScript, '--live', '--scrape'], {
-        cwd: repositoryRoot,
-        env: process.env,
-        stdio: 'inherit',
+      const producerEvidence = inspectAffiliateProducerPackage({
+        repositoryRoot: producerRepositoryRoot,
+        result: candidate.result,
       });
-      if (child.error) throw child.error;
-      if (child.status !== 0) {
-        throw new Error(
-          `Approved setup failed for ${candidate.result.sourceKey} with exit ${String(child.status)}.`,
+      if (producerEvidence.setupScript !== candidate.setupScript) {
+        throw new Error(`Reviewed setup script does not match ${candidate.setupScript}.`);
+      }
+      const materialized = materializeAffiliateProducerCommit({
+        repositoryRoot: producerRepositoryRoot,
+        commit: producerEvidence.commit,
+        nodeModulesRoot: repositoryRoot,
+      });
+      try {
+        const setupScript = resolveApprovedAffiliateSetupScript(
+          materialized.repositoryRoot,
+          candidate.setupScript,
         );
+        if (!fs.existsSync(setupScript)) {
+          throw new Error(`Approved setup script is missing: ${candidate.setupScript}`);
+        }
+        const child = spawnSync(tsxExecutable, [setupScript, '--live', '--scrape'], {
+          cwd: materialized.repositoryRoot,
+          env: process.env,
+          stdio: 'inherit',
+        });
+        if (child.error) throw child.error;
+        if (child.status !== 0) {
+          throw new Error(
+            `Approved setup failed for ${candidate.result.sourceKey} with exit ${String(child.status)}.`,
+          );
+        }
+      } finally {
+        materialized.cleanup();
       }
 
       const sources = await db.affiliateScrapeSources.findMany({

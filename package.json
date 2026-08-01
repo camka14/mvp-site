@@ -66,6 +66,8 @@
     "affiliate:approvals:queue-status": "tsx scripts/report-affiliate-approval-queue.ts",
     "affiliate:approvals:claim": "tsx scripts/claim-affiliate-approval.ts",
     "affiliate:approvals:complete": "tsx scripts/complete-affiliate-approval.ts",
+    "affiliate:approvals:package-evidence": "tsx scripts/report-affiliate-mapping-package-evidence.ts",
+    "affiliate:approvals:retry-handoff": "tsx scripts/retry-affiliate-mapping-handoff-approvals.ts",
     "affiliate:approvals:policy-evidence": "tsx scripts/refresh-affiliate-approval-policy-evidence.ts",
     "affiliate:approvals:codex-goal": "tsx scripts/run-affiliate-approval-codex-goal.ts",
     "affiliate:approvals:codex-goal:dry-run": "tsx scripts/run-affiliate-approval-codex-goal.ts --dry-run",

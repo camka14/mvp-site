@@ -45,9 +45,15 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('affiliate:approvals:queue-status -- --live');
     expect(goal).toContain('affiliate:approvals:claim -- --live --worker=codex-luna-approval-vm-1');
     expect(goal).toContain('affiliate:approvals:policy-evidence -- --live --policy=<policy-key>');
+    expect(goal).toContain('affiliate:approvals:package-evidence -- --live --job=<mapping-job-id>');
     expect(goal).toContain('affiliate:approvals:complete -- --live');
     expect(goal).toContain('claimableJobs=0, activeLeases=0, and claimedWithoutLease=0');
     expect(goal).toContain('Never approve a package produced by this reviewer identity');
+    expect(goal).toContain('disposable validation database review-scrape evidence');
+    expect(goal).toContain('Use the live database only for the approval queue');
+    expect(goal).toContain('expected NOT_APPLIED state, not a rejection reason');
+    expect(goal).toContain('guarded APPROVE completion creates the package');
+    expect(goal).toContain('do not exist in production');
     expect(goal).toContain('Never publish an organization or candidate');
   });
 

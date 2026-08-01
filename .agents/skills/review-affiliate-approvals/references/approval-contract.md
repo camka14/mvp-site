@@ -55,6 +55,23 @@ resolvable place. Cite the stored intake artifact plus the candidate/target ID
 or focused test output in `evidenceReferences`; never treat an unstored browser
 impression or a nearby organization's coordinates as proof.
 
+The mapping-package evidence command is the authoritative bridge between the
+producer and reviewer containers. Its producer-commit and file hashes come from
+the producer checkout mounted read-only. Its two review-scrape rows and current
+candidate count come from the disposable validation database. Live records are
+authoritative only for approval identity and unpublished/disabled/unvalidated
+safety checks. Never look for disposable run IDs in live or reject a package
+because the reviewer's own Git checkout cannot resolve a commit that the
+evidence command verified in the producer repository.
+
+For a not-yet-applied package, zero evidence-matched live sources is the normal
+pre-approval state. The reviewer checks that no conflicting or published live
+row exists; it does not require the future organization/source/mapping rows to
+exist. The guarded application command creates those rows only after `APPROVE`
+and rejects completion unless the resulting organization is unlisted with its
+public page disabled, recurring scraping is disabled, and the mapping remains
+unvalidated.
+
 Positive decisions have no blocking issues. `BLOCK`, `REJECT`, and `DEFER`
 must contain at least one concrete blocking issue. Evidence references must use
 stable identifiers from the claim, database, repository commit, test output, or
