@@ -59,6 +59,12 @@ identity and the unpublished, disabled, unvalidated safety state before guarded
 application. A disposable review-scrape ID is not expected to exist in live,
 and its absence there is not a rejection or deferral reason.
 
+The approval loop preserves the disposable connection as
+`DATABASE_URL_DISPOSABLE_VALIDATION` before switching `DATABASE_URL` to live.
+Do not overwrite or unset that value. Mapping-package evidence commands resolve
+the disposable URL from the preserved variable so child goal processes cannot
+silently query production for disposable run IDs.
+
 Before a package is approved for the first time, an evidence-matched live
 source and organization normally do not exist. Treat the evidence command's
 `NOT_APPLIED` live-safety state as expected unless it finds a conflicting or

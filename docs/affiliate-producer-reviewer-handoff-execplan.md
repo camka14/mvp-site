@@ -41,6 +41,9 @@ The observable outcome is that a mapping package with an official logo and valid
 - Observation: 64 terminal decisions name both the unavailable package and missing live review scrapes, while 63 older deferred decisions name only the unavailable setup script and one records the unresolved commit in `evidenceReferences` instead of `blockingIssues`.
   Evidence: the first live retry preview selected 64 rows with the narrow two-part wording rule; a grouped decision audit accounted for all 130 official-logo rows and showed that all three forms describe the same producer/reviewer handoff.
 
+- Observation: the first restarted reviewer still queried production for disposable run IDs even though both Docker networks were correct.
+  Evidence: `run-affiliate-approval-loop.ts` changed `process.env.DATABASE_URL` to live before spawning the Codex goal. The child evidence script inherited that live value, and dotenv correctly refused to overwrite it with the mounted disposable URL. Direct one-off evidence and direct disposable SQL both found the same two run IDs.
+
 ## Decision Log
 
 - Decision: mount the producer checkout read-only into the reviewer container instead of pushing hundreds of source commits to GitHub.
@@ -61,6 +64,10 @@ The observable outcome is that a mapping package with an official logo and valid
 
 - Decision: treat `NOT_APPLIED` as the expected live pre-approval state.
   Rationale: the reviewer must reject a conflicting or already-published live object, but it cannot require a future disabled source to exist before the guarded approval boundary creates and verifies it.
+  Date/Author: 2026-08-01 / Codex
+
+- Decision: preserve the disposable URL under a purpose-specific environment variable before the parent loop switches Prisma to live.
+  Rationale: child processes inherit the parent's environment. A stable `DATABASE_URL_DISPOSABLE_VALIDATION` prevents the generic `DATABASE_URL` mutation from redirecting package evidence to production while retaining live Prisma access for the queue and guarded application.
   Date/Author: 2026-08-01 / Codex
 
 ## Outcomes & Retrospective

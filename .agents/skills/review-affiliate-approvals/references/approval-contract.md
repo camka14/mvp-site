@@ -64,6 +64,11 @@ safety checks. Never look for disposable run IDs in live or reject a package
 because the reviewer's own Git checkout cannot resolve a commit that the
 evidence command verified in the producer repository.
 
+The parent approval loop preserves the original disposable database URL in
+`DATABASE_URL_DISPOSABLE_VALIDATION` before changing `DATABASE_URL` to live.
+Evidence and completion commands use that preserved URL. An inherited live
+`DATABASE_URL` must never be treated as the disposable validation database.
+
 For a not-yet-applied package, zero evidence-matched live sources is the normal
 pre-approval state. The reviewer checks that no conflicting or published live
 row exists; it does not require the future organization/source/mapping rows to

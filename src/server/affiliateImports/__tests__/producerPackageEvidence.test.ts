@@ -10,6 +10,8 @@ import {
   inspectAffiliateProducerPackage,
   materializeAffiliateProducerCommit,
   normalizeAffiliateProducerPath,
+  preserveAffiliateDisposableDatabaseUrl,
+  resolveAffiliateDisposableDatabaseUrl,
 } from '../producerPackageEvidence';
 
 const HASH = 'a'.repeat(64);
@@ -59,6 +61,17 @@ const createRepository = () => {
 };
 
 describe('affiliate producer package evidence', () => {
+  it('preserves the disposable database URL before the live URL replaces DATABASE_URL', () => {
+    const environment: Record<string, string | undefined> = {
+      DATABASE_URL: 'postgresql://disposable/affiliate_codex',
+    };
+    expect(preserveAffiliateDisposableDatabaseUrl(environment))
+      .toBe('postgresql://disposable/affiliate_codex');
+    environment.DATABASE_URL = 'postgresql://live/bracketiq';
+    expect(resolveAffiliateDisposableDatabaseUrl(environment))
+      .toBe('postgresql://disposable/affiliate_codex');
+  });
+
   it('verifies generated files in the exact commit and materializes that commit after HEAD advances', () => {
     const repository = createRepository();
     try {

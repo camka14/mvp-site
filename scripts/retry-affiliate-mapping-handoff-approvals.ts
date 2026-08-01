@@ -5,13 +5,14 @@ import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affilia
 import {
   inspectAffiliateDisposableReviewScrapes,
   inspectAffiliateProducerPackage,
+  resolveAffiliateDisposableDatabaseUrl,
   resolveAffiliateProducerRepositoryRoot,
 } from '../src/server/affiliateImports/producerPackageEvidence';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
-const disposableDatabaseUrl = process.env.DATABASE_URL?.trim();
+const disposableDatabaseUrl = resolveAffiliateDisposableDatabaseUrl();
 const useLive = process.argv.includes('--live');
 const apply = process.argv.includes('--apply');
 if (!useLive) throw new Error('Affiliate approval handoff retry requires --live.');
@@ -25,7 +26,6 @@ const recordValue = (value: unknown): Record<string, unknown> => (
 );
 
 const main = async () => {
-  if (!disposableDatabaseUrl) throw new Error('Disposable DATABASE_URL is required.');
   const producerRoot = resolveAffiliateProducerRepositoryRoot();
   const { prisma } = await import('../src/lib/prisma');
   const db = prisma as any;

@@ -8,6 +8,7 @@ import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImpo
 import {
   inspectAffiliateDisposableReviewScrapes,
   inspectAffiliateProducerPackage,
+  resolveAffiliateDisposableDatabaseUrl,
   resolveAffiliateProducerRepositoryRoot,
 } from '../src/server/affiliateImports/producerPackageEvidence';
 
@@ -22,7 +23,6 @@ const readOption = (name: string): string | undefined => {
 };
 
 const useLive = process.argv.includes('--live');
-const disposableDatabaseUrl = process.env.DATABASE_URL?.trim();
 if (useLive) {
   configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
   process.env.STORAGE_PROVIDER = 'spaces';
@@ -52,9 +52,7 @@ const main = async () => {
   let disposable: Client | null = null;
   try {
     if (result.subjectType === 'MAPPING_PACKAGE' && result.decision === 'APPROVE') {
-      if (!disposableDatabaseUrl) {
-        throw new Error('Disposable DATABASE_URL is required for mapping approval.');
-      }
+      const disposableDatabaseUrl = resolveAffiliateDisposableDatabaseUrl();
       const mappingJob = await (prisma as any).affiliateSourceMappingJobs.findUnique({
         where: { id: result.subjectKey },
       });

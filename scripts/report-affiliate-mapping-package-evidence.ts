@@ -6,6 +6,7 @@ import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImpo
 import {
   inspectAffiliateDisposableReviewScrapes,
   inspectAffiliateProducerPackage,
+  resolveAffiliateDisposableDatabaseUrl,
   resolveAffiliateProducerRepositoryRoot,
 } from '../src/server/affiliateImports/producerPackageEvidence';
 
@@ -19,16 +20,13 @@ const readOption = (name: string): string | undefined => {
   return index >= 0 ? process.argv[index + 1]?.trim() || undefined : undefined;
 };
 
-const disposableDatabaseUrl = process.env.DATABASE_URL?.trim();
+const disposableDatabaseUrl = resolveAffiliateDisposableDatabaseUrl();
 const useLive = process.argv.includes('--live');
 if (useLive) configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
 
 const main = async () => {
   const jobId = readOption('--job');
   if (!jobId) throw new Error('--job=<mapping-job-id> is required.');
-  if (!disposableDatabaseUrl) {
-    throw new Error('Disposable DATABASE_URL is required for review-scrape verification.');
-  }
   const producerRoot = resolveAffiliateProducerRepositoryRoot();
   const { prisma } = await import('../src/lib/prisma');
   const disposable = new Client({ connectionString: disposableDatabaseUrl });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import { Client } from 'pg';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
+import { preserveAffiliateDisposableDatabaseUrl } from '../src/server/affiliateImports/producerPackageEvidence';
 import { resolvePrismaPgPoolConfig } from '../src/lib/prismaConfig';
 
 dotenv.config({ quiet: true });
@@ -26,7 +27,10 @@ const boundedIntervalSeconds = (): number => {
 };
 
 const useLive = process.argv.includes('--live');
-if (useLive) configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
+if (useLive) {
+  preserveAffiliateDisposableDatabaseUrl();
+  configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
+}
 
 const sleep = (milliseconds: number) => new Promise<void>((resolve) => {
   setTimeout(resolve, milliseconds);

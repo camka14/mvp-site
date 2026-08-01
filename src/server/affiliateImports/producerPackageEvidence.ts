@@ -44,6 +44,34 @@ export type AffiliateReviewEvidenceQueryable = {
   ) => Promise<{ rows: T[] }>;
 };
 
+type AffiliateDatabaseEnvironment = Record<string, string | undefined>;
+
+const DISPOSABLE_DATABASE_ENV = 'DATABASE_URL_DISPOSABLE_VALIDATION';
+
+export const preserveAffiliateDisposableDatabaseUrl = (
+  environment: AffiliateDatabaseEnvironment = process.env,
+): string => {
+  const preserved = environment[DISPOSABLE_DATABASE_ENV]?.trim();
+  if (preserved) return preserved;
+  const current = environment.DATABASE_URL?.trim();
+  if (!current) {
+    throw new Error('Disposable DATABASE_URL is required for affiliate approval evidence.');
+  }
+  environment[DISPOSABLE_DATABASE_ENV] = current;
+  return current;
+};
+
+export const resolveAffiliateDisposableDatabaseUrl = (
+  environment: AffiliateDatabaseEnvironment = process.env,
+): string => {
+  const value = environment[DISPOSABLE_DATABASE_ENV]?.trim()
+    || environment.DATABASE_URL?.trim();
+  if (!value) {
+    throw new Error('Disposable affiliate validation database URL is required.');
+  }
+  return value;
+};
+
 const git = (repositoryRoot: string, args: string[], encoding: BufferEncoding | 'buffer' = 'utf8') => (
   execFileSync('git', ['-C', repositoryRoot, ...args], {
     encoding: encoding === 'buffer' ? 'buffer' : encoding,
