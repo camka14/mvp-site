@@ -24,13 +24,13 @@ const recordValue = (value: unknown): Record<string, unknown> => (
 
 export const hasAffiliateProducerHandoffBlocker = (decision: unknown): boolean => {
   const text = JSON.stringify(decision ?? '').toLowerCase();
-  const mentionsCommitOrPackage = text.includes('producer commit')
+  return text.includes('producer commit')
     || text.includes('package files')
-    || text.includes('generated paths');
-  const mentionsDisposableProof = text.includes('review scrape')
-    || text.includes('scrape ids')
-    || text.includes('candidate output');
-  return mentionsCommitOrPackage && mentionsDisposableProof;
+    || text.includes('generated paths')
+    || text.includes('reviewer checkout')
+    || text.includes('stored setup script')
+    || text.includes('source-specific generated')
+    || text.includes('commit could not be independently resolved');
 };
 
 export const affiliateMappingHandoffRetryEligibility = (

@@ -44,7 +44,22 @@ describe('affiliate mapping handoff retry eligibility', () => {
     })).toEqual(expect.objectContaining({ eligible: true }));
     expect(affiliateMappingHandoffRetryEligibility({
       approvalStatus: 'DEFERRED',
-      approvalDecision: decision,
+      approvalDecision: {
+        blockingIssues: [
+          'The stored setup script is not available in the reviewer checkout.',
+        ],
+      },
+      mappingStatus: 'REVIEW_REQUIRED',
+      resultSummary: resultSummary('OFFICIAL_ASSET'),
+    })).toEqual(expect.objectContaining({ eligible: true }));
+
+    expect(affiliateMappingHandoffRetryEligibility({
+      approvalStatus: 'DEFERRED',
+      approvalDecision: {
+        evidenceReferences: [
+          { finding: 'Commit could not be independently resolved in this checkout.' },
+        ],
+      },
       mappingStatus: 'REVIEW_REQUIRED',
       resultSummary: resultSummary('OFFICIAL_ASSET'),
     })).toEqual(expect.objectContaining({ eligible: true }));

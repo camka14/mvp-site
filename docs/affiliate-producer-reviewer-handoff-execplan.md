@@ -38,6 +38,9 @@ The observable outcome is that a mapping package with an official logo and valid
 - Observation: requiring the future live source to exist before `APPROVE` is circular because the approval completion command is the boundary that creates it.
   Evidence: recent reviewer results rejected packages for missing live safety rows even though `apply-approved-affiliate-mapping-jobs.ts` creates the rows only after an approval decision and then enforces the safety postconditions.
 
+- Observation: 64 terminal decisions name both the unavailable package and missing live review scrapes, while 63 older deferred decisions name only the unavailable setup script and one records the unresolved commit in `evidenceReferences` instead of `blockingIssues`.
+  Evidence: the first live retry preview selected 64 rows with the narrow two-part wording rule; a grouped decision audit accounted for all 130 official-logo rows and showed that all three forms describe the same producer/reviewer handoff.
+
 ## Decision Log
 
 - Decision: mount the producer checkout read-only into the reviewer container instead of pushing hundreds of source commits to GitHub.
