@@ -1,0 +1,10 @@
+[Unit]
+Description=Run BracketIQ affiliate source scrapes daily
+
+[Timer]
+OnCalendar=*-*-* 05:00:00 America/Los_Angeles
+Persistent=true
+Unit=bracketiq-affiliate-scrape-daily.service
+
+[Install]
+WantedBy=timers.target

@@ -161,3 +161,28 @@ Pause automation without changing web traffic or deleting stored evidence:
     sudo systemctl disable --now bracketiq-affiliate-intake-automation.timer
 
 Rollback consists of leaving the timer disabled and pausing active discovery campaigns in Admin. Existing organizations, approved scrape sources, intakes, artifacts, and candidates remain intact. Re-enable with `sudo systemctl enable --now bracketiq-affiliate-intake-automation.timer` after the issue is corrected.
+
+## Daily mapped-source scraping
+
+Discovery/intake automation and mapped-source scraping are separate jobs. The
+discovery timer finds and captures new source sites. The daily mapped-source
+timer runs validated mappings whose source rows have `autoScrapeEnabled=true`;
+each source's `scrapeIntervalMinutes` determines whether the daily invocation
+performs a full scrape or a lightweight change check.
+
+Install and enable the daily mapped-source timer only when explicitly requested:
+
+    sudo install -m 0644 systemd/bracketiq-affiliate-scrape-daily.service /etc/systemd/system/
+    sudo install -m 0644 systemd/bracketiq-affiliate-scrape-daily.timer /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now bracketiq-affiliate-scrape-daily.timer
+
+Run and inspect it with:
+
+    sudo systemctl start bracketiq-affiliate-scrape-daily.service
+    sudo systemctl status bracketiq-affiliate-scrape-daily.timer
+    sudo journalctl -u bracketiq-affiliate-scrape-daily.service --since today --no-pager
+
+Disable it without changing source configuration:
+
+    sudo systemctl disable --now bracketiq-affiliate-scrape-daily.timer

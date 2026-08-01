@@ -41,6 +41,13 @@ This guide covers best practices for developing a **full-stack web application**
 
 **Git remote standard**: Use the HTTPS GitHub remote for this repo when fetching or pushing: `https://github.com/camka14/mvp-site.git`. Do not use SSH remotes such as `git@github.com:camka14/mvp-site.git` or `git@ssh.github.com:camka14/mvp-site.git`, because SSH auth may not be available in this environment.
 
+## Operational Process Control
+
+- Never start, stop, restart, pause, resume, enable, disable, or reconfigure a process, service, timer, cron entry, campaign, queue worker, container, deployment, or other runtime unless the user explicitly requests that exact operational state change.
+- A request to inspect, debug, verify, report status, access a database, or review logs is read-only authorization. It does not authorize changing runtime state.
+- Do not carry an older process-control instruction forward after the user changes scope. Require an explicit current instruction before every later start/stop or enable/disable action.
+- When an operational change is explicitly requested, limit it to the named runtime and verify its resulting state without changing adjacent processes.
+
 # ExecPlans
 When writing complex features or significant refactors, use an ExecPlan (as described in `mvp-site/PLANS.md`) from design to implementation.
 
@@ -78,7 +85,7 @@ When writing complex features or significant refactors, use an ExecPlan (as desc
 
 ### Live Database Access
 
-If live DigitalOcean Postgres commands such as `prisma migrate deploy`, DBHub, or one-off release metadata scripts time out or fail to connect, first check whether this machine's current public IP is allowed on the DigitalOcean managed database firewall. Use the DigitalOcean MCP database firewall tools to add the current IP while preserving the existing App Platform and IP rules, then retry the live DB operation.
+Current production runs on the OVH VM at `15.204.81.193`, not the retired DigitalOcean App Platform database. Access it with the dedicated operator key at `~/.ssh/id_ed25519_bracketiq_prod`. Use the `bracketiq` account for read-only application/container checks and the `ubuntu` operator account only for explicitly authorized system administration. The authoritative PostgreSQL database is private inside the `bracketiq-production-postgres-1` container and is not exposed publicly.
 
 ### Installation Steps
 
