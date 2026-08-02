@@ -72,6 +72,7 @@
     "affiliate:approvals:logo-evidence": "tsx scripts/capture-affiliate-approval-logo-evidence.ts",
     "affiliate:approvals:retry-handoff": "tsx scripts/retry-affiliate-mapping-handoff-approvals.ts",
     "affiliate:approvals:policy-evidence": "tsx scripts/refresh-affiliate-approval-policy-evidence.ts",
+    "affiliate:approvals:requeue-deferred-policies": "tsx scripts/requeue-deferred-affiliate-domain-policies.ts",
     "affiliate:approvals:codex-goal": "tsx scripts/run-affiliate-approval-codex-goal.ts",
     "affiliate:approvals:codex-goal:dry-run": "tsx scripts/run-affiliate-approval-codex-goal.ts --dry-run",
     "affiliate:approvals:loop": "tsx scripts/run-affiliate-approval-loop.ts",

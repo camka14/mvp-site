@@ -8,7 +8,7 @@ This document must be maintained in accordance with `PLANS.md`.
 
 BracketIQ currently pauses newly discovered domains at policy review and mapping packages at source review. After this change, a second Codex CLI process pinned to Luna max in fast mode can independently inspect those approval items, apply evidence-backed decisions, and keep the capture-to-mapping pipeline moving without waiting for the operator to approve every routine item. The reviewer remains separate from the ingestion worker and leaves a durable decision record.
 
-The reviewer may allow or block an intake domain after checking stored robots and policy evidence, and may apply a review-ready source package to the live database after independently checking its commit, stored evidence, tests, duplicate-safe scrapes, logo evidence, and unpublished state. When a bounded review establishes that no official logo is present, the reviewer may explicitly accept the logo absence without weakening any other package check. It may defer or reject uncertain work. It never publishes organizations or candidates, enables recurring scraping, validates mappings, approves training data, or approves work produced under its own reviewer identity.
+The reviewer may allow or block an intake domain after checking stored robots and policy evidence. It blocks only an explicit prohibition that applies to the target public path. It allows capture when the bounded check finds no explicit prohibition, including when policy resources are missing or inaccessible. The reviewer may apply a review-ready source package to the live database after it independently checks the commit, stored evidence, tests, duplicate-safe scrapes, logo evidence, and unpublished state. When a bounded review establishes that no official logo is present, the reviewer may explicitly accept the logo absence without weakening any other package check. It may defer or reject uncertain mapping work. It never publishes organizations or candidates, enables recurring scraping, validates mappings, approves training data, or approves work produced under its own reviewer identity.
 
 ## Progress
 
@@ -25,6 +25,8 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-08-02) Made verified logo absence an explicit non-blocking mapping approval state and added deterministic recovery that returns logo-only terminal packages to the independent reviewer queue.
 - [x] (2026-08-01) Upgraded the approval launcher to `max` reasoning and persisted Codex fast mode through `service_tier="fast"` and `features.fast_mode=true`.
 - [ ] (2026-08-02) Require independent source-derived description review and add an armed one-time mapping rereview cohort that waits for current producer and reviewer work to finish.
+- [x] (2026-08-01) Changed domain review to default allow when no explicit target-path prohibition exists and added a guarded deferred-policy requeue with decision-history preservation.
+- [ ] (2026-08-01) Preview and apply the guarded requeue for the current live deferred domain-policy cohort without restarting the approval loop.
 
 ## Surprises & Discoveries
 
@@ -48,6 +50,9 @@ The reviewer may allow or block an intake domain after checking stored robots an
 
 - Observation: 65 rejected packages were blocked only because the exact setup script refused guarded `--live` application, while 58 rejected packages cited unresolved manual-logo evidence.
   Evidence: the live approval-job audit on 2026-08-01 grouped blocking issues across all terminal mapping-package reviews.
+
+- Observation: 249 domain-policy approvals were deferred even though most bounded checks completed and the common resource outcomes were missing or inaccessible policy pages, not explicit capture prohibitions.
+  Evidence: the live audit found 249 `DEFERRED` `DOMAIN_POLICY` jobs linked to `NEEDS_REVIEW` policies. Of those jobs, 245 recorded both robots and terms checks. Stored policy-resource outcomes were dominated by HTTP 404, 200, and 403 responses.
 
 ## Decision Log
 
@@ -83,6 +88,10 @@ The reviewer may allow or block an intake domain after checking stored robots an
   Rationale: the initial intake preflight stored robots evidence and likely policy URLs, but did not capture the policy bodies Luna needs to distinguish allow, block, and defer safely.
   Date/Author: 2026-07-31 / Codex
 
+- Decision: Allow public capture unless stored evidence contains an explicit prohibition that applies to the target path.
+  Rationale: most public sites do not publish a capture policy. Missing, inaccessible, silent, or ambiguous policy resources are not explicit prohibitions. The reviewer still runs a bounded check, records its outcomes, and honors path-specific robots or policy restrictions.
+  Date/Author: 2026-08-01 / Codex
+
 - Decision: Send `MANUAL_REVIEW` logo packages back to the producer when stored official evidence may be repairable, and defer only when no official mark can be verified.
   Rationale: the independent reviewer must not edit producer files, while approving a logo-less package would violate the guarded live application checks. A producer repair preserves evidence, image normalization, and commit ownership.
   Date/Author: 2026-08-01 / Codex
@@ -102,6 +111,16 @@ The reviewer may allow or block an intake domain after checking stored robots an
 ## Outcomes & Retrospective
 
 The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy and logo evidence capture, guarded live application with an explicit missing-logo exception, deterministic re-review of legacy logo-only terminal packages, and a model-free outer loop that cannot relaunch while its Luna child goal is running.
+
+The domain reviewer now defaults to `ALLOW` after a bounded check finds no explicit prohibition for the target public path. A missing or inaccessible policy resource is a recorded check outcome, not a reason to defer. The guarded requeue preserves the earlier decision in policy evidence before it returns the approval to `QUEUED`.
+
+Validation passed on 2026-08-01:
+
+- All 34 focused approval, result-schema, policy-evidence, goal, and requeue tests passed.
+- `npx tsc --noEmit --pretty false` passed.
+- Targeted ESLint passed.
+- The repository-local reviewer skill passed `quick_validate.py`.
+- The longest valid reviewer ID produced a 3,884-character objective, below the 4,000-character limit.
 
 Validation passed on 2026-07-31:
 
@@ -139,6 +158,8 @@ Add scripts and package commands for reconcile, queue status, claim/export, comp
 
 Add `scripts/run-affiliate-approval-loop.ts` as the cheap outer loop. Each polling cycle acquires a PostgreSQL advisory lock, reconciles missing approval jobs, reads queue status, and launches the Luna goal only when claimable work exists. It waits for the goal process to finish, then checks again because approvals may have queued captures or exposed additional work. `--once` supports a system timer; persistent mode uses a bounded configurable polling interval. The loop itself never asks a model to inspect an empty queue.
 
+Add `src/server/affiliateImports/domainPolicyRequeue.ts` and a guarded CLI. It selects only `DEFERRED` `DOMAIN_POLICY` approvals linked to `NEEDS_REVIEW` policies. It limits selection to rows updated before an operator-supplied cutoff. Apply mode also requires an exact expected count. Before reset, it appends the prior reviewer, decision, attempt count, and finish time to the policy evidence history. It then resets only the approval lease and terminal decision fields.
+
 Finish the skill with concise core instructions and a detailed approval contract reference. Generate and validate its `agents/openai.yaml`. Update the ingestion goal so it reports policy-review work as pending reviewer work rather than asking the operator for routine decisions.
 
 ## Concrete Steps
@@ -147,6 +168,7 @@ Run from `/Users/elesesy/StudioProjects/mvp-site`.
 
     npm run prisma:validate
     npm test -- --runInBand src/server/affiliateImports/__tests__/approvalQueue.test.ts src/server/affiliateImports/__tests__/codexApprovalGoal.test.ts src/server/affiliateImports/__tests__/sourceDiscovery.test.ts
+    npm test -- --runInBand src/server/affiliateImports/__tests__/domainPolicyRequeue.test.ts
     npx tsc --noEmit --pretty false
     python3 /Users/elesesy/.codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/review-affiliate-approvals
     git diff --check
@@ -157,6 +179,8 @@ Before committing, stage only the files named in this plan, run `git diff --cach
 
 Tests must demonstrate that reconciliation is idempotent, claims are atomic, expired claims can be recovered, and malformed or active claims prevent false exhaustion. A domain reviewer must be able to allow a directory child intake that has no discovery-result row and observe a capture run queued. Blocking must never queue capture. Deferral must have no subject side effects.
 
+The deferred-policy requeue must select no mapping packages. Dry-run mode must make no writes. Apply mode must stop before any write when the expected count does not match. A successful reset must preserve the prior policy decision in evidence history and keep the policy in `NEEDS_REVIEW` for the next reviewer claim.
+
 A mapping approval must fail when reviewer and producer identities match, when the ingestion package is malformed, when a manual-logo package lacks `logoAbsenceAccepted`, when an official-logo package lacks `officialLogoVerified`, or when required validation is absent. A manual-logo package may pass only after an independent bounded review explicitly accepts the absence. A structurally eligible independent approval may invoke the existing live application path, but tests must replace that process boundary with a deterministic stub. Rejection and deferral must not publish or create a positive training example.
 
 The generated Luna objective must name the reviewer skill, all queue commands, both subject types, the independent-review rule, and the prohibited publication/training/automation actions. The skill validator, focused Jest suites, TypeScript, ESLint, Prisma validation, and diff checks must pass.
@@ -166,6 +190,8 @@ The generated Luna objective must name the reviewer skill, all queue commands, b
 Approval reconciliation uses a unique subject type/key pair, so repeated runs create no duplicates. Claim updates are conditional on status and lease expiry. If Luna stops after claim, the lease eventually expires and another reviewer may reclaim it. Completion is conditional on the claimed reviewer and current subject state. Re-running a completed decision returns the existing terminal row without reapplying side effects.
 
 Domain-policy application already upserts the policy and intake history; capture queueing reuses an active run. Mapping live application is idempotent through source setup scripts and changes the mapping job from `REVIEW_REQUIRED` to `APPROVED` exactly once.
+
+The deferred-policy requeue uses the approval row's current `DEFERRED` state, policy `NEEDS_REVIEW` state, cutoff, and exact expected count. A repeated apply with the same expected count fails because the first run removed the rows from the candidate set. This prevents an accidental second reset. The preserved policy evidence history records every successful reset.
 
 ## Artifacts and Notes
 
@@ -182,6 +208,8 @@ The public commands are:
     npm run affiliate:approvals:claim -- --live --worker=<reviewer-id>
     npm run affiliate:approvals:complete -- --live --job=<approval-job-id> --result=<review-json>
     npm run affiliate:approvals:package-evidence -- --live --job=<mapping-job-id>
+    npm run affiliate:approvals:requeue-deferred-policies -- --live --cutoff=<ISO-timestamp> --expected-count=<count>
+    npm run affiliate:approvals:requeue-deferred-policies -- --live --cutoff=<ISO-timestamp> --expected-count=<count> --apply
     npm run affiliate:approvals:codex-goal -- --live --worker=<reviewer-id>
     npm run affiliate:approvals:loop -- --live --interval-seconds=300
 
@@ -202,3 +230,5 @@ Revision note (2026-08-02): Superseded the mandatory-logo gate with an explicit 
 Revision note (2026-08-01): Upgraded the Luna approval process to max reasoning in persisted fast mode and made those settings explicit in the launcher's tests and preflight output.
 
 Revision note (2026-08-02): Added independent description-quality review and the durable one-time full-mapping rereview flag. The cohort remains waiting until the current queues are strictly idle.
+
+Revision note (2026-08-01): Changed domain policy to allow capture unless an explicit prohibition applies to the target public path. Added a cutoff and count guarded requeue that preserves prior decisions before it resets deferred policy reviews.

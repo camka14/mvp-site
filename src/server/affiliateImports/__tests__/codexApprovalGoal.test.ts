@@ -61,6 +61,10 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('affiliate:approvals:queue-status -- --live');
     expect(goal).toContain('affiliate:approvals:claim -- --live --worker=codex-luna-approval-vm-1');
     expect(goal).toContain('affiliate:approvals:policy-evidence -- --live --policy=<policy-key>');
+    expect(goal).toContain('BLOCK only for an explicit target-path prohibition');
+    expect(goal).toContain('otherwise ALLOW');
+    expect(goal).toContain('policy files are missing or inaccessible');
+    expect(goal).toContain('DEFER only conflicting scope');
     expect(goal).toContain('affiliate:approvals:package-evidence -- --live --job=<mapping-job-id>');
     expect(goal).toContain('affiliate:approvals:logo-evidence -- --live --approval=<approval-job-id>');
     expect(goal).toContain('--reviewer=codex-luna-approval-vm-1');

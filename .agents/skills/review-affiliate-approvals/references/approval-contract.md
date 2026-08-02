@@ -12,20 +12,20 @@ the result. `reviewerId` must exactly match the claim owner.
   "subjectType": "DOMAIN_POLICY",
   "subjectKey": "example.org",
   "reviewerId": "codex-luna-approval-vm-1",
-  "decision": "DEFER",
-  "confidence": 0.8,
-  "rationale": "The stored terms pages did not address automated reuse.",
+  "decision": "ALLOW",
+  "confidence": 0.9,
+  "rationale": "The bounded review found no explicit prohibition that applies to capture of the target public path.",
   "evidenceReferences": [
     {
       "kind": "DOMAIN_POLICY_RESOURCE",
       "identifier": "https://example.org/terms",
-      "finding": "The captured page does not state whether automated listing capture is permitted."
+      "finding": "The policy resource was not available. This is not an explicit prohibition."
     }
   ],
   "checks": {
     "robotsReviewed": true,
     "termsReviewed": true,
-    "storedEvidenceSufficient": false,
+    "storedEvidenceSufficient": true,
     "identityIndependent": true,
     "packageValidationPassed": false,
     "descriptionQualityVerified": false,
@@ -33,9 +33,7 @@ the result. `reviewerId` must exactly match the claim owner.
     "logoAbsenceAccepted": false,
     "duplicateSafetyVerified": false
   },
-  "blockingIssues": [
-    "Stored policy evidence is insufficient for a terminal domain decision."
-  ]
+  "blockingIssues": []
 }
 ```
 
@@ -75,7 +73,16 @@ Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
 than the reviewer.
 
 A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
-`storedEvidenceSufficient`. A mapping approval requires
+`storedEvidenceSufficient`. For `DOMAIN_POLICY`, a bounded review is sufficient
+for `ALLOW` when it finds no explicit prohibition that applies to the target
+public path. Missing, inaccessible, silent, or ambiguous policy resources are
+not prohibitions. They do not require `DEFER`. Set `storedEvidenceSufficient`
+to `true` after recording the attempted resources and their stored outcomes.
+Use `BLOCK` only for an explicit applicable prohibition. Use `DEFER` only when
+stored evidence conflicts about whether an explicit prohibition applies, or
+when the target domain or path cannot be identified. A prohibition for a
+private, account, login, checkout, or payment path does not block a separate
+public listing path. A mapping approval requires
 `identityIndependent`, `packageValidationPassed`, `descriptionQualityVerified`,
 `duplicateSafetyVerified`,
 and `storedEvidenceSufficient`, plus exactly one of `officialLogoVerified` or

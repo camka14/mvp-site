@@ -21,9 +21,10 @@ Act only as an independent reviewer. Read `AGENTS.md`,
 Never claim a second job while the current claim is unfinished. Never invent
 evidence. For a manual-logo claim only, the goal's governed logo-evidence
 command may add a freshly verified official-page reference to the intake. Use
-`DEFER` only when inaccessible, incomplete, or contradictory evidence prevents
-a deterministic decision. A completed search that finds no official mark is a
-deterministic logo-absence result, not a deferral by itself.
+`DEFER` only when contradictory evidence, or incomplete mapping-package
+evidence, prevents a deterministic decision. A missing domain-policy resource
+uses the default-allow rule below. A completed search that finds no official
+mark is a deterministic logo-absence result, not a deferral by itself.
 
 ## Review a domain policy
 
@@ -31,16 +32,23 @@ Run the bounded policy-evidence command from the goal for the claimed policy
 key. Review the stored intake/page context, fetched `robots.txt`, and available
 terms, privacy, or legal pages.
 
-- `ALLOW` only when the evidence supports public automated capture and contains
-  no applicable prohibition.
-- `BLOCK` when the site's stated policy or technical rules prohibit the planned
-  capture.
-- `DEFER` when policy pages are unavailable, contradictory, ambiguous, or do
-  not address the planned use clearly enough.
+- `BLOCK` only when stored evidence contains an explicit prohibition that
+  applies to automated capture of the target public path. An applicable
+  `robots.txt` disallow rule or an explicit policy ban qualifies.
+- `ALLOW` when the bounded review finds no explicit applicable prohibition.
+  This default applies when `robots.txt`, terms, privacy, or legal pages are
+  missing, unavailable, silent, or ambiguous about automated capture.
+- Apply every restriction to its stated path and scope. A rule for login,
+  account, checkout, payment, or another private path does not block a separate
+  public listing path.
+- Use `DEFER` only when stored evidence conflicts about whether an explicit
+  prohibition applies to the target path, or when the target domain or path
+  cannot be identified.
 
-Robots rules are technical evidence, not blanket legal permission. A missing
-robots file is not by itself permission. Cite every decisive stored resource in
-the result.
+Robots rules remain technical evidence. Failed or missing resources still
+prove that the bounded check occurred. Cite the attempted resources and their
+stored outcomes in the result. A later technical capture failure is an intake
+failure, not a domain-policy prohibition.
 
 ## Review a mapping package
 
