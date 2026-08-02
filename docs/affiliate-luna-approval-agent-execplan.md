@@ -26,7 +26,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-08-01) Upgraded the approval launcher to `max` reasoning and persisted Codex fast mode through `service_tier="fast"` and `features.fast_mode=true`.
 - [ ] (2026-08-02) Require independent source-derived description review and add an armed one-time mapping rereview cohort that waits for current producer and reviewer work to finish.
 - [x] (2026-08-01) Changed domain review to default allow when no explicit target-path prohibition exists and added a guarded deferred-policy requeue with decision-history preservation.
-- [ ] (2026-08-01) Preview and apply the guarded requeue for the current live deferred domain-policy cohort without restarting the approval loop.
+- [x] (2026-08-01) Previewed and requeued 249 live deferred domain policies without restarting the approval loop. The same cutoff then returned zero eligible deferred policies.
 
 ## Surprises & Discoveries
 
@@ -121,6 +121,15 @@ Validation passed on 2026-08-01:
 - Targeted ESLint passed.
 - The repository-local reviewer skill passed `quick_validate.py`.
 - The longest valid reviewer ID produced a 3,884-character objective, below the 4,000-character limit.
+
+Live verification passed on 2026-08-01:
+
+- Both behavior commits passed exact-SHA GitHub CI.
+- The fixed-cutoff dry-run selected 249 `DEFERRED` `DOMAIN_POLICY` approvals linked to `NEEDS_REVIEW` policies.
+- Apply mode requeued all 249 rows and preserved each prior decision in policy evidence history.
+- A second dry-run with the same cutoff and an expected count of zero found no eligible deferred policy.
+- The subject-and-status grouping showed that all 21 remaining deferred approvals were mapping packages.
+- Luna allowed `lacity.gov` after four policy resources returned HTTP 403 because none contained an explicit prohibition for the target public path. It set all terminal policy checks to true and recorded no blocking issue.
 
 Validation passed on 2026-07-31:
 
@@ -236,3 +245,5 @@ Revision note (2026-08-02): Added independent description-quality review and the
 Revision note (2026-08-01): Changed domain policy to allow capture unless an explicit prohibition applies to the target public path. Added a cutoff and count guarded requeue that preserves prior decisions before it resets deferred policy reviews.
 
 Revision note (2026-08-01): Added the current domain decision standard to each claim payload so a long-running reviewer receives the updated rule at the job boundary.
+
+Revision note (2026-08-01): Recorded the guarded live requeue of 249 deferred policies and the first successful explicit-prohibition-only review.
