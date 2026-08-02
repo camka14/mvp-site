@@ -25,8 +25,9 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-02 00:40Z) Extended historical classification across rejected and deferred packages while preserving old producer-evidence handoff failures for their evidence-verified reviewer retry.
 - [x] (2026-08-02 00:45Z) Updated producer and reviewer goals, skills, and contracts so repairs address every issue, add regression coverage, and generalize newly discovered failure classes without weakening gates.
 - [x] (2026-08-02 00:50Z) Passed 51 focused tests, repository CI, TypeScript, and diff validation.
-- [ ] Preview and apply the historical live classification, then verify the automatic producer/reviewer cycle on OVH.
-- [ ] Verify repaired jobs are claimed and independently re-reviewed without leaked leases.
+- [x] (2026-08-02 00:20Z) Applied the historical live classification: 20 intact packages returned to independent review, 83 incomplete or evidence-invalid packages returned to the producer, and 3 exhausted-logo packages became explicit human-review work.
+- [x] (2026-08-02 00:21Z) Verified the new live review cycle on Iron Courts Phoenix: one structured rejection atomically requeued the mapping with four reason codes and full reviewer feedback.
+- [x] (2026-08-02 00:22Z) Restarted both OVH goals with the updated skills and zero core-dump limits. Producer and reviewer each held one valid lease; both queues reported zero claims without leases.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
 ## Surprises & Discoveries
@@ -99,20 +100,39 @@ The result is observable in three places: focused tests prove the retry classifi
 
 ## Outcomes & Retrospective
 
-The repair is deployed to both OVH agent checkouts. The live requeue reset 91
+The repair is deployed to both OVH agent checkouts. The earlier live requeue reset 91
 producer-fixable packages while preserving their prior decisions in repair
 history: 59 require manual official-logo evidence review, 29 require a new
 guarded-live setup commit, and 3 require event-location package repair. The 74
-remaining rejected packages were not recycled because their latest failure did
-not match a supported repair reason.
+remaining rejected packages were not recycled at that checkpoint because their
+latest failure did not match the then-supported repair reasons.
+
+The expanded recovery pass subsequently categorized the remaining handoff-era
+mapping approvals. Twenty packages with intact producer commits and disposable
+scrapes returned directly to the reviewer. Fourteen packages with exact evidence
+failures and 69 packages without a schema-valid review result returned to the
+producer as `PACKAGE_VALIDATION_FAILED`. Three packages whose stored evidence
+proved no supportable official logo exists are now
+`HUMAN_REVIEW_REQUIRED` with `NO_VERIFIABLE_OFFICIAL_LOGO`; they cannot be
+claimed or retried by either agent.
+
+The first new-contract live rejection proved the automatic loop. Iron Courts
+Phoenix was returned to the producer with `LIVE_SETUP_UNSUPPORTED`,
+`EVENT_LOCATION_INVALID`, `EVENT_DIVISION_CLASSIFICATION_INVALID`, and
+`EVENT_PRICING_INVALID`; the mapping job was `QUEUED`, not terminal `FAILED`,
+and its repair history contains the complete reviewer rationale and issues.
+This preserves the valid organization identity while requiring the producer to
+exclude and log child events that cannot support a location.
 
 The local repair implementation passes 33 focused tests, repository CI,
 TypeScript, and diff validation. Generated setup scripts select the live
 database only through the shared guarded helper, retry classification recognizes
 manual-logo work without allowing stale reviews to override current failures,
-and mapping claims expose the latest repair context to Luna. The producer and
-independent reviewer are running; final approved-organization and unresolved-logo
-counts remain pending as they work through their queues.
+and mapping claims expose the latest repair context to Luna. At the post-rollout
+checkpoint the producer queue had 370 claimable jobs plus one active lease, 3
+human-review jobs, and zero lease-less claims. The reviewer had 33 queued jobs
+plus one active lease and zero lease-less claims. Final approved-organization
+counts remain pending as they work through those queues.
 
 ## Context and Orientation
 
