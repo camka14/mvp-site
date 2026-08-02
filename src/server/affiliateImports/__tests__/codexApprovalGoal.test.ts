@@ -4,8 +4,10 @@ import path from 'node:path';
 import {
   buildCodexAffiliateApprovalArgs,
   buildCodexAffiliateApprovalGoal,
+  buildCodexAffiliateApprovalObjective,
   CODEX_AFFILIATE_APPROVAL_FAST_MODE,
   CODEX_AFFILIATE_APPROVAL_MODEL,
+  CODEX_AFFILIATE_APPROVAL_OBJECTIVE_MAX_LENGTH,
   CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT,
   CODEX_AFFILIATE_APPROVAL_SERVICE_TIER,
 } from '../codexApprovalGoal';
@@ -48,6 +50,12 @@ describe('Codex affiliate approval goal', () => {
 
   it('names the queue commands, evidence refresh, independence, and stop condition', () => {
     const goal = buildCodexAffiliateApprovalGoal(options);
+    expect(buildCodexAffiliateApprovalObjective(options).length)
+      .toBeLessThanOrEqual(CODEX_AFFILIATE_APPROVAL_OBJECTIVE_MAX_LENGTH);
+    expect(buildCodexAffiliateApprovalObjective({
+      ...options,
+      reviewerId: 'r'.repeat(80),
+    }).length).toBeLessThanOrEqual(CODEX_AFFILIATE_APPROVAL_OBJECTIVE_MAX_LENGTH);
     expect(goal).toContain('$review-affiliate-approvals');
     expect(goal).toContain('affiliate:approvals:reconcile -- --live');
     expect(goal).toContain('affiliate:approvals:queue-status -- --live');
@@ -61,31 +69,27 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('claimableJobs=0, activeLeases=0, and claimedWithoutLease=0');
     expect(goal).toContain('Never approve a package produced by this reviewer identity');
     expect(goal).toContain('disposable validation database review-scrape evidence');
-    expect(goal).toContain('Use the live database only for the approval queue');
-    expect(goal).toContain('expected NOT_APPLIED state, not a rejection reason');
-    expect(goal).toContain('guarded APPROVE completion creates the package');
-    expect(goal).toContain('do not exist in production');
-    expect(goal).toContain('Review organization validity independently from child event validity');
-    expect(goal).toContain('events without usable locations were correctly excluded and logged');
-    expect(goal).toContain('explicit SOURCE_ORGANIZATION mode');
-    expect(goal).toContain('group every source division under the correct parent event');
-    expect(goal).toContain('Preserve the exact organization division label as display name');
-    expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
-    expect(goal).toContain('differing division prices require a compact event range');
+    expect(goal).toContain('Use live data only for the approval queue');
+    expect(goal).toContain('NOT_APPLIED before approval is expected');
+    expect(goal).toContain('need not exist in production');
+    expect(goal).toContain('Review organizations independently from child events');
+    expect(goal).toContain('event locations do not invalidate a valid organization');
+    expect(goal).toContain('evidenced SOURCE_ORGANIZATION fallback');
+    expect(goal).toContain('Verify division grouping, source labels');
+    expect(goal).toContain('canonical gender M/F/C');
+    expect(goal).toContain('compact event price ranges');
     expect(goal).toContain('Independently verify event and organization description quality');
     expect(goal).toContain('descriptionQualityVerified=true');
     expect(goal).toContain('EVENT_DESCRIPTION_INVALID or ORGANIZATION_DESCRIPTION_INVALID');
     expect(goal).toContain('For MANUAL_REVIEW logos');
-    expect(goal).toContain('manually inspect the public official site');
+    expect(goal).toContain('official site');
     expect(goal).toContain('OFFICIAL_LOGO_REPAIR_REQUIRED');
-    expect(goal).toContain('do not reject or defer an otherwise-valid package');
+    expect(goal).toContain('do not reject an otherwise-valid package');
     expect(goal).toContain('officialLogoVerified=false and logoAbsenceAccepted=true');
-    expect(goal).toContain('DEFER only when the evidence is inaccessible');
-    expect(goal).toContain('Every non-approved MAPPING_PACKAGE result must include mappingDisposition');
-    expect(goal).toContain('nextAction PRODUCER_REPAIR');
-    expect(goal).toContain('Use HUMAN_REVIEW_REQUIRED only');
-    expect(goal).toContain('do not use DEFER for a fixable producer defect');
-    expect(goal).toContain('Never publish an organization or candidate');
+    expect(goal).toContain('Every non-approved mapping result needs mappingDisposition');
+    expect(goal).toContain('PRODUCER_REPAIR');
+    expect(goal).toContain('HUMAN_REVIEW_REQUIRED and DEFER only');
+    expect(goal).toContain('Do not edit producer packages, publish');
   });
 
   it('rejects reviewer identities that could become command syntax', () => {
