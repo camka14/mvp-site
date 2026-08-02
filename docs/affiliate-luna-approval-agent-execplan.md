@@ -24,6 +24,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [ ] (2026-08-01) Repair generated guarded-live setup compatibility, requeue producer-fixable terminal packages, and route unresolved manual-logo packages through a fresh producer evidence pass before independent re-review.
 - [x] (2026-08-02) Made verified logo absence an explicit non-blocking mapping approval state and added deterministic recovery that returns logo-only terminal packages to the independent reviewer queue.
 - [x] (2026-08-01) Upgraded the approval launcher to `max` reasoning and persisted Codex fast mode through `service_tier="fast"` and `features.fast_mode=true`.
+- [ ] (2026-08-02) Require independent source-derived description review and add an armed one-time mapping rereview cohort that waits for current producer and reviewer work to finish.
 
 ## Surprises & Discoveries
 
@@ -94,6 +95,10 @@ The reviewer may allow or block an intake domain after checking stored robots an
   Rationale: approvals benefit from the strongest configured reasoning effort, while the fast service tier reduces review latency. Keeping all three settings in the tested argument vector and preflight output makes the runtime mode auditable.
   Date/Author: 2026-08-01 / Codex
 
+- Decision: Store an armed full-review cohort as a non-claimable approval control row and advance it from the existing model-free loop.
+  Rationale: The existing unique subject type/key pair provides durable idempotency without adding a second queue table. A custom waiting status keeps the control row out of Luna claims. The loop can wait for strict producer, capture, and approval completion before it atomically requeues approved mappings.
+  Date/Author: 2026-08-02 / Codex
+
 ## Outcomes & Retrospective
 
 The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy and logo evidence capture, guarded live application with an explicit missing-logo exception, deterministic re-review of legacy logo-only terminal packages, and a model-free outer loop that cannot relaunch while its Luna child goal is running.
@@ -115,6 +120,8 @@ Operational follow-up after commit/deploy is to apply the migration, verify `cod
 `src/server/affiliateImports/sourceDiscovery.ts` applies domain policies and queues captures. `src/server/affiliateImports/sourceIntake.ts` records intake compliance reviews. `src/server/affiliateImports/codexIngestionResult.ts` validates Luna ingestion packages. `src/server/affiliateImports/codexIngestionApproval.ts` selects mapping packages that are structurally eligible for live application. `scripts/apply-approved-affiliate-mapping-jobs.ts` applies one eligible setup script live while keeping the resulting organization unpublished, automation disabled, and mapping unvalidated.
 
 An approval job is a durable database row that points to either a domain-policy key or a mapping-job ID. `QUEUED` and expired `CLAIMED` rows are available work. `APPROVED`, `BLOCKED`, `REJECTED`, `DEFERRED`, and `FAILED` rows are terminal. A reviewer claims one row at a time with a stable worker identity and lease.
+
+The optional `--force-mapping-review-cohort=<key>` loop flag creates one non-claimable `MAPPING_FULL_REVIEW_COHORT` control row. It records its arm time as the mapping cutoff. It remains `WAITING_FOR_MAPPING_DRAIN` while producer leases, mapping/capture work, first-pass mapping reviews, or approval work remain. It changes to `ENQUEUED_FOR_REVIEW` after one transaction returns cutoff-eligible approved mapping packages to the reviewer. Reusing the same key cannot enqueue them twice.
 
 The skill lives at `.agents/skills/review-affiliate-approvals`. The launcher lives at `scripts/run-affiliate-approval-codex-goal.ts` and pins `gpt-5.6-luna` with max reasoning, persisted fast mode, persisted goals, no interactive approval prompts, and the repository-local skill.
 
@@ -178,6 +185,10 @@ The public commands are:
     npm run affiliate:approvals:codex-goal -- --live --worker=<reviewer-id>
     npm run affiliate:approvals:loop -- --live --interval-seconds=300
 
+Arm one queue-gated full review without interrupting current work:
+
+    npm run affiliate:approvals:loop -- --live --interval-seconds=300 --force-mapping-review-cohort=description-quality-v1
+
 Revision note (2026-07-31): Created the plan after auditing existing intake policy and mapping-package approval boundaries. The design uses a separate durable approval queue so reviewer identity and side effects remain independently auditable.
 
 Revision note (2026-07-31): Recorded the completed queue, bounded policy evidence, independent Luna skill/goal, single-child polling invariant, and validation results. Deployment and authenticated VM execution remain intentionally separate from this code commit.
@@ -189,3 +200,5 @@ Revision note (2026-08-01): Recorded the guarded-live setup and manual-logo reco
 Revision note (2026-08-02): Superseded the mandatory-logo gate with an explicit accepted-absence state and added reviewer-queue recovery for earlier logo-only terminal decisions.
 
 Revision note (2026-08-01): Upgraded the Luna approval process to max reasoning in persisted fast mode and made those settings explicit in the launcher's tests and preflight output.
+
+Revision note (2026-08-02): Added independent description-quality review and the durable one-time full-mapping rereview flag. The cohort remains waiting until the current queues are strictly idle.

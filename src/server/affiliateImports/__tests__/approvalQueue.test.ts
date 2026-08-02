@@ -130,6 +130,7 @@ const mappingApprovalResult = (reviewerId = 'codex-luna-approval-vm-1') => ({
     storedEvidenceSufficient: true,
     identityIndependent: true,
     packageValidationPassed: true,
+    descriptionQualityVerified: true,
     officialLogoVerified: true,
     logoAbsenceAccepted: false,
     duplicateSafetyVerified: true,
@@ -155,6 +156,7 @@ const domainApprovalResult = (decision: 'ALLOW' | 'DEFER') => ({
     storedEvidenceSufficient: decision === 'ALLOW',
     identityIndependent: true,
     packageValidationPassed: false,
+    descriptionQualityVerified: false,
     officialLogoVerified: false,
     logoAbsenceAccepted: false,
     duplicateSafetyVerified: false,
@@ -475,5 +477,38 @@ describe('affiliate approval queue', () => {
       requestedNextAction: 'PRODUCER_REPAIR',
       reasonCodes: ['EVENT_LOCATION_INVALID', 'RETRY_LIMIT_EXCEEDED'],
     }));
+  });
+
+  it('starts a fresh bounded repair cycle for an operator-armed full review', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    mappingRows[0].resultSummary = {
+      result: ingestionResult(),
+      mappingRepairHistory: [{}, {}, {}],
+      mappingFullReviewHistory: [{
+        cohortKey: 'description-quality-v1',
+        repairHistoryStartIndex: 3,
+      }],
+    };
+
+    await completeAffiliateApproval({
+      ...mappingApprovalResult(),
+      decision: 'REJECT',
+      rationale: 'The event description repeats the title and narrates its listing source.',
+      blockingIssues: ['Rewrite the event description from first-party activity details.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['EVENT_DESCRIPTION_INVALID'],
+      },
+    });
+
+    expect(mappingRows[0].status).toBe('QUEUED');
+    expect(mappingRows[0].resultSummary.mappingRepairHistory).toHaveLength(4);
+    expect(mappingRows[0].resultSummary.humanReviewRequired).toBeUndefined();
   });
 });

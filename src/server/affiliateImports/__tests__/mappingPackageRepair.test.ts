@@ -179,6 +179,22 @@ describe('affiliate mapping producer repair eligibility', () => {
     }));
   });
 
+  it('returns structured event and organization description defects to the producer', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        mappingDisposition: {
+          nextAction: 'PRODUCER_REPAIR',
+          reasonCodes: ['EVENT_DESCRIPTION_INVALID', 'ORGANIZATION_DESCRIPTION_INVALID'],
+        },
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      repairReason: 'EVENT_DESCRIPTION_INVALID',
+      reasonCodes: ['EVENT_DESCRIPTION_INVALID', 'ORGANIZATION_DESCRIPTION_INVALID'],
+    }));
+  });
+
   it('preserves reason codes for jobs already marked for human review', () => {
     expect(affiliateMappingProducerRepairEligibility({
       approvalStatus: 'DEFERRED',

@@ -85,6 +85,17 @@ runs contain stable title-and-reason rejection summaries.
 
 Also review event and division integrity independently of the organization:
 
+- Compare the organization description and inspected event descriptions with
+  stored first-party page evidence. Public copy must describe the organization
+  or activity naturally. It must not say where the record was listed, found,
+  scraped, captured, or mapped, and an event description must not begin by
+  repeating the full event title. A concise organization-level fallback may be
+  shared across related events only when event-specific prose is absent and the
+  fallback accurately describes the activity. Set `descriptionQualityVerified`
+  only after this check. Reject concrete event copy defects with
+  `EVENT_DESCRIPTION_INVALID` and organization copy defects with
+  `ORGANIZATION_DESCRIPTION_INVALID`, using `PRODUCER_REPAIR`.
+
 - Confirm every division is attached to the correct parent event and that
   divisions from neighboring event cards, dates, venues, or detail pages were
   not merged.
@@ -133,7 +144,7 @@ blocking issue. A reviewer never edits the package or invents a brand mark.
   logo check requires exactly one of `officialLogoVerified` or
   `logoAbsenceAccepted`.
 - `REJECT` with `mappingDisposition.nextAction = PRODUCER_REPAIR` for a
-  concrete setup, parser, event-filtering, division, pricing, capacity, logo,
+  concrete setup, parser, event-filtering, description, division, pricing, capacity, logo,
   validation, or duplicate-safety defect that stored or governed supplemental
   evidence lets the producer fix. Include every applicable reason code and
   blocking issue.

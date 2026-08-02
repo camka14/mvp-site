@@ -3,6 +3,7 @@ import { Client } from 'pg';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import { affiliateSourceMatchesIntakeEvidence } from '../src/server/affiliateImports/codexIngestionApproval';
 import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
+import { analyzeAffiliateDescriptionQuality } from '../src/server/affiliateImports/descriptionQuality';
 import {
   inspectAffiliateDisposableReviewScrapes,
   inspectAffiliateProducerPackage,
@@ -55,13 +56,38 @@ const main = async () => {
       `SELECT "listingKind", status, "dedupeKey", title, "organizerName",
               "sportName", city, "venueName", address, "startsAt", "endsAt",
               "dateDisplayMode", "dateDisplayText", "officialActionUrl", "sourceUrl",
-              warnings
+              description, "priceText", "divisionText", warnings
          FROM "AffiliateImportCandidates"
         WHERE "sourceId" = $1
         ORDER BY "dedupeKey" ASC
         LIMIT 5`,
       [disposableReviews.sourceId],
     );
+    const candidateDescriptions = await disposable.query<{
+      id: string;
+      listingKind: string;
+      title: string;
+      description: string | null;
+    }>(
+      `SELECT id, "listingKind", title, description
+         FROM "AffiliateImportCandidates"
+        WHERE "sourceId" = $1
+        ORDER BY "dedupeKey" ASC`,
+      [disposableReviews.sourceId],
+    );
+    const descriptionIssues = candidateDescriptions.rows.flatMap((candidate) => {
+      if (candidate.listingKind !== 'EVENT' && candidate.listingKind !== 'CLUB') return [];
+      return analyzeAffiliateDescriptionQuality({
+        kind: candidate.listingKind === 'CLUB' ? 'ORGANIZATION' : 'EVENT',
+        name: candidate.title,
+        description: candidate.description,
+      }).map((issue) => ({
+        candidateId: candidate.id,
+        listingKind: candidate.listingKind,
+        title: candidate.title,
+        ...issue,
+      }));
+    });
     const allLiveSources = useLive
       ? await (prisma as any).affiliateScrapeSources.findMany({
         select: {
@@ -121,6 +147,13 @@ const main = async () => {
       producer,
       disposableReviews,
       candidateSample: candidateSample.rows,
+      descriptionQuality: {
+        checkedCandidateCount: candidateDescriptions.rows.length,
+        issueCount: descriptionIssues.length,
+        issues: descriptionIssues.slice(0, 100),
+        truncated: descriptionIssues.length > 100,
+        note: 'This deterministic scan catches missing copy, discovery narration, and repeated event titles. The reviewer must also compare event and organization descriptions with stored first-party evidence.',
+      },
       liveSafety: {
         state: liveSafetyRows.length === 0 ? 'NOT_APPLIED' : 'EXISTING_REVIEW_STATE',
         matchingSourceCount: liveSafetyRows.length,

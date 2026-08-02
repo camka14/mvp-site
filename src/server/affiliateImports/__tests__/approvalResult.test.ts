@@ -8,6 +8,7 @@ const checks = {
   storedEvidenceSufficient: true,
   identityIndependent: true,
   packageValidationPassed: false,
+  descriptionQualityVerified: false,
   officialLogoVerified: false,
   logoAbsenceAccepted: false,
   duplicateSafetyVerified: false,
@@ -61,6 +62,7 @@ describe('affiliate approval result', () => {
       checks: {
         ...checks,
         packageValidationPassed: true,
+        descriptionQualityVerified: true,
         logoAbsenceAccepted: true,
         duplicateSafetyVerified: true,
       },
@@ -76,6 +78,7 @@ describe('affiliate approval result', () => {
       checks: {
         ...checks,
         packageValidationPassed: true,
+        descriptionQualityVerified: true,
         officialLogoVerified: true,
         logoAbsenceAccepted: true,
         duplicateSafetyVerified: true,
@@ -89,6 +92,21 @@ describe('affiliate approval result', () => {
       decision: 'DEFER',
       blockingIssues: [],
     })).toThrow('require at least one concrete issue');
+  });
+
+  it('requires an explicit independent description-quality check for approval', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'APPROVE',
+      checks: {
+        ...checks,
+        packageValidationPassed: true,
+        officialLogoVerified: true,
+        duplicateSafetyVerified: true,
+      },
+    })).toThrow('description validation');
   });
 
   it('requires an explicit follow-up disposition for a rejected mapping package', () => {
@@ -116,6 +134,23 @@ describe('affiliate approval result', () => {
       nextAction: 'PRODUCER_REPAIR',
       reasonCodes: ['EVENT_LOCATION_INVALID'],
     });
+  });
+
+  it('accepts description defects as producer repairs', () => {
+    expect(affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['The event description narrates where it was listed.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['EVENT_DESCRIPTION_INVALID', 'ORGANIZATION_DESCRIPTION_INVALID'],
+      },
+    }).mappingDisposition?.reasonCodes).toEqual([
+      'EVENT_DESCRIPTION_INVALID',
+      'ORGANIZATION_DESCRIPTION_INVALID',
+    ]);
   });
 
   it('reserves mapping deferral for terminal human review', () => {

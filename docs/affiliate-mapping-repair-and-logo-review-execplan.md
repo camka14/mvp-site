@@ -10,6 +10,8 @@ The affiliate mapping and approval agents are processing live work, but many oth
 
 The result is observable in three places: focused tests prove the retry classifier and generated setup contract; the live retry preview identifies only the intended rejected packages; and the live mapping and approval queue reports show repaired packages moving from rejected status through producer repair and independent review without publishing organizations or enabling automatic scraping.
 
+This plan now also covers description quality and one controlled rereview cohort. New producer work must describe each event and organization in natural source-derived language. It must not narrate discovery, name the website as a listing source, or repeat an event title as its description. The independent reviewer must verify that rule. After the current producer and reviewer queues reach strict completion, an armed cohort flag will return every already-approved mapping in the cohort to the reviewer exactly once. It will not interrupt current work or enqueue the cohort early.
+
 ## Progress
 
 - [x] (2026-08-01 23:00Z) Measured the live failures and confirmed that 74 rejected jobs cite unsupported guarded live setup, 65 of them as the only blocking reason; manual-logo review appears in 58 rejected jobs.
@@ -36,6 +38,9 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-02 01:32Z) Added automatic stale intake-run lease recovery, late-worker overwrite protection, focused tests, and updated producer/reviewer contracts so this queue state cannot remain indefinitely.
 - [x] (2026-08-02 01:32Z) Passed 32 focused tests, TypeScript, scoped ESLint, and diff validation for stale-run recovery and supplemental official-logo capture.
 - [x] (2026-08-02 02:05Z) Replaced the mandatory-logo approval gate with an explicit accepted-absence check and extended historical recovery so logo-only terminal packages return to the independent reviewer rather than the producer or a human-only queue.
+- [x] (2026-08-02 03:36Z) Added source-derived event and organization description rules to the producer and reviewer contracts, with explicit repair reason codes and review evidence.
+- [x] (2026-08-02 04:00Z) Added a durable one-time full-mapping review cohort that waits for strict producer, capture, and reviewer queue completion before it enqueues approved mappings.
+- [ ] (2026-08-02 04:05Z) Validation completed: 64 focused tests, repository CI and coverage, TypeScript, scoped ESLint, both repository skill validators, and diff checks passed. Remaining: commit, push, deploy, arm the cohort, and restart only the producer and reviewer processes.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
 ## Surprises & Discoveries
@@ -126,6 +131,18 @@ The result is observable in three places: focused tests prove the retry classifi
   Rationale: a replacement row preserves worker, timing, and failure history while preventing a late result from the abandoned worker from overwriting the replacement attempt.
   Date/Author: 2026-08-02 / Codex
 
+- Decision: Treat event and organization description defects as concrete producer repairs with separate machine-readable reason codes.
+  Rationale: The producer owns the source mapping and setup commit. A reviewer can identify provenance narration, title repetition, missing source support, or unnatural generic copy without taking ownership of the producer files.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Arm the full rereview with a named cohort flag and store its state as a non-claimable approval control row.
+  Rationale: A durable row survives loop and container restarts without a new database table. The row can wait while existing work continues, then atomically requeue only approved mapping packages created before the cohort was armed. Its terminal state prevents repeated requeueing.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Require both the mapping queue and the approval queue to be strictly idle before the cohort starts.
+  Rationale: The existing mapping summary intentionally ignores active producer leases and review-required rows in its producer stopping condition. The cohort gate must also require zero active producer leases and zero review-required mappings so it cannot overtake work already in progress.
+  Date/Author: 2026-08-02 / Codex
+
 ## Outcomes & Retrospective
 
 The repair is deployed to both OVH agent checkouts. The earlier live requeue reset 91
@@ -187,6 +204,8 @@ An affiliate source intake is stored HTML, Markdown, screenshot, link, branding,
 
 `MANUAL_REVIEW` means the producer could not verify and commit an official normalized logo. The producer must inspect stored `LOGO_CANDIDATE`, `PAGE_BRANDING`, `PAGE_IMAGES`, screenshots, HTML, CSS references, and metadata. It may normalize or crop an official mark but must not invent one. The independent reviewer repeats a bounded evidence and official-site check. If it finds an official mark, it returns the package for producer repair; if the completed search finds none, it may approve the otherwise-valid package with `logoAbsenceAccepted = true`.
 
+A description-quality cohort is a one-time operator flag stored in `AffiliateApprovalJobs` with a subject type that the reviewer cannot claim. The row records the cohort key, the time it was armed, and the mapping creation cutoff. The approval loop changes it from waiting to enqueued only after the existing mapping, capture, and approval queues are idle. It then returns approved mapping packages created on or before the cutoff to `REVIEW_REQUIRED` and resets their existing approval rows to `QUEUED`. Later mappings are not swept into the old cohort and use the new description criteria during their first review.
+
 ## Plan of Work
 
 Extend the strict mapping approval schema with a queue disposition and reason codes. Mapping `APPROVE` results omit the disposition. Mapping `REJECT` results must select `PRODUCER_REPAIR` for concrete mapping, setup, logo, event-location, division, price, capacity, or duplicate-safety defects, unless the retry limit has been exhausted. Mapping `DEFER` is reserved for insufficient or conflicting evidence and must select `HUMAN_REVIEW_REQUIRED`. Domain approvals remain unchanged.
@@ -196,6 +215,10 @@ Change mapping approval completion so a `PRODUCER_REPAIR` decision atomically ap
 Broaden the historical recovery command to inspect both rejected and deferred approvals. It must preview every terminal row as producer repair, reviewer retry, or human review; requeue known fixable setup and package defects; return logo-only terminal rows to the reviewer; and mark unclassifiable or evidence-dependent rows as `HUMAN_REVIEW_REQUIRED` rather than leaving them silently stranded. Claims must expose all reason codes, reviewer rationale, and blocking issues to the responsible agent.
 
 Update the producer goal and ingestion/source-builder skills so repairs address every blocking issue and add a source-specific regression test. When a review reveals a reusable failure class not already stated in the skill or contract, the producer must add a generalized rule in its source-scoped commit. Reinforce that unsupported child events are filtered and logged without rejecting a valid organization, and that division names follow source terminology while gender, age, skill, price, grouping, and capacity use canonical fields correctly. Update the reviewer goal and skill so concrete producer defects request repair, while only real evidence gaps stop for a human.
+
+Add explicit description rules to the same producer and reviewer surfaces. Event descriptions must use event details from stored first-party evidence. They must describe the activity, audience, format, schedule, venue, or material terms in natural language. They must not say that an event is listed, found, published, scraped, or shown by a website, and they must not start by restating the full event title. If event-specific prose is absent, the producer may write one natural organization-level fallback and apply it to related events, but the fallback must still describe the activity. Organization descriptions follow the same source-derived rule and must describe what the organization offers and where it operates. Add `EVENT_DESCRIPTION_INVALID` and `ORGANIZATION_DESCRIPTION_INVALID` as producer repair reason codes, and require an explicit reviewer description-quality check before approval. Include candidate descriptions in the mapping-package evidence output.
+
+Add a named full-review cohort to the approval loop. The command-line flag arms one cohort. A durable control row records its cutoff and state. The loop must leave it waiting until there are no claimable or active producer jobs, no ready intake without a job, no queued or running allowed capture, no review-required mapping, and no claimable or active approval. At that point, one transaction must preserve the prior approval in mapping review history, change each cutoff-eligible `APPROVED` mapping to `REVIEW_REQUIRED`, reset its existing mapping approval to `QUEUED`, and mark the cohort enqueued. The same cohort key must be idempotent. A full-review cycle receives a fresh three-pass producer repair budget without erasing earlier repair history.
 
 Validate the schema, approval completion, historical classifier, claim context, queue summary, goals, and instructions with focused Jest tests and TypeScript. Deploy only after local checks pass. Stop the two VM loops at lease-safe points, update their checkouts, preview then apply the historical categorization, restart one producer and one reviewer, and verify that repairs recycle automatically while human rows remain unclaimable.
 
@@ -275,3 +298,5 @@ Revision note (2026-08-01): Created this plan after the live rejection audit ide
 Revision note (2026-08-02): Expanded the plan after observing that restarted rejections and deferrals remained terminal. Added structured repair ownership, bounded automatic requeue, explicit human-review state, historical deferred recovery, and skill-learning requirements.
 
 Revision note (2026-08-02): Superseded the mandatory official-logo gate. Added explicit accepted logo absence, guarded missing-logo application, and reviewer retry for historical logo-only terminal packages.
+
+Revision note (2026-08-02): Added source-derived description validation and a durable, queue-gated, one-time full-mapping rereview cohort. This revision prevents the new criteria from interrupting current producer or reviewer work.

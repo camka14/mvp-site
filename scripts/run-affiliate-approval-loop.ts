@@ -74,6 +74,8 @@ const main = async () => {
   const intervalMs = boundedIntervalSeconds() * 1_000;
   const runOnce = process.argv.includes('--once');
   const codexBin = readOption('--codex-bin') ?? process.env.CODEX_CLI_BIN?.trim();
+  const fullReviewCohort = readOption('--force-mapping-review-cohort')
+    ?? process.env.AFFILIATE_FORCE_MAPPING_REVIEW_COHORT?.trim();
   const { max: _poolMax, ...clientConfig } = resolvePrismaPgPoolConfig();
   const lockClient = new Client(clientConfig);
   await lockClient.connect();
@@ -95,11 +97,22 @@ const main = async () => {
   const { runAffiliateApprovalLoopCycle } = await import(
     '../src/server/affiliateImports/approvalLoop'
   );
+  const { advanceAffiliateMappingFullReviewCohort } = await import(
+    '../src/server/affiliateImports/mappingFullReview'
+  );
   try {
     do {
       const cycle = await runAffiliateApprovalLoopCycle({
         reconcile: reconcileAffiliateApprovalQueue,
         getStatus: getAffiliateApprovalQueueStatus,
+        ...(fullReviewCohort ? {
+          advanceFullReview: (approvalQueue: Awaited<ReturnType<typeof getAffiliateApprovalQueueStatus>>) => (
+            advanceAffiliateMappingFullReviewCohort({
+              cohortKey: fullReviewCohort,
+              approvalQueue,
+            })
+          ),
+        } : {}),
         launchGoal: () => runChildGoal({
           reviewerId,
           codexBin,
@@ -109,6 +122,8 @@ const main = async () => {
       console.log(JSON.stringify({
         lockAcquired: true,
         reviewerId,
+        fullReviewCohort: fullReviewCohort ?? null,
+        fullReview: cycle.fullReview,
         launchedGoal: cycle.launchedGoal,
         claimableBefore: cycle.queueBeforeLaunch.claimableJobs,
         claimableAfter: cycle.queueAfterLaunch.claimableJobs,

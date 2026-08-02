@@ -29,6 +29,25 @@ describe('affiliate approval loop cycle', () => {
     expect(launchGoal).not.toHaveBeenCalled();
   });
 
+  it('lets an armed full-review gate enqueue work before deciding whether to launch Luna', async () => {
+    const launchGoal = jest.fn(async () => undefined);
+    const advanceFullReview = jest.fn(async () => ({ state: 'ENQUEUED' }));
+    const getStatus = jest.fn()
+      .mockResolvedValueOnce(status(0))
+      .mockResolvedValueOnce(status(1))
+      .mockResolvedValueOnce(status(0));
+    const result = await runAffiliateApprovalLoopCycle({
+      reconcile: jest.fn(async () => ({ created: 0 })),
+      getStatus,
+      advanceFullReview,
+      launchGoal,
+    });
+
+    expect(advanceFullReview).toHaveBeenCalledWith(status(0));
+    expect(launchGoal).toHaveBeenCalledTimes(1);
+    expect(result.fullReview).toEqual({ state: 'ENQUEUED' });
+  });
+
   it('waits for the active Luna goal before checking the queue again', async () => {
     let finishGoal: (() => void) | undefined;
     const launchGoal = jest.fn(() => new Promise<void>((resolve) => {

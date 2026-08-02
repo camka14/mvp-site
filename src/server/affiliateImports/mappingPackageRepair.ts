@@ -25,6 +25,8 @@ export type AffiliateMappingProducerRepairReason =
   | 'EVENT_DIVISION_CLASSIFICATION_INVALID'
   | 'EVENT_PRICING_INVALID'
   | 'EVENT_CAPACITY_INVALID'
+  | 'EVENT_DESCRIPTION_INVALID'
+  | 'ORGANIZATION_DESCRIPTION_INVALID'
   | 'PACKAGE_VALIDATION_FAILED'
   | 'DUPLICATE_SAFETY_INVALID'
   | 'OTHER_PRODUCER_DEFECT';
@@ -91,6 +93,8 @@ const structuredRepairReason = (reasonCodes: string[]): AffiliateMappingProducer
   if (reasonCodes.includes('EVENT_DIVISION_CLASSIFICATION_INVALID')) return 'EVENT_DIVISION_CLASSIFICATION_INVALID';
   if (reasonCodes.includes('EVENT_PRICING_INVALID')) return 'EVENT_PRICING_INVALID';
   if (reasonCodes.includes('EVENT_CAPACITY_INVALID')) return 'EVENT_CAPACITY_INVALID';
+  if (reasonCodes.includes('EVENT_DESCRIPTION_INVALID')) return 'EVENT_DESCRIPTION_INVALID';
+  if (reasonCodes.includes('ORGANIZATION_DESCRIPTION_INVALID')) return 'ORGANIZATION_DESCRIPTION_INVALID';
   if (reasonCodes.includes('DUPLICATE_SAFETY_INVALID')) return 'DUPLICATE_SAFETY_INVALID';
   if (reasonCodes.includes('PACKAGE_VALIDATION_FAILED')) return 'PACKAGE_VALIDATION_FAILED';
   return 'OTHER_PRODUCER_DEFECT';
@@ -195,6 +199,12 @@ export const affiliateMappingProducerRepairEligibility = (input: {
 
   const eventCapacityInvalid = /(?:(?:event|division).{0,180}(?:capacity|participant limit)|(?:capacity|participant limit).{0,180}(?:event|division))/i.test(evidence);
   if (eventCapacityInvalid) return producerRepair('EVENT_CAPACITY_INVALID');
+
+  const eventDescriptionInvalid = /(?:(?:event|candidate).{0,180}(?:description|copy).{0,180}(?:listed|found|source|title|repeat|generic|unnatural)|(?:description|copy).{0,180}(?:listed|found|source|title|repeat|generic|unnatural).{0,180}(?:event|candidate))/i.test(evidence);
+  if (eventDescriptionInvalid) return producerRepair('EVENT_DESCRIPTION_INVALID');
+
+  const organizationDescriptionInvalid = /(?:(?:organization|club|facility).{0,180}(?:description|copy).{0,180}(?:listed|found|source|name|repeat|generic|unnatural)|(?:description|copy).{0,180}(?:listed|found|source|name|repeat|generic|unnatural).{0,180}(?:organization|club|facility))/i.test(evidence);
+  if (organizationDescriptionInvalid) return producerRepair('ORGANIZATION_DESCRIPTION_INVALID');
 
   const duplicateSafetyInvalid = /(?:duplicate.{0,120}(?:unsafe|safety|candidate|scrape)|(?:unstable|mismatch).{0,120}(?:scrape|hash))/i.test(evidence);
   if (duplicateSafetyInvalid) return producerRepair('DUPLICATE_SAFETY_INVALID');

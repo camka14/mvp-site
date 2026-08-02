@@ -124,6 +124,10 @@ describe('affiliate source mapping queue', () => {
       status: 'CLAIMED',
       resultSummary: {
         mappingRepairHistory: [{ repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION' }],
+        mappingFullReviewHistory: [{
+          cohortKey: 'description-quality-v1',
+          repairHistoryStartIndex: 1,
+        }],
       },
     });
     prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
@@ -145,6 +149,10 @@ describe('affiliate source mapping queue', () => {
       data: expect.objectContaining({
         resultSummary: expect.objectContaining({
           mappingRepairHistory: [{ repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION' }],
+          mappingFullReviewHistory: [{
+            cohortKey: 'description-quality-v1',
+            repairHistoryStartIndex: 1,
+          }],
         }),
       }),
     }));

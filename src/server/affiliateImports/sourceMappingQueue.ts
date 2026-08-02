@@ -158,10 +158,14 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   const repairHistory = Array.isArray(previousEnvelope.mappingRepairHistory)
     ? previousEnvelope.mappingRepairHistory
     : [];
+  const fullReviewHistory = Array.isArray(previousEnvelope.mappingFullReviewHistory)
+    ? previousEnvelope.mappingFullReviewHistory
+    : [];
   const nextResultSummary = input.resultSummary
     ? {
         ...input.resultSummary,
         ...(repairHistory.length ? { mappingRepairHistory: repairHistory } : {}),
+        ...(fullReviewHistory.length ? { mappingFullReviewHistory: fullReviewHistory } : {}),
       }
     : undefined;
   const updated = await jobs.update({

@@ -33,6 +33,17 @@ const recordArray = (value: unknown): JsonRecord[] => (
   Array.isArray(value) ? value.map(recordValue) : []
 );
 
+const automaticRepairCountForCurrentReviewCycle = (envelope: JsonRecord): number => {
+  const repairHistory = recordArray(envelope.mappingRepairHistory);
+  const fullReviewHistory = recordArray(envelope.mappingFullReviewHistory);
+  const latestFullReview = fullReviewHistory[fullReviewHistory.length - 1];
+  const requestedStart = Number(latestFullReview?.repairHistoryStartIndex);
+  const start = Number.isInteger(requestedStart)
+    ? Math.max(0, Math.min(requestedStart, repairHistory.length))
+    : 0;
+  return repairHistory.length - start;
+};
+
 export const reconcileAffiliateApprovalQueue = async (): Promise<{
   domainPolicies: number;
   mappingPackages: number;
@@ -384,7 +395,8 @@ export const completeAffiliateApproval = async (
       const repairHistory = recordArray(envelope.mappingRepairHistory);
       const retryLimitExceeded = (
         mappingDisposition.nextAction === 'PRODUCER_REPAIR'
-        && repairHistory.length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
+        && automaticRepairCountForCurrentReviewCycle(envelope)
+          >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
       );
       const effectiveNextAction = retryLimitExceeded
         ? 'HUMAN_REVIEW_REQUIRED'

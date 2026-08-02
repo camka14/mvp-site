@@ -29,6 +29,17 @@ Every successful checkpoint must contain:
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.
 
+Check every organization description and at least the inspected event
+descriptions against stored first-party evidence. Public copy must describe the
+organization or activity in natural language. It must not narrate that the row
+was listed, found, published, scraped, captured, or mapped from a site. An event
+description must not begin by repeating the full event title. Keep provenance in
+`sourceEvidence`, registry notes, and review artifacts instead of public copy.
+When event-specific prose is absent, one concise organization-level activity
+description may be reused across related events if the stored evidence supports
+it. Missing or invalid copy is a package defect; do not submit the unchanged
+package for review.
+
 For every multi-division event, prove that the divisions are grouped under the
 correct parent event and did not leak across adjacent cards, dates, venues, or
 detail pages. Preserve each source-stated division label as its display `name`

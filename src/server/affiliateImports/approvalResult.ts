@@ -16,6 +16,8 @@ export const affiliateMappingReviewDispositionSchema = z.object({
     'EVENT_DIVISION_CLASSIFICATION_INVALID',
     'EVENT_PRICING_INVALID',
     'EVENT_CAPACITY_INVALID',
+    'EVENT_DESCRIPTION_INVALID',
+    'ORGANIZATION_DESCRIPTION_INVALID',
     'OFFICIAL_LOGO_REPAIR_REQUIRED',
     'NO_VERIFIABLE_OFFICIAL_LOGO',
     'PACKAGE_VALIDATION_FAILED',
@@ -48,6 +50,7 @@ export const affiliateApprovalResultSchema = z.object({
     storedEvidenceSufficient: z.boolean(),
     identityIndependent: z.boolean(),
     packageValidationPassed: z.boolean(),
+    descriptionQualityVerified: z.boolean(),
     officialLogoVerified: z.boolean(),
     logoAbsenceAccepted: z.boolean(),
     duplicateSafetyVerified: z.boolean(),
@@ -84,6 +87,7 @@ export const affiliateApprovalResultSchema = z.object({
     if (
       !result.checks.identityIndependent
       || !result.checks.packageValidationPassed
+      || !result.checks.descriptionQualityVerified
       || (!result.checks.officialLogoVerified && !result.checks.logoAbsenceAccepted)
       || !result.checks.duplicateSafetyVerified
       || !result.checks.storedEvidenceSufficient
@@ -91,7 +95,7 @@ export const affiliateApprovalResultSchema = z.object({
       context.addIssue({
         code: 'custom',
         path: ['checks'],
-        message: 'Mapping approval requires independent identity, evidence, validation, an official logo or accepted logo absence, and duplicate-safety checks.',
+        message: 'Mapping approval requires independent identity, evidence, package and description validation, an official logo or accepted logo absence, and duplicate-safety checks.',
       });
     }
   }
@@ -151,6 +155,8 @@ export const affiliateApprovalResultSchema = z.object({
     'EVENT_DIVISION_CLASSIFICATION_INVALID',
     'EVENT_PRICING_INVALID',
     'EVENT_CAPACITY_INVALID',
+    'EVENT_DESCRIPTION_INVALID',
+    'ORGANIZATION_DESCRIPTION_INVALID',
     'OFFICIAL_LOGO_REPAIR_REQUIRED',
     'PACKAGE_VALIDATION_FAILED',
     'DUPLICATE_SAFETY_INVALID',

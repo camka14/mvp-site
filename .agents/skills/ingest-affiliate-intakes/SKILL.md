@@ -72,6 +72,26 @@ Create or repair everything needed for review:
 
 Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and record the completed evidence search. The independent reviewer may accept that absence; the producer does not approve or publish the organization.
 
+Write event and organization descriptions from stored first-party page content.
+Describe the activity, audience, format, schedule, venue, experience, or material
+participation terms. Do not describe how the record was found. Phrases such as
+`listed by`, `listed on`, `found on`, `according to the site`, `the source
+says`, `the official page`, `scraped from`, or `mapped from` are provenance
+narration and do not belong in public copy. Do not start an event description by
+repeating its full title. For example, replace `Brooklyn Summer Casual Mixed
+League 2026 is listed by DiscNY as...` with natural copy such as `A casual mixed
+ultimate league with weekly summer play in New York City from June through
+August.` Keep the evidence citation in source metadata and review notes, not in
+the public description.
+
+When a page has no event-specific prose, write one concise, natural fallback
+from the organization's evidenced activity or program copy and reuse it for
+related events. The fallback must still tell a participant what the activity is;
+it must not be a discovery note or unsupported marketing copy. Organization
+descriptions follow the same rule. Describe what the organization offers, whom
+it serves, and where it operates when evidenced. Do not merely restate the name
+or narrate that the organization appears on a website or directory.
+
 For a `MANUAL_LOGO_REVIEW` repair, inspect every stored `LOGO_CANDIDATE`,
 `PAGE_BRANDING`, `PAGE_IMAGES`, screenshot, HTML/CSS reference, structured-data
 logo, Open Graph image, and favicon before concluding that the logo is missing.

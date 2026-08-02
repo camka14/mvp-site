@@ -84,6 +84,10 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('group every division by its stable event identity/detail-page context');
     expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
     expect(goal).toContain('differing division prices must produce a compact event range');
+    expect(goal).toContain('natural source-derived event and organization descriptions');
+    expect(goal).toContain('never narrate where a record was listed, found, scraped, or mapped');
+    expect(goal).toContain('or start event copy with its full title');
+    expect(goal).toContain('organization-level activity description');
     expect(goal).toContain('Setup scripts must support guarded --live');
     expect(goal).toContain('MANUAL_LOGO_REVIEW');
     expect(goal).toContain('inspect stored branding');
