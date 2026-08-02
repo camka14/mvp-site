@@ -64,6 +64,9 @@ The result is observable in three places: focused tests prove the retry classifi
 - Observation: the first structured historical preview found three terminal producer messages that had already exhausted stored logo evidence, but the legacy reviewer decisions only said `MANUAL_REVIEW` and did not distinguish a missed logo from a proven evidence gap.
   Evidence: New York Elite Volleyball, NY Stingers, and NYC Parks Pickleball Courts each record `MANUAL_LOGO_REVIEW repair cannot be resolved` with the specific first-party artifacts inspected. The historical classifier now maps that producer evidence to `NO_VERIFIABLE_OFFICIAL_LOGO` human review.
 
+- Observation: 103 historical terminal reviews mention the old producer-evidence handoff, but current read-only verification split them into 20 intact packages and 14 concrete package defects; the remainder no longer matches a terminal mapping state or schema-valid review package.
+  Evidence: the guarded handoff preview verified producer commits and disposable scrapes for 20 packages. Fourteen failed exact evidence checks such as a generated path absent from the producer commit, missing setup script, changed candidate count, or missing disposable scrape and therefore require producer repair rather than reviewer recycling.
+
 ## Decision Log
 
 - Decision: Keep the independent official-logo gate and send manual-logo packages back to the producer for evidence review instead of weakening approval to accept logo-less organizations.
