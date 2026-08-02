@@ -177,7 +177,7 @@ export const affiliateMappingProducerRepairEligibility = (input: {
   const packageValidationFailed = /(?:(?:test|fixture|validation|generated file|commit).{0,160}(?:fail|missing|invalid|unavailable)|(?:fail|missing|invalid|unavailable).{0,160}(?:test|fixture|validation|generated file|commit))/i.test(evidence);
   if (packageValidationFailed) return producerRepair('PACKAGE_VALIDATION_FAILED');
 
-  const noVerifiableOfficialLogo = /(?:no\s+(?:verifiable|verified)\s+official\s+(?:logo|mark|asset)|(?:cannot|could not|unable to).{0,100}(?:verify|identify|find).{0,100}official\s+(?:logo|mark|asset))/i.test(evidence);
+  const noVerifiableOfficialLogo = /(?:no\s+(?:verifiable|verified)\s+official\s+(?:logo|mark|asset)|(?:cannot|could not|unable to).{0,100}(?:verify|identify|find).{0,100}official\s+(?:logo|mark|asset)|manual[_ -]?logo[_ -]?review.{0,100}(?:cannot be resolved|terminally failed)|(?:logo|official mark).{0,160}(?:no stored image asset|no safe official logo asset|terminally failed to prevent looping))/i.test(evidence);
   if (noVerifiableOfficialLogo) {
     return humanReview('no-verifiable-official-logo', ['NO_VERIFIABLE_OFFICIAL_LOGO']);
   }

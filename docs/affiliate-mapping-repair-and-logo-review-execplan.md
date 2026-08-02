@@ -61,6 +61,9 @@ The result is observable in three places: focused tests prove the retry classifi
 - Observation: the written producer and reviewer contracts already say that invalid child events must be excluded and logged while a valid organization remains eligible. The live failures happened because the producer persisted the invalid child events, so the package-level reviewer correctly rejected the submitted package even though its organization identity was coherent.
   Evidence: the ingestion completion contract and approval contract both make missing event location a per-event exclusion rather than an organization rejection when the organization itself has sufficient evidence.
 
+- Observation: the first structured historical preview found three terminal producer messages that had already exhausted stored logo evidence, but the legacy reviewer decisions only said `MANUAL_REVIEW` and did not distinguish a missed logo from a proven evidence gap.
+  Evidence: New York Elite Volleyball, NY Stingers, and NYC Parks Pickleball Courts each record `MANUAL_LOGO_REVIEW repair cannot be resolved` with the specific first-party artifacts inspected. The historical classifier now maps that producer evidence to `NO_VERIFIABLE_OFFICIAL_LOGO` human review.
+
 ## Decision Log
 
 - Decision: Keep the independent official-logo gate and send manual-logo packages back to the producer for evidence review instead of weakening approval to accept logo-less organizations.

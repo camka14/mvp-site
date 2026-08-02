@@ -202,4 +202,17 @@ describe('affiliate mapping producer repair eligibility', () => {
       reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
     }));
   });
+
+  it('recognizes a terminal producer logo-evidence exhaustion message', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      mappingErrorMessage: 'MANUAL_LOGO_REVIEW repair cannot be resolved from the stored intake: the official header has no stored image asset. This repair is terminally failed to prevent looping.',
+      approvalDecision: {},
+      resultSummary: reviewResult('MANUAL_REVIEW'),
+    })).toEqual(expect.objectContaining({
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+      reason: 'no-verifiable-official-logo',
+      reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+    }));
+  });
 });
