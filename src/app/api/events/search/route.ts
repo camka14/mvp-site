@@ -459,7 +459,6 @@ export async function POST(req: NextRequest) {
   const divisionGenders = Array.from(new Set(filters.divisionGenders ?? []));
   const divisionWhere = buildDivisionDiscoveryWhere({
     scope: 'EVENT',
-    sports: filters.sports,
     genders: divisionGenders,
     skillDivisionTypeIds,
     ageDivisionTypeIds,
@@ -601,11 +600,11 @@ export async function POST(req: NextRequest) {
   const userLongitude = userLocation
     ? (typeof userLocation.long === 'number' ? userLocation.long : userLocation.lng)
     : undefined;
-  const hasDistanceFilter = Boolean(
+  const hasUserLocation = Boolean(
     userLocation &&
-      typeof filters.maxDistance === 'number' &&
       isUsableUserLocation(userLocation.lat, userLongitude),
   );
+  const hasDistanceFilter = hasUserLocation && typeof filters.maxDistance === 'number';
   const candidateTake = hasDistanceFilter
     ? undefined
     : hasQuery
@@ -613,7 +612,7 @@ export async function POST(req: NextRequest) {
       : Math.min(Math.max((offset + limit + 1) * 5, 100), 500);
   let totalCount = 0;
   let events: any[] = [];
-  if (hasDistanceFilter) {
+  if (hasUserLocation) {
     events = await prisma.events.findMany({
       where,
       orderBy: { start: 'asc' },
@@ -667,10 +666,33 @@ export async function POST(req: NextRequest) {
         if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
         return (left.name ?? '').localeCompare(right.name ?? '');
       })
-    : events.sort((left, right) => (
-        getComparableTime((left as any).start) - getComparableTime((right as any).start)
-      ));
-  if (hasDistanceFilter) {
+    : events.sort((left, right) => {
+        if (hasUserLocation && userLocation && typeof userLongitude === 'number') {
+          const leftDistance = isUsableCoordinatePair(left.coordinates)
+            ? haversineMiles(
+                userLocation.lat,
+                userLongitude,
+                left.coordinates[1],
+                left.coordinates[0],
+              )
+            : null;
+          const rightDistance = isUsableCoordinatePair(right.coordinates)
+            ? haversineMiles(
+                userLocation.lat,
+                userLongitude,
+                right.coordinates[1],
+                right.coordinates[0],
+              )
+            : null;
+          if (leftDistance !== null && rightDistance !== null && leftDistance !== rightDistance) {
+            return leftDistance - rightDistance;
+          }
+          if (leftDistance !== null) return -1;
+          if (rightDistance !== null) return 1;
+        }
+        return getComparableTime((left as any).start) - getComparableTime((right as any).start);
+      });
+  if (hasUserLocation) {
     totalCount = sortedCandidateEvents.length;
   }
   const pageRows = sortedCandidateEvents.slice(offset, offset + limit + 1);

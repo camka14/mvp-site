@@ -338,6 +338,105 @@ describe('POST /api/events/search', () => {
     expect(json.pagination).toEqual({ hasMore: false, nextOffset: 1, totalCount: 1 });
   });
 
+  it('sorts distance-filtered results from nearest to farthest', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        ...eventRow('farther', 'Earlier but farther'),
+        start: new Date('2026-08-03T18:00:00.000Z'),
+        coordinates: [-122.85, 45.5152],
+      },
+      {
+        ...eventRow('nearest', 'Later but nearest'),
+        start: new Date('2026-10-03T18:00:00.000Z'),
+        coordinates: [-122.68, 45.5152],
+      },
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {
+          userLocation: { lat: 45.5152, lng: -122.6784 },
+          maxDistance: 80.467,
+        },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events.map((event: any) => event.id)).toEqual(['nearest', 'farther']);
+  });
+
+  it('sorts all-distance location results from nearest to farthest', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        ...eventRow('farther', 'Earlier but farther'),
+        start: new Date('2026-08-03T18:00:00.000Z'),
+        coordinates: [-122.85, 45.5152],
+      },
+      {
+        ...eventRow('nearest', 'Later but nearest'),
+        start: new Date('2026-10-03T18:00:00.000Z'),
+        coordinates: [-122.68, 45.5152],
+      },
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { userLocation: { lat: 45.5152, lng: -122.6784 } },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.count).not.toHaveBeenCalled();
+    expect(json.events.map((event: any) => event.id)).toEqual(['nearest', 'farther']);
+    expect(json.pagination.totalCount).toBe(2);
+  });
+
+  it('returns a nearby sport-filtered event without requiring an event division row', async () => {
+    prismaMock.sports.findMany.mockResolvedValue([{ id: 'Tennis' }]);
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        ...eventRow('tennis-event', 'Ladder Tournament 2026'),
+        sportId: 'Tennis',
+        coordinates: [-73.9757856, 40.6896125],
+      },
+    ]);
+    prismaMock.events.count.mockResolvedValue(1);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {
+          sports: ['Tennis'],
+          userLocation: { lat: 40.7127753, lng: -74.0059728 },
+          maxDistance: 80.467,
+        },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.divisions.findMany).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ sportId: { in: ['Tennis'] } }),
+    }));
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ sportId: { in: ['Tennis'] } }),
+    }));
+    expect(json.events.map((event: any) => event.id)).toEqual(['tennis-event']);
+  });
+
   it('keeps events with placeholder coordinates when no distance filter is requested', async () => {
     prismaMock.events.findMany.mockResolvedValue([
       { ...eventRow('bad'), coordinates: [0, 0] },

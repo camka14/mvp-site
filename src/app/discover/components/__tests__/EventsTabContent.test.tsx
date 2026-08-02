@@ -152,9 +152,11 @@ describe('EventsTabContent', () => {
         eventsError={null}
         onEventClick={jest.fn()}
         onCreateEvent={jest.fn()}
+        defaultSort="nearest"
       />,
     );
 
     expect(screen.getByText('12 events near you.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Sort events' })).toHaveValue('Nearest');
   });
 });

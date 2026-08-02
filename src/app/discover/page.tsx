@@ -88,7 +88,9 @@ type DiscoverTab = DiscoverTabValue;
 
 const EVENTS_LIMIT = 18;
 const DISCOVERY_PAGE_SIZE = 100;
-const DEFAULT_MAX_DISTANCE = 50;
+const KM_PER_MILE = 1.60934;
+const DEFAULT_MAX_DISTANCE_MILES = 50;
+const DEFAULT_MAX_DISTANCE = DEFAULT_MAX_DISTANCE_MILES * KM_PER_MILE;
 const EMPTY_DIVISION_FILTERS: DivisionDiscoveryFilterValue = {
   genders: [],
   skillDivisionTypeIds: [],
@@ -96,7 +98,6 @@ const EMPTY_DIVISION_FILTERS: DivisionDiscoveryFilterValue = {
   priceMinDollars: null,
   priceMaxDollars: null,
 };
-const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
 const DISTANCE_SLIDER_MAX_MILES = 100;
 const DISTANCE_SLIDER_MARKS = [
@@ -197,10 +198,19 @@ function DiscoverPageContent() {
   const [organizationTagsLoading, setOrganizationTagsLoading] = useState(false);
   const [organizationTagsError, setOrganizationTagsError] = useState<string | null>(null);
   const [maxDistance, setMaxDistance] = useState<number | null>(() => (
-    urlPreset.tab === 'events' && urlPreset.distanceMiles !== null
-      ? milesToKm(urlPreset.distanceMiles)
+    urlPreset.tab === 'events' && (urlPreset.location || location)
+      ? milesToKm(urlPreset.distanceMiles ?? DEFAULT_MAX_DISTANCE_MILES)
       : null
   ));
+  const isAutoDefaultDistanceRef = useRef(
+    urlPreset.tab === 'events'
+      && Boolean(urlPreset.location || location)
+      && urlPreset.distanceMiles === null,
+  );
+  const updateMaxDistance = useCallback((value: number | null) => {
+    isAutoDefaultDistanceRef.current = false;
+    setMaxDistance(value);
+  }, []);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(() => (
     urlPreset.tab === 'events' ? discoverDateParamToDate(urlPreset.startDate) : null
   ));
@@ -571,6 +581,16 @@ function DiscoverPageContent() {
         return;
       }
 
+      if (
+        isAutoDefaultDistanceRef.current
+        && typeof filters.maxDistance === 'number'
+        && page.pagination.totalCount === 0
+      ) {
+        isAutoDefaultDistanceRef.current = false;
+        setMaxDistance(null);
+        return;
+      }
+
       setEvents(page.events.filter((event) => !hiddenEventIds.has(event.$id)));
       setEventOffset(page.pagination.nextOffset);
       setEventTotalCount(page.pagination.totalCount);
@@ -840,6 +860,19 @@ function DiscoverPageContent() {
     });
     presetLocationAppliedRef.current = true;
   }, [setLocationFromInfo, urlPreset.location]);
+
+  useEffect(() => {
+    if (typeof location?.lat !== 'number' || typeof location?.lng !== 'number') {
+      return;
+    }
+    setMaxDistance((current) => {
+      if (current !== null) {
+        return current;
+      }
+      isAutoDefaultDistanceRef.current = true;
+      return DEFAULT_MAX_DISTANCE;
+    });
+  }, [location?.lat, location?.lng]);
 
   const locationRequestAttemptedRef = useRef(false);
   useEffect(() => {
@@ -1225,7 +1258,7 @@ function DiscoverPageContent() {
               eventTagsLoading={eventTagsLoading}
               eventTagsError={eventTagsError}
               maxDistance={maxDistance}
-              setMaxDistance={setMaxDistance}
+              setMaxDistance={updateMaxDistance}
               selectedStartDate={selectedStartDate}
               setSelectedStartDate={setSelectedStartDate}
               selectedEndDate={selectedEndDate}
@@ -1246,6 +1279,7 @@ function DiscoverPageContent() {
               eventsError={eventsError}
               onEventClick={handleSelectEvent}
               onCreateEvent={handleCreateEventNavigation}
+              defaultSort="nearest"
             />
           </Tabs.Panel>
 
@@ -1363,7 +1397,7 @@ function DiscoverPageContent() {
         sportsLoading={sportsLoading}
         sportsError={sportsError?.message ?? null}
         maxDistance={maxDistance}
-        setMaxDistance={setMaxDistance}
+        setMaxDistance={updateMaxDistance}
         selectedStartDate={selectedStartDate}
         setSelectedStartDate={setSelectedStartDate}
         selectedEndDate={selectedEndDate}

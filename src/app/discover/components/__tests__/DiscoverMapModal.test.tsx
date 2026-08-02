@@ -168,6 +168,7 @@ const renderModal = (
   options: {
     selectedTags?: string[];
     setSelectedTags?: Dispatch<SetStateAction<string[]>>;
+    selectedSports?: string[];
   } = {},
 ) => renderWithMantine(
   <DiscoverMapModal
@@ -176,7 +177,7 @@ const renderModal = (
     location={location}
     requestLocation={jest.fn()}
     kmBetween={kmBetween}
-    selectedSports={[]}
+    selectedSports={options.selectedSports ?? []}
     setSelectedSports={jest.fn()}
     selectedTags={options.selectedTags ?? []}
     setSelectedTags={options.setSelectedTags ?? jest.fn()}
@@ -346,6 +347,27 @@ describe('DiscoverMapModal', () => {
     expect(screen.getAllByText('Tryouts').length).toBeGreaterThan(0);
     expect(screen.queryByText('Event Type')).not.toBeInTheDocument();
     expect(screen.queryByText('Tournament')).not.toBeInTheDocument();
+  });
+
+  it('loads and displays map events for the selected sport', async () => {
+    mockedEventService.getEventsPaginated.mockResolvedValue([
+      buildMapEvent({
+        $id: 'tennis-event',
+        name: 'Ladder Tournament 2026',
+        sport: { $id: 'Tennis', name: 'Tennis' } as Event['sport'],
+      }),
+    ]);
+
+    renderModal(VANCOUVER_WA_CENTER, { selectedSports: ['Tennis'] });
+
+    await waitFor(() => {
+      expect(mockedEventService.getEventsPaginated).toHaveBeenCalledWith(
+        expect.objectContaining({ sports: ['Tennis'] }),
+        100,
+        0,
+      );
+    });
+    expect(await screen.findByRole('button', { name: 'Ladder Tournament 2026' })).toBeInTheDocument();
   });
 
   it('opens and closes the mobile map search and filters independently', async () => {

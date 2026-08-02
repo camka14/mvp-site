@@ -40,6 +40,7 @@ const EVENT_SORT_OPTIONS = [
   { value: 'popular', label: 'Most popular' },
   { value: 'alpha', label: 'A to Z' },
 ] as const;
+type EventSortValue = (typeof EVENT_SORT_OPTIONS)[number]['value'];
 
 const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
@@ -107,6 +108,7 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   createEventHelperText?: string | null;
   hideWeeklyChildren?: boolean;
   setHideWeeklyChildren?: (value: boolean) => void;
+  defaultSort?: EventSortValue;
 };
 
 export default function EventsTabContent<TEventType extends string = Event['eventType']>(
@@ -155,9 +157,10 @@ export default function EventsTabContent<TEventType extends string = Event['even
     createEventHelperText = null,
     hideWeeklyChildren = false,
     setHideWeeklyChildren,
+    defaultSort = 'soonest',
   } = props;
 
-  const [eventSort, setEventSort] = useState<(typeof EVENT_SORT_OPTIONS)[number]['value']>('soonest');
+  const [eventSort, setEventSort] = useState<EventSortValue>(defaultSort);
   const [sportSearchTerm, setSportSearchTerm] = useState('');
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const allEventTypesSelected = selectedEventTypes.length === eventTypeOptions.length;

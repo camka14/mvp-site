@@ -4,12 +4,14 @@ import DiscoverPage from '../page';
 
 const pushMock = jest.fn();
 const listOrganizationsMock = jest.fn();
+const getEventsPageMock = jest.fn();
 const mockSportsResult: { sports: Array<{ $id: string; name: string }>; loading: boolean; error: null } = {
   sports: [],
   loading: false,
   error: null,
 };
 let navigationSearchParams = 'tab=organizations';
+let mockLocation: { lat: number; lng: number } | null = null;
 let intersectionCallbacks: IntersectionObserverCallback[] = [];
 
 jest.mock('next/navigation', () => ({
@@ -29,7 +31,8 @@ jest.mock('@/app/providers', () => ({
 
 jest.mock('@/app/hooks/useLocation', () => ({
   useLocation: () => ({
-    location: null,
+    location: mockLocation,
+    locationInfo: mockLocation ? { city: 'New York', state: 'NY', formattedAddress: 'New York, NY' } : null,
     requestLocation: jest.fn().mockResolvedValue(undefined),
     setLocationFromInfo: jest.fn(),
   }),
@@ -51,7 +54,7 @@ jest.mock('@/lib/organizationService', () => ({
 
 jest.mock('@/lib/eventService', () => ({
   eventService: {
-    getEventsPage: jest.fn(),
+    getEventsPage: (...args: unknown[]) => getEventsPageMock(...args),
   },
 }));
 
@@ -114,7 +117,13 @@ describe('Discover organization loading', () => {
     listOrganizationsMock.mockReset();
     intersectionCallbacks = [];
     navigationSearchParams = 'tab=organizations';
+    mockLocation = null;
     mockSportsResult.sports = [];
+    getEventsPageMock.mockReset();
+    getEventsPageMock.mockResolvedValue({
+      events: [],
+      pagination: { limit: 18, offset: 0, nextOffset: 0, hasMore: false, totalCount: 0 },
+    });
     window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
     listOrganizationsMock.mockResolvedValue({
       organizations: [{
@@ -235,5 +244,53 @@ describe('Discover organization loading', () => {
     expect(await screen.findByText('Cascade Athletics')).toBeInTheDocument();
     expect(listOrganizationsMock).toHaveBeenCalledTimes(2);
     expect(listOrganizationsMock.mock.calls[1]?.slice(0, 2)).toEqual([100, 1]);
+  });
+
+  it('defaults a location-based event search to a 50 mile radius', async () => {
+    navigationSearchParams = 'sport=Tennis&lat=40.7127753&lng=-74.0059728&location=New+York%2C+NY';
+    mockLocation = { lat: 40.7127753, lng: -74.0059728 };
+    mockSportsResult.sports = [{ $id: 'Tennis', name: 'Tennis' }];
+    getEventsPageMock.mockResolvedValue({
+      events: [],
+      pagination: { limit: 18, offset: 0, nextOffset: 0, hasMore: false, totalCount: 1 },
+    });
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+
+    renderWithMantine(<DiscoverPage />);
+
+    await waitFor(() => {
+      expect(getEventsPageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sports: ['Tennis'],
+          userLocation: mockLocation,
+          maxDistance: expect.closeTo(80.467, 3),
+        }),
+        18,
+        0,
+      );
+      expect(window.location.search).toContain('distanceMiles=50');
+    });
+  });
+
+  it('falls back to all distances when the automatic 50 mile search is empty', async () => {
+    navigationSearchParams = 'lat=40.7127753&lng=-74.0059728&location=New+York%2C+NY';
+    mockLocation = { lat: 40.7127753, lng: -74.0059728 };
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+
+    renderWithMantine(<DiscoverPage />);
+
+    await waitFor(() => {
+      expect(getEventsPageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ maxDistance: expect.closeTo(80.467, 3) }),
+        18,
+        0,
+      );
+      expect(getEventsPageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ maxDistance: undefined }),
+        18,
+        0,
+      );
+      expect(window.location.search).not.toContain('distanceMiles=');
+    });
   });
 });
