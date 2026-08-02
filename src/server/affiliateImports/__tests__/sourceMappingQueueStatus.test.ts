@@ -13,6 +13,7 @@ describe('affiliate mapping queue status', () => {
         { id: 'active-intake', status: 'MAPPING_IN_PROGRESS', complianceStatus: 'ALLOWED' },
         { id: 'orphan-ready', status: 'READY_FOR_MAPPING', complianceStatus: 'ALLOWED' },
         { id: 'review-intake', status: 'REVIEW_REQUIRED', complianceStatus: 'NEEDS_REVIEW' },
+        { id: 'human-intake', status: 'REVIEW_REQUIRED', complianceStatus: 'ALLOWED' },
         { id: 'failed-intake', status: 'FAILED', complianceStatus: 'ALLOWED' },
       ],
       captureRuns: [],
@@ -36,6 +37,12 @@ describe('affiliate mapping queue status', () => {
           status: 'REVIEW_REQUIRED',
           leaseExpiresAt: null,
         },
+        {
+          id: 'human',
+          intakeId: 'human-intake',
+          status: 'HUMAN_REVIEW_REQUIRED',
+          leaseExpiresAt: null,
+        },
         { id: 'failed', intakeId: 'failed-intake', status: 'FAILED', leaseExpiresAt: null },
       ],
     }, now);
@@ -49,13 +56,14 @@ describe('affiliate mapping queue status', () => {
       eligibleReadyIntakesWithoutJob: 1,
       readyIntakeIdsWithoutJob: ['orphan-ready'],
       reviewRequiredJobs: 1,
+      humanReviewRequiredJobs: 1,
       failedJobs: 1,
     }));
     expect(status.intakeStatusCounts).toEqual({
       FAILED: 1,
       MAPPING_IN_PROGRESS: 2,
       READY_FOR_MAPPING: 2,
-      REVIEW_REQUIRED: 1,
+      REVIEW_REQUIRED: 2,
     });
   });
 
@@ -81,6 +89,7 @@ describe('affiliate mapping queue status', () => {
     expect(status.claimableJobs).toBe(0);
     expect(status.eligibleReadyIntakesWithoutJob).toBe(0);
     expect(status.reviewRequiredJobs).toBe(1);
+    expect(status.humanReviewRequiredJobs).toBe(0);
     expect(status.failedJobs).toBe(1);
   });
 

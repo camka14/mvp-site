@@ -63,6 +63,10 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('differing division prices require a compact event range');
     expect(goal).toContain('For MANUAL_REVIEW logos');
     expect(goal).toContain('DEFER when no official mark can be verified');
+    expect(goal).toContain('Every non-approved MAPPING_PACKAGE result must include mappingDisposition');
+    expect(goal).toContain('nextAction PRODUCER_REPAIR');
+    expect(goal).toContain('Use HUMAN_REVIEW_REQUIRED only');
+    expect(goal).toContain('do not use DEFER for a fixable producer defect');
     expect(goal).toContain('Never publish an organization or candidate');
   });
 

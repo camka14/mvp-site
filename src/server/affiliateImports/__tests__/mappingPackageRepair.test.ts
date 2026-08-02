@@ -42,11 +42,12 @@ describe('affiliate mapping producer repair eligibility', () => {
       approvalDecision: {
         blockingIssues: ['The setup script explicitly refuses --live and cannot be applied by the guarded reviewer.'],
       },
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       eligible: true,
       reason: 'producer-repair-required',
       repairReason: 'LIVE_SETUP_UNSUPPORTED',
-    });
+      disposition: 'PRODUCER_REPAIR',
+    }));
   });
 
   it('does not let stale approval evidence override a newer terminal mapping failure', () => {
@@ -56,11 +57,12 @@ describe('affiliate mapping producer repair eligibility', () => {
       approvalDecision: {
         blockingIssues: ['The old setup script refused --live.'],
       },
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       eligible: false,
-      reason: 'unrelated-producer-defect',
+      reason: 'unclassified-terminal-failure',
       repairReason: null,
-    });
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+    }));
   });
 
   it('requeues packages rejected because event location failures were treated as package failures', () => {
@@ -79,11 +81,12 @@ describe('affiliate mapping producer repair eligibility', () => {
         blockingIssues: ['Official logo verification failed: logoDisposition remains MANUAL_REVIEW.'],
       },
       resultSummary: reviewResult('MANUAL_REVIEW'),
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       eligible: true,
       reason: 'producer-repair-required',
       repairReason: 'MANUAL_LOGO_REVIEW',
-    });
+      disposition: 'PRODUCER_REPAIR',
+    }));
   });
 
   it('does not label an official-logo package as a manual-logo repair', () => {
@@ -93,21 +96,110 @@ describe('affiliate mapping producer repair eligibility', () => {
         blockingIssues: ['Official logo verification failed: logoDisposition remains MANUAL_REVIEW.'],
       },
       resultSummary: reviewResult('OFFICIAL_ASSET'),
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       eligible: false,
-      reason: 'unrelated-producer-defect',
+      reason: 'unclassified-terminal-failure',
       repairReason: null,
-    });
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+    }));
   });
 
   it('does not recycle unrelated package defects', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,
       approvalDecision: { blockingIssues: ['The official logo is not supported by stored evidence.'] },
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       eligible: false,
-      reason: 'unrelated-producer-defect',
+      reason: 'unclassified-terminal-failure',
       repairReason: null,
-    });
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+    }));
+  });
+
+  it('requeues a historical guarded-live deferral', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'DEFERRED',
+      mappingStatus: 'REVIEW_REQUIRED',
+      approvalDecision: {
+        blockingIssues: ['The setup script refuses --live and cannot pass guarded application.'],
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      repairReason: 'LIVE_SETUP_UNSUPPORTED',
+      disposition: 'PRODUCER_REPAIR',
+    }));
+  });
+
+  it('marks an ordinary historical deferral for human review instead of retrying it', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'DEFERRED',
+      mappingStatus: 'REVIEW_REQUIRED',
+      approvalDecision: {
+        blockingIssues: ['No stored official logo can be verified.'],
+      },
+      resultSummary: reviewResult('MANUAL_REVIEW'),
+    })).toEqual(expect.objectContaining({
+      eligible: false,
+      reason: 'historical-deferred-evidence-review',
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+    }));
+  });
+
+  it('honors a structured producer repair disposition without heuristic text matching', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        mappingDisposition: {
+          nextAction: 'PRODUCER_REPAIR',
+          reasonCodes: ['EVENT_PRICING_INVALID'],
+        },
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      repairReason: 'EVENT_PRICING_INVALID',
+      disposition: 'PRODUCER_REPAIR',
+      reasonCodes: ['EVENT_PRICING_INVALID'],
+    }));
+  });
+
+  it('preserves reason codes for jobs already marked for human review', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'DEFERRED',
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      approvalDecision: {},
+      resultSummary: {
+        humanReviewRequired: {
+          reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+        },
+      },
+    })).toEqual(expect.objectContaining({
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+      reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+    }));
+  });
+
+  it('leaves old producer-handoff failures for the evidence-verified reviewer retry', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        blockingIssues: ['The producer commit cannot be resolved in the reviewer checkout.'],
+      },
+    })).toEqual(expect.objectContaining({
+      disposition: null,
+      reason: 'reviewer-handoff-retry-required',
+    }));
+  });
+
+  it('stops a historical package when the review proved no official logo exists', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        blockingIssues: ['No verifiable official logo or organization mark exists in stored evidence.'],
+      },
+      resultSummary: reviewResult('MANUAL_REVIEW'),
+    })).toEqual(expect.objectContaining({
+      disposition: 'HUMAN_REVIEW_REQUIRED',
+      reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+    }));
   });
 });

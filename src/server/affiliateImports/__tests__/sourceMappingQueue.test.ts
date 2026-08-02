@@ -39,9 +39,16 @@ describe('affiliate source mapping queue', () => {
       resultSummary: {
         mappingRepairHistory: [{
           repairReason: 'MANUAL_LOGO_REVIEW',
+          repairReasons: ['OFFICIAL_LOGO_REPAIR_REQUIRED', 'EVENT_PRICING_INVALID'],
           queuedAt: '2026-08-01T23:00:00.000Z',
+          priorMappingStatus: 'REVIEW_REQUIRED',
           priorMappingErrorMessage: 'Official logo verification failed.',
           approvalJobId: 'approval_1',
+          approvalStatus: 'REJECTED',
+          reviewerId: 'reviewer-1',
+          decision: 'REJECT',
+          rationale: 'The package needs two producer fixes.',
+          blockingIssues: ['Logo invalid.', 'Prices collapsed.'],
         }],
       },
     });
@@ -60,9 +67,16 @@ describe('affiliate source mapping queue', () => {
       jobId: 'job_1', intakeId: 'intake_1', sourceKey: 'river-city-soccer', workerId: 'worker-1',
       repairContext: {
         repairReason: 'MANUAL_LOGO_REVIEW',
+        repairReasons: ['OFFICIAL_LOGO_REPAIR_REQUIRED', 'EVENT_PRICING_INVALID'],
         queuedAt: '2026-08-01T23:00:00.000Z',
+        priorMappingStatus: 'REVIEW_REQUIRED',
         priorMappingErrorMessage: 'Official logo verification failed.',
         approvalJobId: 'approval_1',
+        approvalStatus: 'REJECTED',
+        reviewerId: 'reviewer-1',
+        decision: 'REJECT',
+        rationale: 'The package needs two producer fixes.',
+        blockingIssues: ['Logo invalid.', 'Prices collapsed.'],
       },
     }));
     expect(prismaMock.affiliateSourceMappingJobs.updateMany).toHaveBeenCalledWith(expect.objectContaining({

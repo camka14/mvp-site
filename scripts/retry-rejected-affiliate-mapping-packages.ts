@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
-import { affiliateMappingProducerRepairEligibility } from '../src/server/affiliateImports/mappingPackageRepair';
+import {
+  affiliateMappingProducerRepairEligibility,
+  MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS,
+} from '../src/server/affiliateImports/mappingPackageRepair';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -18,6 +21,11 @@ const recordValue = (value: unknown): Record<string, unknown> => (
     : {}
 );
 
+const repairHistory = (resultSummary: unknown): Record<string, unknown>[] => {
+  const history = recordValue(resultSummary).mappingRepairHistory;
+  return Array.isArray(history) ? history.map(recordValue) : [];
+};
+
 const main = async () => {
   const { prisma } = await import('../src/lib/prisma');
   const db = prisma as any;
@@ -25,7 +33,7 @@ const main = async () => {
     const approvals = await db.affiliateApprovalJobs.findMany({
       where: {
         subjectType: 'MAPPING_PACKAGE',
-        status: 'REJECTED',
+        status: { in: ['REJECTED', 'DEFERRED'] },
         ...(selectedJobId ? { subjectKey: selectedJobId } : {}),
       },
       orderBy: [{ finishedAt: 'asc' }, { id: 'asc' }],
@@ -36,7 +44,18 @@ const main = async () => {
         })
       : [];
     const mappingById = new Map(mappingJobs.map((job: any) => [job.id, job]));
-    const eligible: Array<{ approval: any; mapping: any; repairReason: string }> = [];
+    const producerRepairs: Array<{
+      approval: any;
+      mapping: any;
+      repairReason: string;
+      reasonCodes: string[];
+    }> = [];
+    const humanReviews: Array<{
+      approval: any;
+      mapping: any;
+      reason: string;
+      reasonCodes: string[];
+    }> = [];
     const excluded: Record<string, number> = {};
 
     for (const approval of approvals) {
@@ -52,27 +71,66 @@ const main = async () => {
         mappingErrorMessage: mapping.errorMessage,
         resultSummary: mapping.resultSummary,
       });
-      if (!selection.eligible || !selection.repairReason) {
-        excluded[selection.reason] = (excluded[selection.reason] ?? 0) + 1;
+      if (selection.disposition === 'PRODUCER_REPAIR' && selection.repairReason) {
+        if (repairHistory(mapping.resultSummary).length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS) {
+          humanReviews.push({
+            approval,
+            mapping,
+            reason: 'automatic-repair-limit-exhausted',
+            reasonCodes: Array.from(new Set([...selection.reasonCodes, 'RETRY_LIMIT_EXCEEDED'])),
+          });
+        } else {
+          producerRepairs.push({
+            approval,
+            mapping,
+            repairReason: selection.repairReason,
+            reasonCodes: selection.reasonCodes,
+          });
+        }
         continue;
       }
-      eligible.push({ approval, mapping, repairReason: selection.repairReason });
+      if (selection.disposition === 'HUMAN_REVIEW_REQUIRED') {
+        humanReviews.push({
+          approval,
+          mapping,
+          reason: selection.reason,
+          reasonCodes: selection.reasonCodes,
+        });
+        continue;
+      }
+      excluded[selection.reason] = (excluded[selection.reason] ?? 0) + 1;
     }
 
     const preview = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       environment: useLive ? 'live' : 'configured-database',
       apply,
       selectedJobId,
-      rejectedApprovals: approvals.length,
-      eligible: eligible.length,
+      terminalApprovals: approvals.length,
+      producerRepairs: producerRepairs.length,
+      humanReviews: humanReviews.length,
       excluded,
-      jobs: eligible.map(({ approval, mapping, repairReason }) => ({
-        approvalJobId: approval.id,
-        mappingJobId: mapping.id,
-        intakeId: mapping.intakeId,
-        repairReason,
-      })),
+      jobs: [
+        ...producerRepairs.map(({ approval, mapping, repairReason, reasonCodes }) => ({
+          approvalJobId: approval.id,
+          approvalStatus: approval.status,
+          mappingJobId: mapping.id,
+          intakeId: mapping.intakeId,
+          disposition: 'PRODUCER_REPAIR',
+          repairReason,
+          reasonCodes,
+        })),
+        ...humanReviews.map(({ approval, mapping, reason, reasonCodes }) => ({
+          approvalJobId: approval.id,
+          approvalStatus: approval.status,
+          mappingJobId: mapping.id,
+          intakeId: mapping.intakeId,
+          disposition: 'HUMAN_REVIEW_REQUIRED',
+          reason,
+          reasonCodes,
+          alreadyMarked: mapping.status === 'HUMAN_REVIEW_REQUIRED',
+        })),
+      ],
     };
     if (!apply) {
       console.log(JSON.stringify(preview, null, 2));
@@ -80,12 +138,13 @@ const main = async () => {
     }
 
     const reset: string[] = [];
-    for (const candidate of eligible) {
-      await db.$transaction(async (tx: any) => {
-        const currentApproval = await tx.affiliateApprovalJobs.findUnique({
+    const markedForHumanReview: string[] = [];
+    for (const candidate of producerRepairs) {
+      await db.$transaction(async (transaction: any) => {
+        const currentApproval = await transaction.affiliateApprovalJobs.findUnique({
           where: { id: candidate.approval.id },
         });
-        const currentMapping = await tx.affiliateSourceMappingJobs.findUnique({
+        const currentMapping = await transaction.affiliateSourceMappingJobs.findUnique({
           where: { id: candidate.mapping.id },
         });
         if (!currentApproval || !currentMapping) return;
@@ -96,15 +155,17 @@ const main = async () => {
           mappingErrorMessage: currentMapping.errorMessage,
           resultSummary: currentMapping.resultSummary,
         });
-        if (!selection.eligible || !selection.repairReason) return;
+        const history = repairHistory(currentMapping.resultSummary);
+        if (
+          selection.disposition !== 'PRODUCER_REPAIR'
+          || !selection.repairReason
+          || history.length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
+        ) return;
 
         const envelope = recordValue(currentMapping.resultSummary);
-        const history = Array.isArray(envelope.mappingRepairHistory)
-          ? envelope.mappingRepairHistory
-          : [];
-        const { approvalReview: _approvalReview, ...preservedEnvelope } = envelope;
+        const { approvalReview: _approvalReview, humanReviewRequired: _humanReview, ...preservedEnvelope } = envelope;
         const queuedAt = new Date();
-        await tx.affiliateSourceMappingJobs.update({
+        await transaction.affiliateSourceMappingJobs.update({
           where: { id: currentMapping.id },
           data: {
             status: 'QUEUED',
@@ -120,17 +181,20 @@ const main = async () => {
               mappingRepairHistory: [...history, {
                 queuedAt: queuedAt.toISOString(),
                 repairReason: selection.repairReason,
+                repairReasons: selection.reasonCodes,
                 priorMappingStatus: currentMapping.status,
                 priorMappingErrorMessage: currentMapping.errorMessage,
                 approvalJobId: currentApproval.id,
                 approvalStatus: currentApproval.status,
                 reviewerId: currentApproval.reviewerId,
-                decision: currentApproval.decision,
+                decision: recordValue(currentApproval.decision).decision,
+                rationale: recordValue(currentApproval.decision).rationale,
+                blockingIssues: recordValue(currentApproval.decision).blockingIssues,
               }],
             },
           },
         });
-        await tx.affiliateSourceIntakes.update({
+        await transaction.affiliateSourceIntakes.update({
           where: { id: currentMapping.intakeId },
           data: { status: 'READY_FOR_MAPPING' },
         });
@@ -138,7 +202,76 @@ const main = async () => {
       });
     }
 
-    console.log(JSON.stringify({ ...preview, resetCount: reset.length, reset }, null, 2));
+    for (const candidate of humanReviews) {
+      await db.$transaction(async (transaction: any) => {
+        const currentApproval = await transaction.affiliateApprovalJobs.findUnique({
+          where: { id: candidate.approval.id },
+        });
+        const currentMapping = await transaction.affiliateSourceMappingJobs.findUnique({
+          where: { id: candidate.mapping.id },
+        });
+        if (!currentApproval || !currentMapping || currentMapping.status === 'HUMAN_REVIEW_REQUIRED') return;
+        const selection = affiliateMappingProducerRepairEligibility({
+          approvalStatus: currentApproval.status,
+          approvalDecision: currentApproval.decision,
+          mappingStatus: currentMapping.status,
+          mappingErrorMessage: currentMapping.errorMessage,
+          resultSummary: currentMapping.resultSummary,
+        });
+        const history = repairHistory(currentMapping.resultSummary);
+        const exhausted = (
+          selection.disposition === 'PRODUCER_REPAIR'
+          && history.length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
+        );
+        if (selection.disposition !== 'HUMAN_REVIEW_REQUIRED' && !exhausted) return;
+        const reasonCodes = exhausted
+          ? Array.from(new Set([...selection.reasonCodes, 'RETRY_LIMIT_EXCEEDED']))
+          : selection.reasonCodes;
+        const markedAt = new Date();
+        const envelope = recordValue(currentMapping.resultSummary);
+        await transaction.affiliateSourceMappingJobs.update({
+          where: { id: currentMapping.id },
+          data: {
+            status: 'HUMAN_REVIEW_REQUIRED',
+            claimedAt: null,
+            leaseExpiresAt: null,
+            workerId: null,
+            finishedAt: markedAt,
+            errorMessage: exhausted
+              ? `Automatic producer repair limit of ${MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS} was exhausted.`
+              : currentMapping.errorMessage || 'Historical terminal package requires human review.',
+            resultSummary: {
+              ...envelope,
+              mappingRepairHistory: history,
+              humanReviewRequired: {
+                markedAt: markedAt.toISOString(),
+                source: 'HISTORICAL_TERMINAL_CLASSIFICATION',
+                approvalJobId: currentApproval.id,
+                approvalStatus: currentApproval.status,
+                reviewerId: currentApproval.reviewerId,
+                decision: recordValue(currentApproval.decision).decision,
+                reasonCodes,
+                rationale: recordValue(currentApproval.decision).rationale,
+                blockingIssues: recordValue(currentApproval.decision).blockingIssues,
+              },
+            },
+          },
+        });
+        await transaction.affiliateSourceIntakes.update({
+          where: { id: currentMapping.intakeId },
+          data: { status: 'REVIEW_REQUIRED' },
+        });
+        markedForHumanReview.push(currentMapping.id);
+      });
+    }
+
+    console.log(JSON.stringify({
+      ...preview,
+      resetCount: reset.length,
+      reset,
+      markedForHumanReviewCount: markedForHumanReview.length,
+      markedForHumanReview,
+    }, null, 2));
   } finally {
     await db.$disconnect();
   }

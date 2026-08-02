@@ -17,6 +17,7 @@ const compoundApproval = (where: any) => {
 };
 
 const prismaMock = {
+  $transaction: jest.fn(async (callback: (transaction: any) => Promise<any>) => callback(prismaMock)),
   affiliateApprovalJobs: {
     findUnique: jest.fn(async ({ where }: any) => compoundApproval(where)),
     findMany: jest.fn(async () => approvalRows),
@@ -325,7 +326,7 @@ describe('affiliate approval queue', () => {
     expect(completed.status).toBe('APPROVED');
   });
 
-  it('records a mapping rejection without applying or promoting the package', async () => {
+  it('automatically returns a producer-repair rejection to the same mapping job', async () => {
     approvalRows = [{
       id: 'approval_1',
       subjectType: 'MAPPING_PACKAGE',
@@ -339,11 +340,87 @@ describe('affiliate approval queue', () => {
       decision: 'REJECT',
       rationale: 'The logo evidence does not identify an official asset.',
       blockingIssues: ['Official logo evidence is invalid.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['OFFICIAL_LOGO_REPAIR_REQUIRED'],
+      },
     }, { applyMappingPackage });
 
     expect(applyMappingPackage).not.toHaveBeenCalled();
-    expect(mappingRows[0].status).toBe('FAILED');
-    expect(intakeRows[0].status).toBe('REVIEW_REQUIRED');
+    expect(mappingRows[0].status).toBe('QUEUED');
+    expect(mappingRows[0].resultSummary.mappingRepairHistory).toEqual([
+      expect.objectContaining({
+        repairReason: 'OFFICIAL_LOGO_REPAIR_REQUIRED',
+        repairReasons: ['OFFICIAL_LOGO_REPAIR_REQUIRED'],
+        blockingIssues: ['Official logo evidence is invalid.'],
+      }),
+    ]);
+    expect(intakeRows[0].status).toBe('READY_FOR_MAPPING');
     expect(completed.status).toBe('REJECTED');
+  });
+
+  it('marks a deferred evidence gap as terminal human review', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+
+    const completed = await completeAffiliateApproval({
+      ...mappingApprovalResult(),
+      decision: 'DEFER',
+      rationale: 'No stored artifact verifies an official organization mark.',
+      blockingIssues: ['A human must supply or verify official logo evidence.'],
+      mappingDisposition: {
+        nextAction: 'HUMAN_REVIEW_REQUIRED',
+        reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+      },
+    });
+
+    expect(mappingRows[0]).toEqual(expect.objectContaining({
+      status: 'HUMAN_REVIEW_REQUIRED',
+      errorMessage: 'A human must supply or verify official logo evidence.',
+      resultSummary: expect.objectContaining({
+        humanReviewRequired: expect.objectContaining({
+          reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+        }),
+      }),
+    }));
+    expect(intakeRows[0].status).toBe('REVIEW_REQUIRED');
+    expect(completed.status).toBe('DEFERRED');
+  });
+
+  it('stops automatic repair after three recorded repair passes', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    mappingRows[0].resultSummary = {
+      result: ingestionResult(),
+      mappingRepairHistory: [{}, {}, {}],
+    };
+
+    await completeAffiliateApproval({
+      ...mappingApprovalResult(),
+      decision: 'REJECT',
+      rationale: 'The event location defect remains after producer repair.',
+      blockingIssues: ['An accepted event still has no usable location.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['EVENT_LOCATION_INVALID'],
+      },
+    });
+
+    expect(mappingRows[0].status).toBe('HUMAN_REVIEW_REQUIRED');
+    expect(mappingRows[0].resultSummary.mappingRepairHistory).toHaveLength(3);
+    expect(mappingRows[0].resultSummary.humanReviewRequired).toEqual(expect.objectContaining({
+      requestedNextAction: 'PRODUCER_REPAIR',
+      reasonCodes: ['EVENT_LOCATION_INVALID', 'RETRY_LIMIT_EXCEEDED'],
+    }));
   });
 });

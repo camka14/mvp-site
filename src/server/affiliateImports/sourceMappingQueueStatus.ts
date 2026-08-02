@@ -35,6 +35,7 @@ export type AffiliateMappingQueueStatus = {
   eligibleReadyIntakesWithoutJob: number;
   readyIntakeIdsWithoutJob: string[];
   reviewRequiredJobs: number;
+  humanReviewRequiredJobs: number;
   failedJobs: number;
   expandedJobs: number;
   queuedCaptureRuns: number;
@@ -106,6 +107,7 @@ export const summarizeAffiliateMappingQueue = (
     eligibleReadyIntakesWithoutJob: readyIntakeIdsWithoutJob.length,
     readyIntakeIdsWithoutJob,
     reviewRequiredJobs: input.jobs.filter((job) => job.status === 'REVIEW_REQUIRED').length,
+    humanReviewRequiredJobs: input.jobs.filter((job) => job.status === 'HUMAN_REVIEW_REQUIRED').length,
     failedJobs: input.jobs.filter((job) => job.status === 'FAILED').length,
     expandedJobs: input.jobs.filter((job) => job.status === 'EXPANDED').length,
     queuedCaptureRuns,

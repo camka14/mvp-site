@@ -85,6 +85,25 @@ Use `REVIEW_REQUIRED` only when the package, tests, and validation artifacts exi
 
 Do not let failed or blocked rows prevent queue exhaustion. Do not turn them into positive training examples.
 
+## Producer repair contract
+
+A claimed `repairContext` contains the prior review's complete machine-readable
+reason set, rationale, and blocking issues. A repaired package must address all
+of them in a new source-scoped commit and include a focused regression test for
+the defect. Do not resubmit after fixing only the first reason.
+
+When the defect reveals a general failure mode missing from the repo-backed
+ingestion skill or this contract, add a generalized prevention rule there in
+the same commit. Keep source-specific evidence in the fixture, result artifact,
+and repair history rather than the shared skill. Existing rules should be
+clarified only when the review demonstrated that they were ambiguous; never
+weaken a gate to make a package pass.
+
+Three automatic producer repair passes are available. Another independent
+rejection marks the job `HUMAN_REVIEW_REQUIRED`, which is terminal and cannot be
+claimed by the mapping agent. A producer must not manually reset or bypass that
+state.
+
 ## Directory expansion contract
 
 Directory proposals must be written to a JSON file and submitted with the exact command supplied by the active goal. The command writes the schema-validated `EXPANDED` result file named by `--result`; pass that file to the normal mapping-completion command without hand-editing it. The proposal file shape is:

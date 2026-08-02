@@ -20,6 +20,12 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-01 23:12Z) Ran 33 focused tests, repository CI, TypeScript, and diff validation; committed and pushed the repair plus the current-failure classifier safeguard to `main`.
 - [x] (2026-08-01 23:19Z) Updated both OVH agent checkouts, restored disk capacity, restarted the producer and reviewer, and verified their generated goals contain the guarded-live, event-location, division/pricing, and manual-logo contracts.
 - [x] (2026-08-01 23:20Z) Previewed and requeued exactly 91 live packages: 59 manual-logo reviews, 29 guarded-live setup repairs, and 3 event-location package repairs. Queue reports showed zero expired leases and zero claims without leases before agent restart.
+- [x] (2026-08-02 00:05Z) Audited the restarted live decisions and the queue transitions. Confirmed that fixable producer defects are still terminal `REJECTED`, evidence deferrals never return to the producer, and a valid organization can still be stranded when its invalid child events were persisted instead of filtered.
+- [x] (2026-08-02 00:35Z) Added a strict producer-repair versus human-review disposition, atomic producer requeue, explicit `HUMAN_REVIEW_REQUIRED` state, and a three-pass automatic repair limit.
+- [x] (2026-08-02 00:40Z) Extended historical classification across rejected and deferred packages while preserving old producer-evidence handoff failures for their evidence-verified reviewer retry.
+- [x] (2026-08-02 00:45Z) Updated producer and reviewer goals, skills, and contracts so repairs address every issue, add regression coverage, and generalize newly discovered failure classes without weakening gates.
+- [x] (2026-08-02 00:50Z) Passed 51 focused tests, repository CI, TypeScript, and diff validation.
+- [ ] Preview and apply the historical live classification, then verify the automatic producer/reviewer cycle on OVH.
 - [ ] Verify repaired jobs are claimed and independently re-reviewed without leaked leases.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
@@ -46,6 +52,15 @@ The result is observable in three places: focused tests prove the retry classifi
 - Observation: the producer goal requires an interactive terminal and exits when launched as a detached non-TTY Docker exec.
   Evidence: the non-TTY launch reported `The Codex ingestion goal requires an interactive terminal`; launching it through `script` supplied a pseudo-terminal and produced the expected live Luna goal process.
 
+- Observation: `DEFER` is currently terminal for the approval row but leaves the mapping job at `REVIEW_REQUIRED`; queue reconciliation sees the existing approval row and never reopens it, so historical guarded-live deferrals cannot be repaired.
+  Evidence: `completeAffiliateApproval` does not change mapping state for `DEFER`, while `reconcileAffiliateApprovalQueue` only creates an approval row when none exists.
+
+- Observation: the first six authoritative decisions after restart included four concrete producer defects and two old guarded-live incompatibilities. The producer defects were missing event-location filtering and invalid division, price, or capacity interpretation; the old guarded-live packages were deferred even though current producer code can repair them.
+  Evidence: the stored decisions for Iron Courts Phoenix, Metropolitan Tennis Group, Milwaukee Sports & Social, Missouri Wolverines, San Antonio Runners SC, and Michigan Youth Flag Football distinguish those failure classes.
+
+- Observation: the written producer and reviewer contracts already say that invalid child events must be excluded and logged while a valid organization remains eligible. The live failures happened because the producer persisted the invalid child events, so the package-level reviewer correctly rejected the submitted package even though its organization identity was coherent.
+  Evidence: the ingestion completion contract and approval contract both make missing event location a per-event exclusion rather than an organization rejection when the organization itself has sufficient evidence.
+
 ## Decision Log
 
 - Decision: Keep the independent official-logo gate and send manual-logo packages back to the producer for evidence review instead of weakening approval to accept logo-less organizations.
@@ -56,13 +71,25 @@ The result is observable in three places: focused tests prove the retry classifi
   Rationale: omitting `--live` while pointing the child at production would defeat an explicit safety declaration in the exact producer commit. A repaired producer commit is auditable and preserves the guarded application contract.
   Date/Author: 2026-08-01 / Codex
 
-- Decision: Preserve terminal decisions and repair attempts in `mappingRepairHistory`, and allow one operator-controlled retry pass rather than silently looping rejected packages.
-  Rationale: repeated automatic retries can spend indefinitely on sites with no supportable official logo or location evidence. Durable history keeps the process inspectable and lets later retries require new evidence or an explicit operator action.
+- Decision: Preserve terminal decisions and repair attempts in `mappingRepairHistory`; use the guarded operator command only to classify historical terminal rows, while new concrete defects automatically receive up to three producer passes.
+  Rationale: historical rows predate structured dispositions and need one explicit migration. New fixable failures should move without operator intervention, while the retry cap prevents indefinite spending on unresolved sites.
   Date/Author: 2026-08-01 / Codex
 
 - Decision: When a failed mapping job has a current `errorMessage`, classify retry eligibility from that error alone; use approval evidence only when the current error is empty.
   Rationale: the mapping job represents the latest producer attempt. Letting an older approval decision override it can recycle terminal failures and create an unnecessarily broad retry cohort.
   Date/Author: 2026-08-01 / Codex
+
+- Decision: Require every non-approved mapping review to declare either `PRODUCER_REPAIR` or `HUMAN_REVIEW_REQUIRED`, with machine-readable reason codes.
+  Rationale: `REJECT` and `DEFER` describe review conclusions but not queue ownership. A separate disposition lets the queue automatically repair deterministic producer defects while making evidence gaps visibly terminal and non-retryable.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Automatically requeue `PRODUCER_REPAIR` results from the approval completion transaction, but escalate a package to `HUMAN_REVIEW_REQUIRED` after three recorded repair attempts.
+  Rationale: fixable packages should not wait for an operator command, while a bounded retry budget prevents malformed or impossible packages from looping and spending agent capacity indefinitely.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Keep invalid-event handling separate from organization acceptance. A producer must exclude and log an event lacking a usable address, coordinates, or documented organization-location fallback; that event cannot cause rejection of an otherwise supported organization/source package.
+  Rationale: organization discovery and event ingestion are different data-quality boundaries. The scraper can later surface event failures in the admin flow without discarding a valid organization.
+  Date/Author: 2026-08-02 / Codex
 
 ## Outcomes & Retrospective
 
@@ -92,6 +119,18 @@ An affiliate source intake is stored HTML, Markdown, screenshot, link, branding,
 Manual-logo packages are not approvable as-is. `MANUAL_REVIEW` means the producer could not verify and commit an official normalized logo. The producer must inspect stored `LOGO_CANDIDATE`, `PAGE_BRANDING`, `PAGE_IMAGES`, screenshots, HTML, CSS references, and metadata. It may normalize or crop an official mark but must not invent one. If no official mark can be proved, the package remains unpublishable and its exact evidence gap must be reported.
 
 ## Plan of Work
+
+Extend the strict mapping approval schema with a queue disposition and reason codes. Mapping `APPROVE` results omit the disposition. Mapping `REJECT` results must select `PRODUCER_REPAIR` for concrete mapping, setup, logo, event-location, division, price, capacity, or duplicate-safety defects, unless the retry limit has been exhausted. Mapping `DEFER` is reserved for insufficient or conflicting evidence and must select `HUMAN_REVIEW_REQUIRED`. Domain approvals remain unchanged.
+
+Change mapping approval completion so a `PRODUCER_REPAIR` decision atomically appends the full reviewer feedback to `mappingRepairHistory`, resets the same mapping job to `QUEUED`, and returns its intake to `READY_FOR_MAPPING`. A human disposition sets the mapping job to an explicit terminal `HUMAN_REVIEW_REQUIRED` status and records why it must not retry. Count this status separately in the mapping queue report. On the fourth attempted repair, override automatic requeue with a durable retry-limit escalation.
+
+Broaden the historical recovery command to inspect both rejected and deferred approvals. It must preview every terminal row as producer repair or human review, requeue known fixable setup and package defects, and mark unclassifiable or evidence-dependent rows as `HUMAN_REVIEW_REQUIRED` rather than leaving them silently stranded. Claims must expose all reason codes, reviewer rationale, and blocking issues to the producer.
+
+Update the producer goal and ingestion/source-builder skills so repairs address every blocking issue and add a source-specific regression test. When a review reveals a reusable failure class not already stated in the skill or contract, the producer must add a generalized rule in its source-scoped commit. Reinforce that unsupported child events are filtered and logged without rejecting a valid organization, and that division names follow source terminology while gender, age, skill, price, grouping, and capacity use canonical fields correctly. Update the reviewer goal and skill so concrete producer defects request repair, while only real evidence gaps stop for a human.
+
+Validate the schema, approval completion, historical classifier, claim context, queue summary, goals, and instructions with focused Jest tests and TypeScript. Deploy only after local checks pass. Stop the two VM loops at lease-safe points, update their checkouts, preview then apply the historical categorization, restart one producer and one reviewer, and verify that repairs recycle automatically while human rows remain unclaimable.
+
+The earlier generated-setup and manual-logo work below remains completed context for this expanded recovery plan.
 
 First, change `renderAffiliateGeneratedSetup` in `src/server/affiliateImports/agentTemplates/sourceFiles.ts` so generated setup scripts import `configureAffiliateLiveDatabaseEnvironment`, use `DATABASE_URL_LIVE` only when `--live` is explicitly present, select Spaces storage in that mode, and continue to keep organizations unlisted, pages disabled, automation disabled, and mappings unvalidated. Update `src/server/affiliateImports/__tests__/agentGenerator.test.ts` so the old local-only throw fails the test and the guarded live configuration is required.
 
@@ -136,7 +175,9 @@ Then verify both queues:
 
 The generated setup test must prove that a generated script handles `--live` by calling the shared live-database environment helper and selecting Spaces storage, while continuing to write only an unlisted organization, disabled source, and unvalidated mapping. The generated script must never enable automatic scraping or publish its organization.
 
-The retry-classifier test must prove that live-setup, event-location, and manual-logo producer defects are eligible, while unrelated parser/policy defects are not. A manual-logo retry must require both a `MANUAL_REVIEW` producer result and a logo-specific reviewer decision.
+The retry-classifier test must prove that live-setup, event-location, division, pricing, capacity, and manual-logo producer defects are eligible, while evidence gaps are assigned to human review. A manual-logo retry must require both a `MANUAL_REVIEW` producer result and a logo-specific reviewer decision.
+
+Approval completion tests must prove that a structured producer-repair rejection is requeued with durable feedback, a human-review disposition is never claimable, and the retry limit prevents a fourth automatic producer pass. Schema tests must reject non-approved mapping results without a disposition and must reject dispositions on domain or approved results.
 
 The live preview is accepted when every selected row has `REJECTED` approval, `FAILED` mapping, and one of the named repair reasons. Applying it must not create organizations, sources, mappings, candidates, events, or files; it may only change mapping/intake queue state and append repair history. After restart, active leases must belong to the expected producer and reviewer identities and `claimedWithoutLease` must remain zero.
 
@@ -156,8 +197,10 @@ The baseline live database snapshot at the start of this plan contained 161 reje
 
 `configureAffiliateLiveDatabaseEnvironment(liveDatabaseUrl, env?)` in `src/server/affiliateImports/agentRepository.ts` is the only helper generated setup scripts should use to select the live database. `STORAGE_PROVIDER` must be `spaces` during guarded live application.
 
-`affiliateMappingProducerRepairEligibility(input)` returns `{ eligible, reason, repairReason }`. At completion it must recognize `LIVE_SETUP_UNSUPPORTED`, `EVENT_LOCATION_PACKAGE_REJECTION`, and `MANUAL_LOGO_REVIEW` without broad substring matches that recycle unrelated failures.
+`affiliateMappingProducerRepairEligibility(input)` returns producer eligibility plus `disposition`, `reasonCodes`, and the primary legacy `repairReason`. It recognizes structured decisions first, classifies historical setup, location, division, pricing, capacity, validation, duplicate, and logo failures, preserves old reviewer-handoff failures for their evidence-verified retry, and assigns unclassifiable terminal work to human review.
 
 `npm run affiliate:mapping:retry-rejected` remains the operator command. It is read-only unless both `--live` and `--apply` are present.
 
 Revision note (2026-08-01): Created this plan after the live rejection audit identified guarded setup incompatibility as the primary blocker and manual-logo review as the second largest repair cohort.
+
+Revision note (2026-08-02): Expanded the plan after observing that restarted rejections and deferrals remained terminal. Added structured repair ownership, bounded automatic requeue, explicit human-review state, historical deferred recovery, and skill-learning requirements.

@@ -19,17 +19,31 @@ const stringValue = (value: unknown): string | null => (
   typeof value === 'string' && value.trim() ? value.trim() : null
 );
 
+const stringValues = (value: unknown): string[] => {
+  if (Array.isArray(value)) return value.flatMap(stringValues);
+  const single = stringValue(value);
+  return single ? [single] : [];
+};
+
 const latestMappingRepairContext = (resultSummary: unknown) => {
   const history = recordValue(resultSummary).mappingRepairHistory;
   if (!Array.isArray(history) || history.length === 0) return null;
   const latest = recordValue(history[history.length - 1]);
-  const repairReason = stringValue(latest.repairReason);
+  const repairReasons = stringValues(latest.repairReasons);
+  const repairReason = stringValue(latest.repairReason) ?? repairReasons[0] ?? null;
   if (!repairReason) return null;
   return {
     repairReason,
+    repairReasons: repairReasons.length ? repairReasons : [repairReason],
     queuedAt: stringValue(latest.queuedAt),
+    priorMappingStatus: stringValue(latest.priorMappingStatus),
     priorMappingErrorMessage: stringValue(latest.priorMappingErrorMessage),
     approvalJobId: stringValue(latest.approvalJobId),
+    approvalStatus: stringValue(latest.approvalStatus),
+    reviewerId: stringValue(latest.reviewerId),
+    decision: stringValue(latest.decision),
+    rationale: stringValue(latest.rationale),
+    blockingIssues: stringValues(latest.blockingIssues),
   };
 };
 

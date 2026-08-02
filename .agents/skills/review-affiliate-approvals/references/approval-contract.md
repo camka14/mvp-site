@@ -42,6 +42,34 @@ Allowed decisions are:
 - `DOMAIN_POLICY`: `ALLOW`, `BLOCK`, or `DEFER`.
 - `MAPPING_PACKAGE`: `APPROVE`, `REJECT`, or `DEFER`.
 
+Every non-approved `MAPPING_PACKAGE` result must also contain:
+
+```json
+"mappingDisposition": {
+  "nextAction": "PRODUCER_REPAIR",
+  "reasonCodes": ["EVENT_LOCATION_INVALID", "EVENT_PRICING_INVALID"]
+}
+```
+
+`PRODUCER_REPAIR` is valid with `REJECT` and atomically returns the same mapping
+job to the producer with the rationale and every blocking issue. Use all
+applicable codes from the result schema. `HUMAN_REVIEW_REQUIRED` is valid with
+`REJECT` or `DEFER`, is never claimable by an agent, and is required for every
+mapping `DEFER`. Three automatic producer repair passes are allowed; a later
+rejection is escalated to human review even if the reviewer requested repair.
+Mapping `APPROVE` results and all domain-policy results must omit this field.
+
+Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
+`EVENT_LOCATION_INVALID`, `EVENT_DIVISION_GROUPING_INVALID`,
+`EVENT_DIVISION_CLASSIFICATION_INVALID`, `EVENT_PRICING_INVALID`,
+`EVENT_CAPACITY_INVALID`, `OFFICIAL_LOGO_REPAIR_REQUIRED`,
+`PACKAGE_VALIDATION_FAILED`, `DUPLICATE_SAFETY_INVALID`, and
+`OTHER_PRODUCER_DEFECT`. Human-review reason codes are
+`NO_VERIFIABLE_OFFICIAL_LOGO`, `INSUFFICIENT_STORED_EVIDENCE`, and
+`CONFLICTING_LIVE_RECORD`. `RETRY_LIMIT_EXCEEDED` and
+`UNCLASSIFIED_TERMINAL_FAILURE` are normally assigned by queue recovery rather
+than the reviewer.
+
 A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
 `storedEvidenceSufficient`. A mapping approval requires
 `identityIndependent`, `packageValidationPassed`, `officialLogoVerified`,

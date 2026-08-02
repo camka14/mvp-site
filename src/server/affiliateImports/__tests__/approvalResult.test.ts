@@ -58,4 +58,69 @@ describe('affiliate approval result', () => {
       blockingIssues: [],
     })).toThrow('require at least one concrete issue');
   });
+
+  it('requires an explicit follow-up disposition for a rejected mapping package', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['An accepted event has no usable location.'],
+    })).toThrow('require a producer-repair or human-review disposition');
+  });
+
+  it('accepts a machine-readable producer repair disposition', () => {
+    expect(affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['An accepted event has no usable location.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['EVENT_LOCATION_INVALID'],
+      },
+    }).mappingDisposition).toEqual({
+      nextAction: 'PRODUCER_REPAIR',
+      reasonCodes: ['EVENT_LOCATION_INVALID'],
+    });
+  });
+
+  it('reserves mapping deferral for terminal human review', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'DEFER',
+      blockingIssues: ['Stored identity evidence is contradictory.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['OTHER_PRODUCER_DEFECT'],
+      },
+    })).toThrow('must stop for human review');
+  });
+
+  it('does not allow mapping dispositions on domain reviews', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      mappingDisposition: {
+        nextAction: 'HUMAN_REVIEW_REQUIRED',
+        reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'],
+      },
+    })).toThrow('Domain policy reviews cannot contain');
+  });
+
+  it('does not disguise an evidence gap as an automatic producer repair', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['No official logo exists in stored evidence.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+      },
+    })).toThrow('concrete producer-defect reason codes');
+  });
 });

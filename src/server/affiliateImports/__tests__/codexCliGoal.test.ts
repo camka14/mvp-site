@@ -82,6 +82,9 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('TEAM-only');
     expect(goal).toContain('Do not publish candidates or organizations');
     expect(goal).toContain('source-scoped commit');
+    expect(goal).toContain('fix every repairReason and blockingIssue');
+    expect(goal).toContain('add a source regression test');
+    expect(goal).toContain('Add one generalized rule there');
   });
 
   it('uses local queue commands when live intakes were not requested', () => {

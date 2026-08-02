@@ -118,8 +118,16 @@ reviewer never edits the package, approves a logo-less package, or invents a
 brand mark.
 
 - `APPROVE` only when every required check in the result schema is true.
-- `REJECT` for a concrete defect that requires new producer work.
-- `DEFER` when evidence is incomplete or the decision needs a human.
+- `REJECT` with `mappingDisposition.nextAction = PRODUCER_REPAIR` for a
+  concrete setup, parser, event-filtering, division, pricing, capacity, logo,
+  validation, or duplicate-safety defect that stored evidence lets the producer
+  fix. Include every applicable reason code and blocking issue.
+- `DEFER` with `mappingDisposition.nextAction = HUMAN_REVIEW_REQUIRED` when
+  evidence is incomplete, contradictory, or needs a human. Do not defer a
+  concrete producer defect.
+- A hard rejection may also use `HUMAN_REVIEW_REQUIRED` when retrying cannot
+  safely resolve it. This terminal state is deliberately excluded from both
+  agent queues.
 
 Do not repair, regenerate, amend, commit, push, or deploy the package during
 review. A rejection is not approved training data.

@@ -24,8 +24,9 @@ Also read `/Users/elesesy/.codex/skills/affiliate-scrape-source-builder/SKILL.md
 1. Use the exact queue-status, claim, URL-enqueue, capture-processing, and complete commands in the active goal. Keep `--live` only when the goal supplied it; otherwise use the local commands and do not add live access.
 2. Stop successfully only when `claimableJobs`, `eligibleReadyIntakesWithoutJob`, `claimedWithoutLease`, `queuedCaptureRuns`, and `runningCaptureRuns` are all zero.
 3. Claim exactly one intake with the goal's stable worker ID. If the claim
-   includes `repairContext`, treat its `repairReason` as required producer work
-   and create a new source-scoped commit before resubmitting.
+   includes `repairContext`, treat every `repairReasons` entry, blocking issue,
+   and reviewer rationale as required producer work and create a new
+   source-scoped commit before resubmitting.
 4. Work only from the exported stored evidence. Do not make a new public-site request when the intake already answers the question.
 5. Complete the entire intake checkpoint before claiming another.
 6. Record the result using the goal's exact completion command and a JSON artifact that passes `codexAffiliateIngestionResultSchema`.
@@ -36,6 +37,15 @@ When the stored intake is an aggregator or club directory, do not create a scrap
 Expand at most two directory levels. Reject links back to the parent intake, unsupported `TEAM` targets, intermediary/search URLs presented as official sites, and URLs not evidenced by a stored parent page. New or expired domain policies remain review-required; never auto-approve them. Blocked policies never enter capture.
 
 Do not retry historical failed capture intakes. Do not claim blocked, incomplete, held-out test, duplicate, already promoted, or `TEAM`-only rows. If exclusion is discovered only after claiming, record `FAILED` with a precise non-training reason so the row cannot loop. A valid directory expansion is `EXPANDED`, not `FAILED` and not a positive mapping-training example. If a claimed intake otherwise cannot be completed, create a result artifact explaining the exact evidence or policy gap and record it as failed or release it once for a genuinely transient interruption; do not loop on it.
+
+For every repair, add or update a focused fixture regression test that fails on
+the reviewed defect. If the defect represents a reusable failure class that is
+not already covered by this skill or its completion contract, add one concise,
+generalized rule to the appropriate repo-backed skill section in the same
+source-scoped commit. Do not add a source-name anecdote, duplicate an existing
+rule, weaken validation, or edit the independent review skill from a producer
+job. This is the producer's durable learning path; the review history remains
+the audit trail for the individual source.
 
 ## Complete one intake
 
@@ -74,7 +84,8 @@ Treat organization validity separately from child event validity. A valid
 organization package is not failed merely because one or more extracted events
 lacks a usable location. The review scrape must exclude those events, record
 their titles and location rejection reasons in the scrape run, and keep the
-organization/source package reviewable.
+organization/source package reviewable. Never mark the canonical organization
+or its `CLUB` candidate failed solely because an `EVENT` child was excluded.
 
 For an event with its own evidenced venue or address, let the normal
 server-side Google Places resolver obtain its coordinates. When stored evidence
