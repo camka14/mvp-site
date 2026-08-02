@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
+import { Client } from 'pg';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import {
   CODEX_AFFILIATE_INGESTION_FAST_MODE,
@@ -10,6 +11,12 @@ import {
   CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
 } from '../src/server/affiliateImports/codexCliGoal';
 import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
+import {
+  inspectAffiliateDisposableReviewScrapes,
+  preserveAffiliateDisposableDatabaseUrl,
+  resolveAffiliateDisposableDatabaseUrl,
+} from '../src/server/affiliateImports/producerPackageEvidence';
+import { inspectAffiliateEventDivisionQuality } from '../src/server/affiliateImports/eventDivisionQuality';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -23,6 +30,7 @@ const readOption = (name: string): string | undefined => {
 
 const useLive = process.argv.includes('--live');
 if (useLive) {
+  preserveAffiliateDisposableDatabaseUrl();
   configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
 }
 
@@ -69,6 +77,31 @@ const main = async () => {
     }
     if (intake.sourceKey !== result.sourceKey) {
       throw new Error('Result source key does not match the claimed intake.');
+    }
+    if (result.status === 'REVIEW_REQUIRED') {
+      const disposable = new Client({ connectionString: resolveAffiliateDisposableDatabaseUrl() });
+      try {
+        await disposable.connect();
+        const reviewEvidence = await inspectAffiliateDisposableReviewScrapes({
+          queryable: disposable,
+          result,
+        });
+        const divisionQuality = await inspectAffiliateEventDivisionQuality({
+          queryable: disposable,
+          sourceId: reviewEvidence.sourceId,
+        });
+        if (!divisionQuality.passed) {
+          const issueSummary = divisionQuality.issues
+            .slice(0, 10)
+            .map((issue) => `${issue.code}:${issue.candidateId}`)
+            .join(', ');
+          throw new Error(
+            `REVIEW_REQUIRED mapping results require valid divisions for every event. ${issueSummary}`,
+          );
+        }
+      } finally {
+        await disposable.end().catch(() => undefined);
+      }
     }
     if (result.commit) {
       execFileSync('git', ['rev-parse', '--verify', `${result.commit}^{commit}`], {

@@ -32,6 +32,11 @@ Also read `/Users/elesesy/.codex/skills/affiliate-scrape-source-builder/SKILL.md
 6. Record the result using the goal's exact completion command and a JSON artifact that passes `codexAffiliateIngestionResultSchema`.
 7. Re-run the queue status and continue.
 
+The claim command is the only job-assignment tool. Do not select a queued row
+directly. Its conditional database lease is the race boundary for concurrent
+mappers. Another mapper may finish or claim a different job while this worker
+is active. Never use another worker's active lease.
+
 When the stored intake is an aggregator or club directory, do not create a scraper package for the directory merely to end the claim. Inspect its stored HTML, Markdown, and link artifacts and identify the evidenced official organization websites. Write a proposal JSON using the exact batch contract in `references/completion-contract.md`, submit it through the goal's `affiliate:intakes:enqueue-urls` command, and pass the schema-validated result JSON written by that command to the normal completion command to record the parent job as `EXPANDED`. Do not visit those child sites directly: the shared intake service will deduplicate them, apply the existing policy gate, and queue ScrapingDog for current allowed domains. Run the goal's `affiliate:intakes:process` command while allowed captures are queued, then map the child intakes produced by successful captures.
 
 Expand at most two directory levels. Reject links back to the parent intake, unsupported `TEAM` targets, intermediary/search URLs presented as official sites, and URLs not evidenced by a stored parent page. New or expired domain policies remain review-required; never auto-approve them. Blocked policies never enter capture.
@@ -143,6 +148,14 @@ source label with our canonical label, and do not guess an age or skill tier
 when the evidence is ambiguous; preserve the source text and add a warning or
 manual-review disposition.
 
+Every accepted `EVENT` candidate must contain at least one source-supported
+division. Every division must contain a non-empty source display `name`,
+`gender`, `ratingType`, `divisionTypeId`, `skillDivisionTypeId`, and
+`ageDivisionTypeId`. Exclude the affected event and record
+`EVENT_DIVISION_REQUIRED` when stored evidence cannot support a valid division.
+Do not submit a divisionless event or invent a label, age, or skill class. A
+non-passing `eventDivisionQuality` result cannot enter `REVIEW_REQUIRED`.
+
 Keep prices and capacity attached to the division that owns them. Parse the
 source's per-division registration price into `priceCents` without averaging,
 overwriting, or copying one division's price to another. Use an event-level
@@ -167,7 +180,12 @@ A `REVIEW_REQUIRED` queue result is not approval. An `EXPANDED` result only reco
 
 ## Report progress
 
-After every intake, append a short checkpoint to `output/affiliate-codex-ingestion/progress.jsonl` with the job ID, intake ID, source key, result, commit, tests, candidate counts, logo disposition, and remaining queue counts. Do not include credentials, signed artifact URLs, or raw provider envelopes.
+After every intake, append a short checkpoint to
+`output/affiliate-codex-ingestion/progress/<worker-id>.jsonl` with the job ID,
+intake ID, source key, result, commit, tests, candidate counts, logo
+disposition, and remaining queue counts. Each mapper owns only its worker
+file. Do not include credentials, signed artifact URLs, or raw provider
+envelopes.
 
 At exhaustion, report:
 

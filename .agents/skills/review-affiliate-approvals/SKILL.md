@@ -26,6 +26,12 @@ evidence, prevents a deterministic decision. A missing domain-policy resource
 uses the default-allow rule below. A completed search that finds no official
 mark is a deterministic logo-absence result, not a deferral by itself.
 
+The claim command is the only job-assignment tool. Do not select a queued row
+directly. Its conditional database lease is the race boundary for concurrent
+reviewers. Another reviewer may finish or claim a different approval while
+this worker is active. Never use another reviewer's active lease. Append
+progress only to `output/affiliate-codex-approvals/progress/<reviewer-id>.jsonl`.
+
 ## Review a domain policy
 
 Run the bounded policy-evidence command from the goal for the claimed policy
@@ -119,6 +125,13 @@ Also review event and division integrity independently of the organization:
   when the source publishes one price for the whole event or there is one
   division; differing division prices must produce a compact event range, with
   fee caveats retained in details.
+- Require at least one valid division for every accepted `EVENT`. A valid
+  division has a source display `name`, `gender` in `M`, `F`, or `C`,
+  `ratingType` in `AGE` or `SKILL`, and non-empty `divisionTypeId`,
+  `skillDivisionTypeId`, and `ageDivisionTypeId`. Read the deterministic
+  `eventDivisionQuality` section from the package evidence command. Reject a
+  non-passing result with `PRODUCER_REPAIR` and the applicable division reason
+  codes. Do not approve a divisionless event.
 
 For every accepted event with an evidenced address or venue, independently
 compare the evidence with its finite, in-range `[longitude, latitude]`

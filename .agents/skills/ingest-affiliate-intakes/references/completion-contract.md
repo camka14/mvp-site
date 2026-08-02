@@ -49,6 +49,13 @@ separately from that label using the canonical sport catalog. Use Coed only
 when the source says coed/mixed or does not specify gender; preserve ambiguous
 source text and flag it for review instead of guessing.
 
+Every accepted `EVENT` must have at least one valid division. A valid division
+has a source-supported display `name`, `gender` in `M`, `F`, or `C`,
+`ratingType` in `AGE` or `SKILL`, and non-empty `divisionTypeId`,
+`skillDivisionTypeId`, and `ageDivisionTypeId`. A package with a divisionless
+event or an incomplete division cannot use `REVIEW_REQUIRED`. Exclude and log
+only the affected event when evidence cannot support the required division.
+
 Keep each source price and capacity on the division that owns it. Do not
 average, copy, or collapse per-division prices. Use a numeric event-level
 fallback only for a genuinely single-price or single-division event; derive a

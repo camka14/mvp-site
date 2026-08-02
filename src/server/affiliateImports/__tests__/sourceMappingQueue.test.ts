@@ -93,6 +93,42 @@ describe('affiliate source mapping queue', () => {
     expect(await claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' })).toBeNull();
   });
 
+  it('assigns concurrent mappers different jobs through conditional claims', async () => {
+    const jobs = [
+      { id: 'job_1', intakeId: 'intake_1', status: 'QUEUED', createdAt: new Date('2026-08-02T10:00:00Z') },
+      { id: 'job_2', intakeId: 'intake_2', status: 'QUEUED', createdAt: new Date('2026-08-02T10:01:00Z') },
+    ];
+    const intakes = [
+      { id: 'intake_1', sourceKey: 'source-1', status: 'READY_FOR_MAPPING' },
+      { id: 'intake_2', sourceKey: 'source-2', status: 'READY_FOR_MAPPING' },
+    ];
+    prismaMock.affiliateSourceMappingJobs.findFirst.mockImplementation(async () => (
+      jobs.find((job) => job.status === 'QUEUED') ?? null
+    ));
+    prismaMock.affiliateSourceMappingJobs.updateMany.mockImplementation(async ({ where, data }: any) => {
+      const job = jobs.find((candidate) => candidate.id === where.id);
+      if (!job || job.status !== 'QUEUED') return { count: 0 };
+      Object.assign(job, data, { attemptCount: 1 });
+      return { count: 1 };
+    });
+    prismaMock.affiliateSourceIntakes.findUnique.mockImplementation(async ({ where }: any) => (
+      intakes.find((intake) => intake.id === where.id) ?? null
+    ));
+    prismaMock.affiliateSourceIntakes.update.mockImplementation(async ({ where, data }: any) => {
+      const intake = intakes.find((candidate) => candidate.id === where.id);
+      Object.assign(intake!, data);
+      return intake;
+    });
+
+    const claims = await Promise.all([
+      claimNextAffiliateSourceIntakeForMapping({ workerId: 'mapper-1' }),
+      claimNextAffiliateSourceIntakeForMapping({ workerId: 'mapper-2' }),
+    ]);
+
+    expect(claims.map((claim) => claim?.jobId).sort()).toEqual(['job_1', 'job_2']);
+    expect(new Set(claims.map((claim) => claim?.workerId))).toEqual(new Set(['mapper-1', 'mapper-2']));
+  });
+
   it('records a directory expansion as a terminal non-mapping intake result', async () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1', intakeId: 'intake_1', status: 'CLAIMED',

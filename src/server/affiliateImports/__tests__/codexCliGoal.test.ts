@@ -22,6 +22,9 @@ describe('Codex affiliate intake goal', () => {
     const args = buildCodexAffiliateIngestionArgs(options);
 
     expect(args).toEqual([
+      '--ask-for-approval',
+      'never',
+      'exec',
       '--cd',
       path.resolve('/srv/bracketiq'),
       '--model',
@@ -38,8 +41,6 @@ describe('Codex affiliate intake goal', () => {
       'goals',
       '--sandbox',
       'workspace-write',
-      '--ask-for-approval',
-      'never',
       expect.stringMatching(/^Before doing any other work, call the create_goal tool /),
     ]);
     expect(CODEX_AFFILIATE_INGESTION_MODEL).toBe('gpt-5.6-luna');
@@ -76,13 +77,15 @@ describe('Codex affiliate intake goal', () => {
     );
     expect(goal).toContain('Complete that parent job as EXPANDED');
     expect(goal).toContain('organization setup');
-    expect(goal).toContain('official normalized logo');
+    expect(goal).toContain('official URLs and logo disposition');
     expect(goal).toContain('two duplicate-safe review scrapes');
     expect(goal).toContain('Keep valid organizations reviewable when individual events lack locations');
     expect(goal).toContain('SOURCE_ORGANIZATION fallback with stored evidence');
     expect(goal).toContain('Preserve the exact source division label');
     expect(goal).toContain('group every division by its stable event identity/detail-page context');
     expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
+    expect(goal).toContain('Every accepted EVENT must have a source-supported division');
+    expect(goal).toContain('Use only the claim command for assignment');
     expect(goal).toContain('differing division prices must produce a compact event range');
     expect(goal).toContain('natural source-derived event and organization descriptions');
     expect(goal).toContain('never narrate where a record was listed, found, scraped, or mapped');
@@ -97,6 +100,7 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('fix every repairReason and blockingIssue');
     expect(goal).toContain('add a source regression test');
     expect(goal).toContain('Add one generalized rule there');
+    expect(goal).toContain('progress/codex-luna-vm-1.jsonl');
   });
 
   it('uses local queue commands when live intakes were not requested', () => {

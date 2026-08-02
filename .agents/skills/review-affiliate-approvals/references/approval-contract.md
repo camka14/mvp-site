@@ -128,6 +128,15 @@ division. Do not approve copied or averaged prices. An event-level price is a
 fallback only for a genuinely single-price or single-division event; differing
 division prices must produce a compact range and retain fee caveats in details.
 
+Every accepted `EVENT` must contain at least one division. Each division must
+contain a non-empty source display `name`, `gender` in `M`, `F`, or `C`,
+`ratingType` in `AGE` or `SKILL`, and non-empty `divisionTypeId`,
+`skillDivisionTypeId`, and `ageDivisionTypeId`. The package evidence command
+reports this as `eventDivisionQuality`. A non-passing result is a concrete
+producer defect. Use `EVENT_DIVISION_GROUPING_INVALID` for missing or duplicate
+divisions and `EVENT_DIVISION_CLASSIFICATION_INVALID` for missing structured
+fields.
+
 `descriptionQualityVerified` requires an independent comparison of the
 organization description and inspected event descriptions with stored
 first-party evidence. Descriptions must sound like direct descriptions of the

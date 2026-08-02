@@ -27,6 +27,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [ ] (2026-08-02) Require independent source-derived description review and add an armed one-time mapping rereview cohort that waits for current producer and reviewer work to finish.
 - [x] (2026-08-01) Changed domain review to default allow when no explicit target-path prohibition exists and added a guarded deferred-policy requeue with decision-history preservation.
 - [x] (2026-08-01) Previewed and requeued 249 live deferred domain policies without restarting the approval loop. The same cutoff then returned zero eligible deferred policies.
+- [x] (2026-08-02) Added configurable reviewer pools, unique reviewer IDs, concurrent claim tests, worker-specific progress files, and required valid-event-division review.
 
 ## Surprises & Discoveries
 
@@ -53,6 +54,9 @@ The reviewer may allow or block an intake domain after checking stored robots an
 
 - Observation: 249 domain-policy approvals were deferred even though most bounded checks completed and the common resource outcomes were missing or inaccessible policy pages, not explicit capture prohibitions.
   Evidence: the live audit found 249 `DEFERRED` `DOMAIN_POLICY` jobs linked to `NEEDS_REVIEW` policies. Of those jobs, 245 recorded both robots and terms checks. Stored policy-resource outcomes were dominated by HTTP 404, 200, and 403 responses.
+
+- Observation: a reviewer pool can preserve the original no-relaunch invariant.
+  Evidence: the outer loop holds one advisory lock and now awaits every reviewer promise in the active pool before it reconciles or checks the queue again.
 
 ## Decision Log
 
@@ -84,6 +88,14 @@ The reviewer may allow or block an intake domain after checking stored robots an
   Rationale: this directly enforces the operator's requirement that the checker remain dormant until the active Luna goal has finished. A focused deferred-promise test proves that the post-goal queue query cannot run early.
   Date/Author: 2026-07-31 / Codex
 
+- Decision: interpret the child boundary as one fixed reviewer pool instead of one process.
+  Rationale: this permits a configurable reviewer count while preserving the operator requirement that the checker not launch another cycle until all current reviewers finish.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: treat a missing or incomplete event division as a concrete producer defect.
+  Rationale: the package evidence command now reports deterministic division quality. The reviewer can return the package for repair instead of guessing a classification or approving an unusable event.
+  Date/Author: 2026-08-02 / Codex
+
 - Decision: Refresh policy evidence through a bounded, SSRF-safe repository command before Luna makes a terminal domain decision.
   Rationale: the initial intake preflight stored robots evidence and likely policy URLs, but did not capture the policy bodies Luna needs to distinguish allow, block, and defer safely.
   Date/Author: 2026-07-31 / Codex
@@ -110,7 +122,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 
 ## Outcomes & Retrospective
 
-The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy and logo evidence capture, guarded live application with an explicit missing-logo exception, deterministic re-review of legacy logo-only terminal packages, and a model-free outer loop that cannot relaunch while its Luna child goal is running.
+The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy and logo evidence capture, guarded live application with an explicit missing-logo exception, deterministic division evidence, and a configurable reviewer pool. The model-free outer loop cannot relaunch until every reviewer in its active pool exits.
 
 The domain reviewer now defaults to `ALLOW` after a bounded check finds no explicit prohibition for the target public path. A missing or inaccessible policy resource is a recorded check outcome, not a reason to defer. The guarded requeue preserves the earlier decision in policy evidence before it returns the approval to `QUEUED`.
 
@@ -247,3 +259,5 @@ Revision note (2026-08-01): Changed domain policy to allow capture unless an exp
 Revision note (2026-08-01): Added the current domain decision standard to each claim payload so a long-running reviewer receives the updated rule at the job boundary.
 
 Revision note (2026-08-01): Recorded the guarded live requeue of 249 deferred policies and the first successful explicit-prohibition-only review.
+
+Revision note (2026-08-02): Added configurable reviewer pools, unique claim identities, pool-wide wait behavior, worker-specific progress files, and mandatory valid-event-division review.

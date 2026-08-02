@@ -234,6 +234,34 @@ describe('affiliate approval queue', () => {
     }));
   });
 
+  it('assigns concurrent reviewers different approval jobs', async () => {
+    approvalRows = [
+      {
+        id: 'approval_1', subjectType: 'DOMAIN_POLICY', subjectKey: 'example.test',
+        status: 'QUEUED', leaseExpiresAt: null, attemptCount: 0,
+        createdAt: new Date('2026-08-02T10:00:00Z'),
+      },
+      {
+        id: 'approval_2', subjectType: 'MAPPING_PACKAGE', subjectKey: 'mapping_1',
+        status: 'QUEUED', leaseExpiresAt: null, attemptCount: 0,
+        createdAt: new Date('2026-08-02T10:01:00Z'),
+      },
+    ];
+
+    const claims = await Promise.all([
+      claimNextAffiliateApproval({ reviewerId: 'reviewer-1' }),
+      claimNextAffiliateApproval({ reviewerId: 'reviewer-2' }),
+    ]);
+
+    expect(claims.map((claim) => claim?.approvalJob.id).sort()).toEqual([
+      'approval_1',
+      'approval_2',
+    ]);
+    expect(new Set(claims.map((claim) => claim?.approvalJob.reviewerId))).toEqual(
+      new Set(['reviewer-1', 'reviewer-2']),
+    );
+  });
+
   it('does not report a malformed claimed row as exhausted', () => {
     const queue = summarizeAffiliateApprovalQueue([{
       id: 'approval_1',

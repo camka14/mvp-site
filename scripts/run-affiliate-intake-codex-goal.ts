@@ -106,10 +106,6 @@ const main = async () => {
   if (!preflight.authenticated) {
     throw new Error('Codex CLI login is required. Run: codex login --device-auth');
   }
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error('The Codex ingestion goal requires an interactive terminal.');
-  }
-
   const child = spawn(codexExecutable, args, {
     cwd: repositoryRoot,
     env: process.env,

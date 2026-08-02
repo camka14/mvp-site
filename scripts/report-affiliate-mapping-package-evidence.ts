@@ -4,6 +4,7 @@ import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affilia
 import { affiliateSourceMatchesIntakeEvidence } from '../src/server/affiliateImports/codexIngestionApproval';
 import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
 import { analyzeAffiliateDescriptionQuality } from '../src/server/affiliateImports/descriptionQuality';
+import { inspectAffiliateEventDivisionQuality } from '../src/server/affiliateImports/eventDivisionQuality';
 import {
   inspectAffiliateDisposableReviewScrapes,
   inspectAffiliateProducerPackage,
@@ -51,6 +52,10 @@ const main = async () => {
     const disposableReviews = await inspectAffiliateDisposableReviewScrapes({
       queryable: disposable,
       result,
+    });
+    const eventDivisionQuality = await inspectAffiliateEventDivisionQuality({
+      queryable: disposable,
+      sourceId: disposableReviews.sourceId,
     });
     const candidateSample = await disposable.query(
       `SELECT "listingKind", status, "dedupeKey", title, "organizerName",
@@ -146,6 +151,7 @@ const main = async () => {
       },
       producer,
       disposableReviews,
+      eventDivisionQuality,
       candidateSample: candidateSample.rows,
       descriptionQuality: {
         checkedCandidateCount: candidateDescriptions.rows.length,

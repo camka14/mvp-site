@@ -26,6 +26,7 @@ describe('affiliate approval loop cycle', () => {
     });
 
     expect(result.launchedGoal).toBe(false);
+    expect(result.launchedGoalCount).toBe(0);
     expect(launchGoal).not.toHaveBeenCalled();
   });
 
@@ -70,7 +71,36 @@ describe('affiliate approval loop cycle', () => {
     finishGoal?.();
     const result = await pending;
     expect(result.launchedGoal).toBe(true);
+    expect(result.launchedGoalCount).toBe(1);
     expect(getStatus).toHaveBeenCalledTimes(2);
     expect(result.queueAfterLaunch.claimableJobs).toBe(0);
+  });
+
+  it('runs the configured reviewer pool and waits for every reviewer', async () => {
+    const releases = new Map<string, () => void>();
+    const launchGoal = jest.fn((reviewerId?: string) => new Promise<void>((resolve) => {
+      releases.set(String(reviewerId), resolve);
+    }));
+    const getStatus = jest.fn()
+      .mockResolvedValueOnce(status(4))
+      .mockResolvedValueOnce(status(0));
+    const pending = runAffiliateApprovalLoopCycle({
+      reconcile: jest.fn(async () => ({ created: 0 })),
+      getStatus,
+      reviewerIds: ['reviewer-1', 'reviewer-2'],
+      launchGoal,
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(launchGoal).toHaveBeenCalledTimes(2);
+    releases.get('reviewer-1')?.();
+    await Promise.resolve();
+    expect(getStatus).toHaveBeenCalledTimes(1);
+
+    releases.get('reviewer-2')?.();
+    const result = await pending;
+    expect(result.launchedGoalCount).toBe(2);
+    expect(getStatus).toHaveBeenCalledTimes(2);
   });
 });

@@ -26,6 +26,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - [x] (2026-07-31 20:00Z) Added an operator-only live approval command that applies only the 73 official-logo packages, verifies their private and disabled review state, and records approval provenance without publishing organizations or enabling scheduled scraping.
 - [x] (2026-07-31 20:00Z) Passed TypeScript, 88 generated source suites with 176 tests, 53 shared importer and approval tests, `git diff --check`, and an audit confirming all 73 checked-in official logos are opaque 1024-by-1024 PNG files.
 - [x] (2026-08-01) Upgraded the ingestion launcher to `max` reasoning and persisted Codex fast mode through `service_tier="fast"` and `features.fast_mode=true`.
+- [x] (2026-08-02) Added headless mapper pools with one isolated Git workspace and one stable worker ID per agent. Added a hard valid-division gate before `REVIEW_REQUIRED`.
 
 ## Surprises & Discoveries
 
@@ -43,6 +44,9 @@ The new path is an explicitly invoked developer command. It is not imported by t
 
 - Observation: the current generated mapping setup already creates a private unlisted organization, disabled scrape source, inactive/unvalidated mapping, focused test, and registry fragment, but official logo normalization remains a manual gate.
   Evidence: `src/server/affiliateImports/agentTemplates/sourceFiles.ts` explicitly leaves `logoId` null and says that normalized-logo review remains manual.
+
+- Observation: database claim safety does not make a shared coding workspace safe.
+  Evidence: concurrent conditional claims return different jobs, but each Luna mapper edits, tests, stages, and commits a source package. Each mapper therefore needs a separate Git worktree.
 
 ## Decision Log
 
@@ -78,9 +82,17 @@ The new path is an explicitly invoked developer command. It is not imported by t
   Rationale: live approval creates the unlisted organization, official logo, source, unvalidated mapping, and review candidates needed for later evaluation. It must verify `publicPageEnabled=false`, `autoScrapeEnabled=false`, and `validatedAt=null`; approval is not publication or automatic ingestion.
   Date/Author: 2026-07-31 / Codex
 
+- Decision: require every accepted event to have at least one fully classified source-supported division before mapping completion.
+  Rationale: divisionless events cannot support BracketIQ registration and filters. The deterministic completion gate checks source name, gender, rating type, division type, skill type, and age type in the disposable candidate rows.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: run concurrent mappers only through unique worker IDs and isolated Git workspaces.
+  Rationale: the existing database lease prevents duplicate queue ownership, while workspace isolation prevents mixed files, tests, Git indexes, and commits.
+  Date/Author: 2026-08-02 / Codex
+
 ## Outcomes & Retrospective
 
-The ingestion goal and generated cohort are complete and release-validated. The repository now contains the discoverable skill, Luna max/fast launcher, queue-exhaustion report, strict result contract, isolated VM worker, 89 review-result commits, and a guarded operator approval command. The live eligible queue is exhausted. Seventy-three packages have official logo evidence and are eligible for operator-approved live setup; 16 remain held for manual logo review, and 8 were durably skipped or failed for documented eligibility or evidence reasons. Live approval intentionally stops with private organizations, disabled sources, unvalidated mappings, and unpublished review candidates. No application route, React component, Prisma schema, migration, production Compose file, or scheduled website process is changed.
+The ingestion goal and generated cohort are complete and release-validated. The repository now also supports a configurable headless mapper pool with isolated workspaces and a deterministic event-division completion gate. Live approval still stops with private organizations, disabled sources, unvalidated mappings, and unpublished review candidates. No application route, React component, Prisma schema, migration, production Compose file, or scheduled website process is changed.
 
 ## Context and Orientation
 
@@ -220,3 +232,5 @@ Revision note (2026-07-31): Recorded the OVH Bubblewrap failure, externally isol
 Revision note (2026-07-31): Recorded queue exhaustion, cohort audit results, release validation, and the guarded live-approval boundary.
 
 Revision note (2026-08-01): Upgraded the Luna ingestion process to max reasoning in persisted fast mode and made those settings explicit in preflight output and result provenance.
+
+Revision note (2026-08-02): Added isolated multi-mapper execution, conditional-claim concurrency proof, worker-specific progress files, and the hard valid-event-division completion gate.

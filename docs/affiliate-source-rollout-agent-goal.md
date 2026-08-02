@@ -30,6 +30,11 @@ Every checked-in setup script must define or clearly comment a `sourceEvidence` 
 
 The Luna x-high goal agent is the coordinator and source owner. It owns the queue lease, stored-evidence inspection, mapping, organization setup, official-logo work, validation, source-scoped commit, terminal job result, registry update, and progress report for one intake before it claims another.
 
+Multiple mapper agents may run at the same time only when each agent has a
+unique worker ID and a separate Git workspace. Each mapper must use the claim
+command as its only job-assignment tool. The database performs a conditional
+lease update, so concurrent claims cannot assign one job to two workers.
+
 Do not split a source across simultaneous agents or claim more than one source in the same worktree. An independent reviewer may inspect a finished package later, but reviewer approval is outside this ingestion goal.
 
 ## Queue Rules
@@ -89,6 +94,9 @@ The coordinator may mark a source complete only when:
 - organization location and coordinates work when the source publishes a resolvable organization location;
 - accepted events have event-specific valid non-zero coordinates or an explicit evidence-backed source-organization fallback, while invalid event locations are excluded and appear in stable scrape-run rejection summaries;
 - source division names remain intact while canonical gender/age/skill fields are populated from evidence;
+- every accepted event has at least one source-supported division, and each
+  division has a name, gender, rating type, division type, skill type, and age
+  type;
 - divisions are grouped to the correct parent event and each division retains its own source price and capacity, with event-level price/range derived without cross-division leakage;
 - rerunning is duplicate-safe;
 - cadence and automation state are correct;

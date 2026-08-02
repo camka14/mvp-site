@@ -73,7 +73,7 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('claimableJobs=0, activeLeases=0, and claimedWithoutLease=0');
     expect(goal).toContain('Never approve a package produced by this reviewer identity');
     expect(goal).toContain('disposable validation database review-scrape evidence');
-    expect(goal).toContain('Use live data only for the approval queue');
+    expect(goal).toContain('Use live data only for queue and governed decisions');
     expect(goal).toContain('NOT_APPLIED before approval is expected');
     expect(goal).toContain('need not exist in production');
     expect(goal).toContain('Review organizations independently from child events');
@@ -81,6 +81,8 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('evidenced SOURCE_ORGANIZATION fallback');
     expect(goal).toContain('Verify division grouping, source labels');
     expect(goal).toContain('canonical gender M/F/C');
+    expect(goal).toContain('Every accepted EVENT needs one division');
+    expect(goal).toContain('Use only the claim command for assignment');
     expect(goal).toContain('compact event price ranges');
     expect(goal).toContain('Independently verify event and organization description quality');
     expect(goal).toContain('descriptionQualityVerified=true');
@@ -94,6 +96,7 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('PRODUCER_REPAIR');
     expect(goal).toContain('HUMAN_REVIEW_REQUIRED and DEFER only');
     expect(goal).toContain('Do not edit producer packages, publish');
+    expect(goal).toContain('progress/codex-luna-approval-vm-1.jsonl');
   });
 
   it('rejects reviewer identities that could become command syntax', () => {

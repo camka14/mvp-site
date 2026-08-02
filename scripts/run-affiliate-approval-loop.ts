@@ -5,13 +5,17 @@ import { Client } from 'pg';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import { preserveAffiliateDisposableDatabaseUrl } from '../src/server/affiliateImports/producerPackageEvidence';
 import { resolvePrismaPgPoolConfig } from '../src/lib/prismaConfig';
+import {
+  buildAffiliateAgentIds,
+  parseAffiliateAgentCount,
+} from '../src/server/affiliateImports/agentPool';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
 const APPROVAL_LOOP_LOCK_ID = 4201072131;
 const DEFAULT_INTERVAL_SECONDS = 300;
-const DEFAULT_REVIEWER_ID = 'codex-luna-approval-vm-1';
+const DEFAULT_REVIEWER_PREFIX = 'codex-luna-approval-vm';
 
 const readOption = (name: string): string | undefined => {
   const equals = process.argv.find((argument) => argument.startsWith(`${name}=`));
@@ -65,12 +69,23 @@ const runChildGoal = async (options: {
 };
 
 const main = async () => {
-  const reviewerId = readOption('--worker')
-    ?? process.env.AFFILIATE_APPROVAL_REVIEWER_ID?.trim()
-    ?? DEFAULT_REVIEWER_ID;
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(reviewerId)) {
+  const legacyReviewerId = readOption('--worker')
+    ?? process.env.AFFILIATE_APPROVAL_REVIEWER_ID?.trim();
+  const agentCount = parseAffiliateAgentCount(
+    readOption('--agent-count') ?? process.env.AFFILIATE_APPROVAL_AGENT_COUNT,
+  );
+  if (legacyReviewerId && agentCount !== 1) {
+    throw new Error('--worker may only be used with --agent-count=1. Use --worker-prefix for a pool.');
+  }
+  if (legacyReviewerId && !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(legacyReviewerId)) {
     throw new Error('Approval loop reviewer id is invalid.');
   }
+  const reviewerPrefix = readOption('--worker-prefix')
+    ?? process.env.AFFILIATE_APPROVAL_REVIEWER_PREFIX?.trim()
+    ?? DEFAULT_REVIEWER_PREFIX;
+  const reviewerIds = legacyReviewerId
+    ? [legacyReviewerId]
+    : buildAffiliateAgentIds(reviewerPrefix, agentCount);
   const intervalMs = boundedIntervalSeconds() * 1_000;
   const runOnce = process.argv.includes('--once');
   const codexBin = readOption('--codex-bin') ?? process.env.CODEX_CLI_BIN?.trim();
@@ -113,18 +128,21 @@ const main = async () => {
             })
           ),
         } : {}),
-        launchGoal: () => runChildGoal({
-          reviewerId,
+        reviewerIds,
+        launchGoal: (reviewerId) => runChildGoal({
+          reviewerId: reviewerId ?? reviewerIds[0],
           codexBin,
           containerIsolated: process.argv.includes('--container-isolated'),
         }),
       });
       console.log(JSON.stringify({
         lockAcquired: true,
-        reviewerId,
+        reviewerIds,
+        agentCount,
         fullReviewCohort: fullReviewCohort ?? null,
         fullReview: cycle.fullReview,
         launchedGoal: cycle.launchedGoal,
+        launchedGoalCount: cycle.launchedGoalCount,
         claimableBefore: cycle.queueBeforeLaunch.claimableJobs,
         claimableAfter: cycle.queueAfterLaunch.claimableJobs,
         evaluatedAt: cycle.queueAfterLaunch.evaluatedAt,

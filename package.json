@@ -64,6 +64,7 @@
     "affiliate:mapping:apply-approved-live": "tsx scripts/apply-approved-affiliate-mapping-jobs.ts",
     "affiliate:intakes:codex-goal": "tsx scripts/run-affiliate-intake-codex-goal.ts",
     "affiliate:intakes:codex-goal:dry-run": "tsx scripts/run-affiliate-intake-codex-goal.ts --dry-run",
+    "affiliate:intakes:codex-pool": "tsx scripts/run-affiliate-intake-codex-pool.ts",
     "affiliate:approvals:reconcile": "tsx scripts/reconcile-affiliate-approval-queue.ts",
     "affiliate:approvals:queue-status": "tsx scripts/report-affiliate-approval-queue.ts",
     "affiliate:approvals:claim": "tsx scripts/claim-affiliate-approval.ts",
