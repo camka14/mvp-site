@@ -11,6 +11,14 @@ import { MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS } from './mappingPackageRepair'
 
 const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000;
 
+export const AFFILIATE_DOMAIN_POLICY_DECISION_STANDARD = {
+  version: 'explicit-prohibition-only-v1',
+  defaultDecision: 'ALLOW',
+  blockOnlyWhen: 'Stored evidence contains an explicit prohibition that applies to automated capture of the target public path.',
+  missingResourceDecision: 'ALLOW',
+  deferOnlyWhen: 'Stored evidence conflicts about whether an explicit prohibition applies, or the target domain or path cannot be identified.',
+} as const;
+
 type JsonRecord = Record<string, unknown>;
 
 const approvalDb = (client: any = prisma as any) => ({
@@ -211,6 +219,7 @@ const approvalSubjectContext = async (approval: any) => {
       intakeIds,
       intakes: intakeRows,
       pages: pageRows,
+      decisionStandard: AFFILIATE_DOMAIN_POLICY_DECISION_STANDARD,
       producerId: null,
     };
   }

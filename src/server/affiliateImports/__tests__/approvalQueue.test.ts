@@ -224,6 +224,13 @@ describe('affiliate approval queue', () => {
     }));
     expect(claim?.subject).toEqual(expect.objectContaining({
       intakeIds: ['intake_1'],
+      decisionStandard: {
+        version: 'explicit-prohibition-only-v1',
+        defaultDecision: 'ALLOW',
+        blockOnlyWhen: expect.stringContaining('explicit prohibition'),
+        missingResourceDecision: 'ALLOW',
+        deferOnlyWhen: expect.stringContaining('conflicts'),
+      },
     }));
   });
 

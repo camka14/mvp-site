@@ -160,6 +160,8 @@ Add `scripts/run-affiliate-approval-loop.ts` as the cheap outer loop. Each polli
 
 Add `src/server/affiliateImports/domainPolicyRequeue.ts` and a guarded CLI. It selects only `DEFERRED` `DOMAIN_POLICY` approvals linked to `NEEDS_REVIEW` policies. It limits selection to rows updated before an operator-supplied cutoff. Apply mode also requires an exact expected count. Before reset, it appends the prior reviewer, decision, attempt count, and finish time to the policy evidence history. It then resets only the approval lease and terminal decision fields.
 
+Include the explicit-prohibition-only standard in every claimed domain subject. The claim command runs as a fresh process for each job. This makes the active policy standard visible to a reviewer goal that started before a checkout update, without stopping or restarting that goal.
+
 Finish the skill with concise core instructions and a detailed approval contract reference. Generate and validate its `agents/openai.yaml`. Update the ingestion goal so it reports policy-review work as pending reviewer work rather than asking the operator for routine decisions.
 
 ## Concrete Steps
@@ -232,3 +234,5 @@ Revision note (2026-08-01): Upgraded the Luna approval process to max reasoning 
 Revision note (2026-08-02): Added independent description-quality review and the durable one-time full-mapping rereview flag. The cohort remains waiting until the current queues are strictly idle.
 
 Revision note (2026-08-01): Changed domain policy to allow capture unless an explicit prohibition applies to the target public path. Added a cutoff and count guarded requeue that preserves prior decisions before it resets deferred policy reviews.
+
+Revision note (2026-08-01): Added the current domain decision standard to each claim payload so a long-running reviewer receives the updated rule at the job boundary.
