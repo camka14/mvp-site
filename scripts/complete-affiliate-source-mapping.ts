@@ -3,6 +3,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
+import {
+  CODEX_AFFILIATE_INGESTION_FAST_MODE,
+  CODEX_AFFILIATE_INGESTION_MODEL,
+  CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
+  CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
+} from '../src/server/affiliateImports/codexCliGoal';
 import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
 
 dotenv.config({ quiet: true });
@@ -97,8 +103,10 @@ const main = async () => {
       resultSummary: {
         schemaVersion: 1,
         agentProvider: 'codex-cli',
-        model: 'gpt-5.6-luna',
-        reasoningEffort: 'xhigh',
+        model: CODEX_AFFILIATE_INGESTION_MODEL,
+        reasoningEffort: CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
+        serviceTier: CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
+        fastMode: CODEX_AFFILIATE_INGESTION_FAST_MODE,
         resultPath: path.relative(process.cwd(), absoluteResultPath),
         result,
         authority: result.status === 'REVIEW_REQUIRED'

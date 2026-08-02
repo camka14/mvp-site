@@ -5,8 +5,10 @@ import { promisify } from 'node:util';
 import {
   buildCodexAffiliateIngestionArgs,
   buildCodexAffiliateIngestionGoal,
+  CODEX_AFFILIATE_INGESTION_FAST_MODE,
   CODEX_AFFILIATE_INGESTION_MODEL,
   CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
+  CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
 } from '../src/server/affiliateImports/codexCliGoal';
 
 const execFileAsync = promisify(execFile);
@@ -71,6 +73,8 @@ const main = async () => {
     repositoryRoot,
     model: CODEX_AFFILIATE_INGESTION_MODEL,
     reasoningEffort: CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
+    serviceTier: CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
+    fastMode: CODEX_AFFILIATE_INGESTION_FAST_MODE,
     useLiveIntakes,
     containerIsolated,
     workerId,

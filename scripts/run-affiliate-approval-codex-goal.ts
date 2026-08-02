@@ -4,8 +4,10 @@ import { promisify } from 'node:util';
 import {
   buildCodexAffiliateApprovalArgs,
   buildCodexAffiliateApprovalGoal,
+  CODEX_AFFILIATE_APPROVAL_FAST_MODE,
   CODEX_AFFILIATE_APPROVAL_MODEL,
   CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT,
+  CODEX_AFFILIATE_APPROVAL_SERVICE_TIER,
 } from '../src/server/affiliateImports/codexApprovalGoal';
 
 const execFileAsync = promisify(execFile);
@@ -58,6 +60,8 @@ const main = async () => {
     repositoryRoot,
     model: CODEX_AFFILIATE_APPROVAL_MODEL,
     reasoningEffort: CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT,
+    serviceTier: CODEX_AFFILIATE_APPROVAL_SERVICE_TIER,
+    fastMode: CODEX_AFFILIATE_APPROVAL_FAST_MODE,
     reviewerId: options.reviewerId,
     useLiveApprovals: options.useLiveApprovals,
     codex: preflight,

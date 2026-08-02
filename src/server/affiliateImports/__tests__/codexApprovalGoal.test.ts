@@ -4,8 +4,10 @@ import path from 'node:path';
 import {
   buildCodexAffiliateApprovalArgs,
   buildCodexAffiliateApprovalGoal,
+  CODEX_AFFILIATE_APPROVAL_FAST_MODE,
   CODEX_AFFILIATE_APPROVAL_MODEL,
   CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT,
+  CODEX_AFFILIATE_APPROVAL_SERVICE_TIER,
 } from '../codexApprovalGoal';
 
 describe('Codex affiliate approval goal', () => {
@@ -15,7 +17,7 @@ describe('Codex affiliate approval goal', () => {
     reviewerId: 'codex-luna-approval-vm-1',
   };
 
-  it('pins one headless Luna x-high goal with bounded authority', () => {
+  it('pins one headless Luna max goal in fast mode with bounded authority', () => {
     expect(buildCodexAffiliateApprovalArgs(options)).toEqual([
       '--ask-for-approval',
       'never',
@@ -27,6 +29,10 @@ describe('Codex affiliate approval goal', () => {
       '--config',
       `model_reasoning_effort="${CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT}"`,
       '--config',
+      `service_tier="${CODEX_AFFILIATE_APPROVAL_SERVICE_TIER}"`,
+      '--config',
+      `features.fast_mode=${CODEX_AFFILIATE_APPROVAL_FAST_MODE}`,
+      '--config',
       'sandbox_workspace_write.network_access=true',
       '--enable',
       'goals',
@@ -35,7 +41,9 @@ describe('Codex affiliate approval goal', () => {
       expect.stringMatching(/^Before doing any other work, call the create_goal tool /),
     ]);
     expect(CODEX_AFFILIATE_APPROVAL_MODEL).toBe('gpt-5.6-luna');
-    expect(CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT).toBe('xhigh');
+    expect(CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT).toBe('max');
+    expect(CODEX_AFFILIATE_APPROVAL_SERVICE_TIER).toBe('fast');
+    expect(CODEX_AFFILIATE_APPROVAL_FAST_MODE).toBe(true);
   });
 
   it('names the queue commands, evidence refresh, independence, and stop condition', () => {

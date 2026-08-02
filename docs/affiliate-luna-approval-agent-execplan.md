@@ -6,7 +6,7 @@ This document must be maintained in accordance with `PLANS.md`.
 
 ## Purpose / Big Picture
 
-BracketIQ currently pauses newly discovered domains at policy review and mapping packages at source review. After this change, a second Codex CLI process pinned to Luna x-high can independently inspect those approval items, apply evidence-backed decisions, and keep the capture-to-mapping pipeline moving without waiting for the operator to approve every routine item. The reviewer remains separate from the ingestion worker and leaves a durable decision record.
+BracketIQ currently pauses newly discovered domains at policy review and mapping packages at source review. After this change, a second Codex CLI process pinned to Luna max in fast mode can independently inspect those approval items, apply evidence-backed decisions, and keep the capture-to-mapping pipeline moving without waiting for the operator to approve every routine item. The reviewer remains separate from the ingestion worker and leaves a durable decision record.
 
 The reviewer may allow or block an intake domain after checking stored robots and policy evidence, and may apply a review-ready source package to the live database after independently checking its commit, stored evidence, tests, duplicate-safe scrapes, logo evidence, and unpublished state. When a bounded review establishes that no official logo is present, the reviewer may explicitly accept the logo absence without weakening any other package check. It may defer or reject uncertain work. It never publishes organizations or candidates, enables recurring scraping, validates mappings, approves training data, or approves work produced under its own reviewer identity.
 
@@ -16,13 +16,14 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-07-31) Audited the existing domain-policy review, mapping-result approval, and live application paths.
 - [x] (2026-07-31) Added a durable affiliate approval queue, migration, and generated Prisma client.
 - [x] (2026-07-31) Added deterministic reconcile, claim, status, evidence-refresh, and completion services and CLIs.
-- [x] (2026-07-31) Added the Luna x-high reviewer goal launcher and finished the repository-local skill contract.
+- [x] (2026-07-31) Added the Luna reviewer goal launcher and finished the repository-local skill contract.
 - [x] (2026-07-31) Added a low-cost polling loop that launches Luna only when approval work is claimable and awaits the goal process before checking again.
 - [x] (2026-07-31) Added focused tests, validated the skill, and passed repository-wide checks.
 - [x] (2026-07-31) Prepared the scoped implementation commit without staging unrelated VM scrape-timer and legacy-source work.
 - [x] (2026-08-01) Repaired the producer-to-reviewer handoff so exact commits and disposable review scrapes are independently verifiable across isolated containers; requeued 116 handoff-only decisions and completed one formerly rejected package through guarded live approval.
 - [ ] (2026-08-01) Repair generated guarded-live setup compatibility, requeue producer-fixable terminal packages, and route unresolved manual-logo packages through a fresh producer evidence pass before independent re-review.
 - [x] (2026-08-02) Made verified logo absence an explicit non-blocking mapping approval state and added deterministic recovery that returns logo-only terminal packages to the independent reviewer queue.
+- [x] (2026-08-01) Upgraded the approval launcher to `max` reasoning and persisted Codex fast mode through `service_tier="fast"` and `features.fast_mode=true`.
 
 ## Surprises & Discoveries
 
@@ -89,6 +90,10 @@ The reviewer may allow or block an intake domain after checking stored robots an
   Rationale: an otherwise-valid organization and mapping remain useful without a logo. The reviewer still searches stored and official-site evidence, returns a package to the producer when an official mark is found but not packaged, and records a distinct auditable absence flag when no mark exists. Missing or contradictory evidence still defers; confirmed absence does not.
   Date/Author: 2026-08-02 / Codex
 
+- Decision: run the Luna approval goal with `model_reasoning_effort=max`, `service_tier="fast"`, and `features.fast_mode=true`.
+  Rationale: approvals benefit from the strongest configured reasoning effort, while the fast service tier reduces review latency. Keeping all three settings in the tested argument vector and preflight output makes the runtime mode auditable.
+  Date/Author: 2026-08-01 / Codex
+
 ## Outcomes & Retrospective
 
 The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy and logo evidence capture, guarded live application with an explicit missing-logo exception, deterministic re-review of legacy logo-only terminal packages, and a model-free outer loop that cannot relaunch while its Luna child goal is running.
@@ -101,7 +106,7 @@ Validation passed on 2026-07-31:
 - Targeted ESLint passed.
 - `npm run prisma:check` passed and regenerated the tracked client.
 - The repository-local skill passed `quick_validate.py` using an ephemeral PyYAML runtime.
-- The Luna goal dry-run produced `gpt-5.6-luna`, `xhigh`, the stable reviewer identity, the skill, and `codex exec`; live execution remains for the authenticated VM.
+- The Luna goal dry-run produced `gpt-5.6-luna`, `max`, service tier `fast`, fast mode `true`, the stable reviewer identity, the skill, and `codex exec`; live execution remains for the authenticated VM.
 
 Operational follow-up after commit/deploy is to apply the migration, verify `codex login status` on the VM, dry-run the goal there, then start `npm run affiliate:approvals:loop -- --live --worker=codex-luna-approval-vm-1 --interval-seconds=300`. The loop's advisory lock remains held until each spawned goal exits.
 
@@ -111,7 +116,7 @@ Operational follow-up after commit/deploy is to apply the migration, verify `cod
 
 An approval job is a durable database row that points to either a domain-policy key or a mapping-job ID. `QUEUED` and expired `CLAIMED` rows are available work. `APPROVED`, `BLOCKED`, `REJECTED`, `DEFERRED`, and `FAILED` rows are terminal. A reviewer claims one row at a time with a stable worker identity and lease.
 
-The skill lives at `.agents/skills/review-affiliate-approvals`. The launcher lives at `scripts/run-affiliate-approval-codex-goal.ts` and pins `gpt-5.6-luna` with x-high reasoning, persisted goals, no interactive approval prompts, and the repository-local skill.
+The skill lives at `.agents/skills/review-affiliate-approvals`. The launcher lives at `scripts/run-affiliate-approval-codex-goal.ts` and pins `gpt-5.6-luna` with max reasoning, persisted fast mode, persisted goals, no interactive approval prompts, and the repository-local skill.
 
 ## Plan of Work
 
@@ -161,7 +166,7 @@ The reviewer result is compact JSON containing schema version, approval job ID, 
 
 ## Interfaces and Dependencies
 
-`src/server/affiliateImports/approvalResult.ts` exports the strict result schema and TypeScript type. `src/server/affiliateImports/approvalQueue.ts` exports reconciliation, claim, status summarization, and completion functions. `src/server/affiliateImports/codexApprovalGoal.ts` builds the Luna x-high objective and CLI arguments.
+`src/server/affiliateImports/approvalResult.ts` exports the strict result schema and TypeScript type. `src/server/affiliateImports/approvalQueue.ts` exports reconciliation, claim, status summarization, and completion functions. `src/server/affiliateImports/codexApprovalGoal.ts` builds the Luna max/fast objective and CLI arguments.
 
 The public commands are:
 
@@ -182,3 +187,5 @@ Revision note (2026-08-01): Recorded the cross-container evidence mismatch and t
 Revision note (2026-08-01): Recorded the guarded-live setup and manual-logo recovery cohort and the producer-repair routing decision.
 
 Revision note (2026-08-02): Superseded the mandatory-logo gate with an explicit accepted-absence state and added reviewer-queue recovery for earlier logo-only terminal decisions.
+
+Revision note (2026-08-01): Upgraded the Luna approval process to max reasoning in persisted fast mode and made those settings explicit in the launcher's tests and preflight output.

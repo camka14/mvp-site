@@ -1,7 +1,9 @@
 import path from 'node:path';
 
 export const CODEX_AFFILIATE_INGESTION_MODEL = 'gpt-5.6-luna';
-export const CODEX_AFFILIATE_INGESTION_REASONING_EFFORT = 'xhigh';
+export const CODEX_AFFILIATE_INGESTION_REASONING_EFFORT = 'max';
+export const CODEX_AFFILIATE_INGESTION_SERVICE_TIER = 'fast';
+export const CODEX_AFFILIATE_INGESTION_FAST_MODE = true;
 export const CODEX_AFFILIATE_INGESTION_SKILL = '$ingest-affiliate-intakes';
 
 export type CodexAffiliateGoalOptions = {
@@ -143,6 +145,10 @@ export const buildCodexAffiliateIngestionArgs = (
     CODEX_AFFILIATE_INGESTION_MODEL,
     '--config',
     `model_reasoning_effort="${CODEX_AFFILIATE_INGESTION_REASONING_EFFORT}"`,
+    '--config',
+    `service_tier="${CODEX_AFFILIATE_INGESTION_SERVICE_TIER}"`,
+    '--config',
+    `features.fast_mode=${CODEX_AFFILIATE_INGESTION_FAST_MODE}`,
     '--config',
     'sandbox_workspace_write.network_access=true',
     '--enable',

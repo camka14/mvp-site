@@ -5,8 +5,10 @@ import {
   buildCodexAffiliateIngestionArgs,
   buildCodexAffiliateIngestionGoal,
   buildCodexAffiliateIngestionObjective,
+  CODEX_AFFILIATE_INGESTION_FAST_MODE,
   CODEX_AFFILIATE_INGESTION_MODEL,
   CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
+  CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
 } from '../codexCliGoal';
 
 describe('Codex affiliate intake goal', () => {
@@ -16,7 +18,7 @@ describe('Codex affiliate intake goal', () => {
     workerId: 'codex-luna-vm-1',
   };
 
-  it('pins Luna x-high with persisted goals and bounded workspace permissions', () => {
+  it('pins Luna max in fast mode with persisted goals and bounded workspace permissions', () => {
     const args = buildCodexAffiliateIngestionArgs(options);
 
     expect(args).toEqual([
@@ -26,6 +28,10 @@ describe('Codex affiliate intake goal', () => {
       CODEX_AFFILIATE_INGESTION_MODEL,
       '--config',
       `model_reasoning_effort="${CODEX_AFFILIATE_INGESTION_REASONING_EFFORT}"`,
+      '--config',
+      `service_tier="${CODEX_AFFILIATE_INGESTION_SERVICE_TIER}"`,
+      '--config',
+      `features.fast_mode=${CODEX_AFFILIATE_INGESTION_FAST_MODE}`,
       '--config',
       'sandbox_workspace_write.network_access=true',
       '--enable',
@@ -37,7 +43,9 @@ describe('Codex affiliate intake goal', () => {
       expect.stringMatching(/^Before doing any other work, call the create_goal tool /),
     ]);
     expect(CODEX_AFFILIATE_INGESTION_MODEL).toBe('gpt-5.6-luna');
-    expect(CODEX_AFFILIATE_INGESTION_REASONING_EFFORT).toBe('xhigh');
+    expect(CODEX_AFFILIATE_INGESTION_REASONING_EFFORT).toBe('max');
+    expect(CODEX_AFFILIATE_INGESTION_SERVICE_TIER).toBe('fast');
+    expect(CODEX_AFFILIATE_INGESTION_FAST_MODE).toBe(true);
     expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
   });
 
