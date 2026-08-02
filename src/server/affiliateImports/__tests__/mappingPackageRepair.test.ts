@@ -74,7 +74,7 @@ describe('affiliate mapping producer repair eligibility', () => {
     }).repairReason).toBe('EVENT_LOCATION_PACKAGE_REJECTION');
   });
 
-  it('requeues unresolved official logos for a producer evidence pass', () => {
+  it('returns unresolved manual-logo packages to the reviewer under the logo-optional policy', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,
       approvalDecision: {
@@ -82,10 +82,27 @@ describe('affiliate mapping producer repair eligibility', () => {
       },
       resultSummary: reviewResult('MANUAL_REVIEW'),
     })).toEqual(expect.objectContaining({
-      eligible: true,
-      reason: 'producer-repair-required',
-      repairReason: 'MANUAL_LOGO_REVIEW',
+      eligible: false,
+      reason: 'manual-logo-policy-review',
+      repairReason: null,
+      disposition: 'REVIEWER_RETRY',
+    }));
+  });
+
+  it('does not let a missing logo mask a concrete event defect', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        blockingIssues: [
+          'The package remains MANUAL_REVIEW because no official logo was verified.',
+          'An accepted event has no usable venue address or coordinates.',
+        ],
+      },
+      resultSummary: reviewResult('MANUAL_REVIEW'),
+    })).toEqual(expect.objectContaining({
       disposition: 'PRODUCER_REPAIR',
+      repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION',
+      reasonCodes: ['EVENT_LOCATION_INVALID'],
     }));
   });
 
@@ -130,7 +147,7 @@ describe('affiliate mapping producer repair eligibility', () => {
     }));
   });
 
-  it('marks an ordinary historical deferral for human review instead of retrying it', () => {
+  it('returns a historical manual-logo deferral to the reviewer', () => {
     expect(affiliateMappingProducerRepairEligibility({
       approvalStatus: 'DEFERRED',
       mappingStatus: 'REVIEW_REQUIRED',
@@ -140,8 +157,8 @@ describe('affiliate mapping producer repair eligibility', () => {
       resultSummary: reviewResult('MANUAL_REVIEW'),
     })).toEqual(expect.objectContaining({
       eligible: false,
-      reason: 'historical-deferred-evidence-review',
-      disposition: 'HUMAN_REVIEW_REQUIRED',
+      reason: 'manual-logo-policy-review',
+      disposition: 'REVIEWER_RETRY',
     }));
   });
 
@@ -168,12 +185,13 @@ describe('affiliate mapping producer repair eligibility', () => {
       mappingStatus: 'HUMAN_REVIEW_REQUIRED',
       approvalDecision: {},
       resultSummary: {
+        ...reviewResult('MANUAL_REVIEW'),
         humanReviewRequired: {
           reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
         },
       },
     })).toEqual(expect.objectContaining({
-      disposition: 'HUMAN_REVIEW_REQUIRED',
+      disposition: 'REVIEWER_RETRY',
       reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
     }));
   });
@@ -190,7 +208,7 @@ describe('affiliate mapping producer repair eligibility', () => {
     }));
   });
 
-  it('stops a historical package when the review proved no official logo exists', () => {
+  it('requeues a historical package when the review proved no official logo exists', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,
       approvalDecision: {
@@ -198,8 +216,25 @@ describe('affiliate mapping producer repair eligibility', () => {
       },
       resultSummary: reviewResult('MANUAL_REVIEW'),
     })).toEqual(expect.objectContaining({
-      disposition: 'HUMAN_REVIEW_REQUIRED',
+      disposition: 'REVIEWER_RETRY',
+      reason: 'logo-absence-policy-changed',
       reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+    }));
+  });
+
+  it('still returns a verified logo packaging defect to the producer', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        mappingDisposition: {
+          nextAction: 'PRODUCER_REPAIR',
+          reasonCodes: ['OFFICIAL_LOGO_REPAIR_REQUIRED'],
+        },
+      },
+      resultSummary: reviewResult('MANUAL_REVIEW'),
+    })).toEqual(expect.objectContaining({
+      disposition: 'PRODUCER_REPAIR',
+      repairReason: 'MANUAL_LOGO_REVIEW',
     }));
   });
 
@@ -210,8 +245,8 @@ describe('affiliate mapping producer repair eligibility', () => {
       approvalDecision: {},
       resultSummary: reviewResult('MANUAL_REVIEW'),
     })).toEqual(expect.objectContaining({
-      disposition: 'HUMAN_REVIEW_REQUIRED',
-      reason: 'no-verifiable-official-logo',
+      disposition: 'REVIEWER_RETRY',
+      reason: 'logo-absence-policy-changed',
       reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
     }));
   });

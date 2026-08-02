@@ -16,7 +16,9 @@ Every successful checkpoint must contain:
 2. Source organization fields supported by evidence: name, official website, description, sports, city, address, and valid non-zero `[longitude, latitude]` coordinates resolved from that evidence when a place is identifiable.
 3. A disabled affiliate source and unvalidated mapping or reviewed custom extractor.
 4. Official action URLs and source provenance.
-5. An official logo reference normalized to an opaque 1024 by 1024 asset, or an explicit manual-review result that prevents publication.
+5. An official logo reference normalized to an opaque 1024 by 1024 asset, or an
+   explicit `MANUAL_REVIEW` result that records the logo evidence gap for the
+   independent reviewer. Logo absence does not invalidate the rest of the package.
 6. Focused tests and stored-fixture extraction evidence.
 7. Two review scrapes proving stable, duplicate-safe accepted output and stable
    candidate-level rejection summaries.
@@ -69,7 +71,7 @@ Rentals create facilities/resources rather than fake events. Clubs create public
 
 Prefer stored logo candidates, page branding, page images, HTML/CSS references, metadata, and screenshots. Use a favicon only when it is the best recognizable official mark.
 
-Normalize official artwork without inventing a new identity. Use a full-canvas opaque background, preserve aspect ratio, and verify card, detail, list icon, and map marker fit. If no official mark can be verified, record `MANUAL_REVIEW` and stop publication.
+Normalize official artwork without inventing a new identity. Use a full-canvas opaque background, preserve aspect ratio, and verify card, detail, list icon, and map marker fit. If no official mark can be verified, record `MANUAL_REVIEW`, list the evidence inspected, and leave acceptance to the independent reviewer. Do not fail the mapping package for logo absence alone.
 
 When a claimed job has `repairContext.repairReason = MANUAL_LOGO_REVIEW`, the
 producer must perform a fresh evidence pass over every stored logo, branding,
@@ -77,7 +79,8 @@ image, screenshot, HTML/CSS, metadata, and favicon artifact. A repaired result
 requires a new commit and `OFFICIAL_ASSET` or `OFFICIAL_SCREENSHOT_CROP` backed
 by stable stored evidence. If all candidates remain insufficient, report the
 exact inspected artifacts and keep the package unpublishable rather than
-fabricating a logo or resubmitting an unchanged manual-review result.
+fabricating a logo. Complete the package with the unchanged `MANUAL_REVIEW`
+disposition so the reviewer can explicitly accept the absence.
 When `lastRunId` points to a supplemental approval run, inspect its official
 page artifacts and reviewer-verified `LOGO_CANDIDATE` first. The reviewer only
 adds evidence; the producer must still visually verify, normalize, fit-test,

@@ -21,8 +21,9 @@ Act only as an independent reviewer. Read `AGENTS.md`,
 Never claim a second job while the current claim is unfinished. Never invent
 evidence. For a manual-logo claim only, the goal's governed logo-evidence
 command may add a freshly verified official-page reference to the intake. Use
-`DEFER` when neither stored evidence nor that bounded official-site check can
-support a deterministic decision.
+`DEFER` only when inaccessible, incomplete, or contradictory evidence prevents
+a deterministic decision. A completed search that finds no official mark is a
+deterministic logo-absence result, not a deferral by itself.
 
 ## Review a domain policy
 
@@ -122,11 +123,15 @@ new provenance-backed `LOGO_CANDIDATE`. Cite the returned run and artifact IDs,
 then `REJECT` with `PRODUCER_REPAIR` and
 `OFFICIAL_LOGO_REPAIR_REQUIRED`. The producer—not the reviewer—normalizes,
 assigns, tests, and commits it. If neither stored nor newly captured official
-evidence verifies a mark, `DEFER` with `NO_VERIFIABLE_OFFICIAL_LOGO`. A
-reviewer never edits the package, approves a logo-less package, or invents a
-brand mark.
+evidence contains an official mark after the bounded search, approve the
+otherwise-valid package with `officialLogoVerified = false` and
+`logoAbsenceAccepted = true`. Cite the inspected evidence and official-site
+check in the rationale and evidence references. Logo absence alone is not a
+blocking issue. A reviewer never edits the package or invents a brand mark.
 
-- `APPROVE` only when every required check in the result schema is true.
+- `APPROVE` only when every required check in the result schema is true. The
+  logo check requires exactly one of `officialLogoVerified` or
+  `logoAbsenceAccepted`.
 - `REJECT` with `mappingDisposition.nextAction = PRODUCER_REPAIR` for a
   concrete setup, parser, event-filtering, division, pricing, capacity, logo,
   validation, or duplicate-safety defect that stored or governed supplemental

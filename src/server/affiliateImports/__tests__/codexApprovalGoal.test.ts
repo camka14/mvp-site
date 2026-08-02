@@ -67,7 +67,9 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('For MANUAL_REVIEW logos');
     expect(goal).toContain('manually inspect the public official site');
     expect(goal).toContain('OFFICIAL_LOGO_REPAIR_REQUIRED');
-    expect(goal).toContain('DEFER only when neither stored nor freshly captured official-site evidence');
+    expect(goal).toContain('do not reject or defer an otherwise-valid package');
+    expect(goal).toContain('officialLogoVerified=false and logoAbsenceAccepted=true');
+    expect(goal).toContain('DEFER only when the evidence is inaccessible');
     expect(goal).toContain('Every non-approved MAPPING_PACKAGE result must include mappingDisposition');
     expect(goal).toContain('nextAction PRODUCER_REPAIR');
     expect(goal).toContain('Use HUMAN_REVIEW_REQUIRED only');

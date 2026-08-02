@@ -65,9 +65,8 @@ export const selectAffiliateMappingLiveApprovalCandidates = (
     };
     if (result.logoDisposition === 'MANUAL_REVIEW') {
       manualReview.push(candidate);
-    } else {
-      approvable.push(candidate);
     }
+    approvable.push(candidate);
   }
 
   return { approvable, manualReview };

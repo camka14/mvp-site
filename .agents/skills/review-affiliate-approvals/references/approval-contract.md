@@ -29,6 +29,7 @@ the result. `reviewerId` must exactly match the claim owner.
     "identityIndependent": true,
     "packageValidationPassed": false,
     "officialLogoVerified": false,
+    "logoAbsenceAccepted": false,
     "duplicateSafetyVerified": false
   },
   "blockingIssues": [
@@ -65,28 +66,32 @@ Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
 `EVENT_CAPACITY_INVALID`, `OFFICIAL_LOGO_REPAIR_REQUIRED`,
 `PACKAGE_VALIDATION_FAILED`, `DUPLICATE_SAFETY_INVALID`, and
 `OTHER_PRODUCER_DEFECT`. Human-review reason codes are
-`NO_VERIFIABLE_OFFICIAL_LOGO`, `INSUFFICIENT_STORED_EVIDENCE`, and
+`NO_VERIFIABLE_OFFICIAL_LOGO` (legacy decisions),
+`INSUFFICIENT_STORED_EVIDENCE`, and
 `CONFLICTING_LIVE_RECORD`. `RETRY_LIMIT_EXCEEDED` and
 `UNCLASSIFIED_TERMINAL_FAILURE` are normally assigned by queue recovery rather
 than the reviewer.
 
 A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
 `storedEvidenceSufficient`. A mapping approval requires
-`identityIndependent`, `packageValidationPassed`, `officialLogoVerified`,
-`duplicateSafetyVerified`, and `storedEvidenceSufficient`.
+`identityIndependent`, `packageValidationPassed`, `duplicateSafetyVerified`,
+and `storedEvidenceSufficient`, plus exactly one of `officialLogoVerified` or
+`logoAbsenceAccepted`.
 
-A producer result with `logoDisposition = MANUAL_REVIEW` is never approved as
-written. The reviewer must inspect stored logo and branding evidence first. If
-that is insufficient, the reviewer may inspect the public official site and run
-the governed `affiliate:approvals:logo-evidence` command. That command captures
-the official page through ScrapingDog, verifies the selected image URL is
-referenced by the page, and stores both page provenance and a `LOGO_CANDIDATE`
-under a new intake run. Cite the returned run and artifact IDs and use `REJECT`
-with `OFFICIAL_LOGO_REPAIR_REQUIRED`; the producer owns normalization and the
-new commit. Use `DEFER` with `NO_VERIFIABLE_OFFICIAL_LOGO` only when neither
-stored nor freshly captured official-site evidence verifies a mark. Do not use
-an unrelated platform logo, photograph, generated initials, or fabricated
-brand mark.
+For a producer result with `logoDisposition = MANUAL_REVIEW`, the reviewer must
+inspect stored logo and branding evidence first and then perform the bounded
+public official-site check. When the site exposes an official mark, run the
+governed `affiliate:approvals:logo-evidence` command. That command captures the
+official page through ScrapingDog, verifies the selected image URL is referenced
+by the page, and stores both page provenance and a `LOGO_CANDIDATE` under a new
+intake run. Cite the returned run and artifact IDs and use `REJECT` with
+`OFFICIAL_LOGO_REPAIR_REQUIRED`; the producer owns normalization and the new
+commit. When the completed search finds no official mark, `APPROVE` the
+otherwise-valid package with `officialLogoVerified = false` and
+`logoAbsenceAccepted = true`, citing what was inspected. Use `DEFER` only when
+the evidence is inaccessible, contradictory, or too incomplete to establish
+logo presence. Do not use an unrelated platform logo, photograph, generated
+initials, or fabricated brand mark.
 
 For a mapping approval, `packageValidationPassed` also means accepted event
 locations were independently checked and rejected event-location failures are

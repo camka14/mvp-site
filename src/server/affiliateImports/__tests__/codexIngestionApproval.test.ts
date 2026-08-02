@@ -43,7 +43,7 @@ const job = (logoDisposition: 'OFFICIAL_ASSET' | 'OFFICIAL_SCREENSHOT_CROP' | 'M
 });
 
 describe('Codex ingestion live approval', () => {
-  it('approves only packages with reviewed official logo evidence', () => {
+  it('keeps manual-logo packages eligible for explicit reviewer approval', () => {
     const selected = selectAffiliateMappingLiveApprovalCandidates([
       job('OFFICIAL_ASSET'),
       job('OFFICIAL_SCREENSHOT_CROP'),
@@ -53,6 +53,7 @@ describe('Codex ingestion live approval', () => {
     expect(selected.approvable.map((candidate) => candidate.result.logoDisposition)).toEqual([
       'OFFICIAL_ASSET',
       'OFFICIAL_SCREENSHOT_CROP',
+      'MANUAL_REVIEW',
     ]);
     expect(selected.manualReview).toHaveLength(1);
   });

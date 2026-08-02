@@ -31,6 +31,7 @@ export type AffiliateMappingProducerRepairReason =
 
 export type AffiliateMappingTerminalDisposition =
   | 'PRODUCER_REPAIR'
+  | 'REVIEWER_RETRY'
   | 'HUMAN_REVIEW_REQUIRED'
   | null;
 
@@ -64,6 +65,16 @@ const humanReview = (
   reasonCodes,
 });
 
+const reviewerRetry = (
+  reason: string,
+): AffiliateMappingProducerRepairEligibility => ({
+  eligible: false,
+  reason,
+  repairReason: null,
+  disposition: 'REVIEWER_RETRY',
+  reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+});
+
 const ignored = (reason: string): AffiliateMappingProducerRepairEligibility => ({
   eligible: false,
   reason,
@@ -95,9 +106,21 @@ export const affiliateMappingProducerRepairEligibility = (input: {
   if (!['REJECTED', 'DEFERRED'].includes(String(input.approvalStatus))) {
     return ignored('approval-not-terminal');
   }
+  const envelope = recordValue(input.resultSummary);
+  const result = codexAffiliateIngestionResultSchema.safeParse(envelope.result);
+  const hasManualLogoResult = result.success
+    && result.data.status === 'REVIEW_REQUIRED'
+    && result.data.logoDisposition === 'MANUAL_REVIEW';
   if (input.mappingStatus === 'HUMAN_REVIEW_REQUIRED') {
-    const humanReviewRequired = recordValue(recordValue(input.resultSummary).humanReviewRequired);
+    const humanReviewRequired = recordValue(envelope.humanReviewRequired);
     const reasonCodes = stringValues(humanReviewRequired.reasonCodes);
+    if (
+      hasManualLogoResult
+      && reasonCodes.length > 0
+      && reasonCodes.every((reasonCode) => reasonCode === 'NO_VERIFIABLE_OFFICIAL_LOGO')
+    ) {
+      return reviewerRetry('logo-absence-policy-changed');
+    }
     return humanReview(
       'already-human-review-required',
       reasonCodes.length ? reasonCodes : ['UNCLASSIFIED_TERMINAL_FAILURE'],
@@ -114,6 +137,13 @@ export const affiliateMappingProducerRepairEligibility = (input: {
   const structuredNextAction = stringValues(mappingDisposition.nextAction)[0] ?? null;
   const structuredReasonCodes = stringValues(mappingDisposition.reasonCodes);
   if (structuredNextAction === 'HUMAN_REVIEW_REQUIRED') {
+    if (
+      hasManualLogoResult
+      && structuredReasonCodes.length > 0
+      && structuredReasonCodes.every((reasonCode) => reasonCode === 'NO_VERIFIABLE_OFFICIAL_LOGO')
+    ) {
+      return reviewerRetry('logo-absence-policy-changed');
+    }
     return humanReview(
       'reviewer-human-review-required',
       structuredReasonCodes.length ? structuredReasonCodes : ['UNCLASSIFIED_TERMINAL_FAILURE'],
@@ -129,7 +159,6 @@ export const affiliateMappingProducerRepairEligibility = (input: {
     return ignored('reviewer-handoff-retry-required');
   }
 
-  const envelope = recordValue(input.resultSummary);
   const embeddedReview = recordValue(envelope.approvalReview);
   const currentMappingFailure = stringValues(input.mappingErrorMessage).join(' ');
   const priorReviewEvidence = [
@@ -149,10 +178,6 @@ export const affiliateMappingProducerRepairEligibility = (input: {
 
   const liveSetupUnsupported = /(?:--live.{0,160}(?:refus|unsupported|not support|cannot|does not|prevent)|(?:refus|unsupported|not support|cannot|does not|prevent).{0,160}--live)/i.test(evidence);
   if (liveSetupUnsupported) return producerRepair('LIVE_SETUP_UNSUPPORTED');
-
-  if (input.approvalStatus === 'DEFERRED') {
-    return humanReview('historical-deferred-evidence-review', ['INSUFFICIENT_STORED_EVIDENCE']);
-  }
 
   const eventLocationPackageRejection = /(?:(?:event|candidate).{0,180}(?:location|venue|address|coordinate)|(?:location|venue|address|coordinate).{0,180}(?:event|candidate))/i.test(evidence);
   if (eventLocationPackageRejection) {
@@ -178,16 +203,17 @@ export const affiliateMappingProducerRepairEligibility = (input: {
   if (packageValidationFailed) return producerRepair('PACKAGE_VALIDATION_FAILED');
 
   const noVerifiableOfficialLogo = /(?:no\s+(?:verifiable|verified)\s+official\s+(?:logo|mark|asset)|(?:cannot|could not|unable to).{0,100}(?:verify|identify|find).{0,100}official\s+(?:logo|mark|asset)|manual[_ -]?logo[_ -]?review.{0,100}(?:cannot be resolved|terminally failed)|(?:logo|official mark).{0,160}(?:no stored image asset|no safe official logo asset|terminally failed to prevent looping))/i.test(evidence);
-  if (noVerifiableOfficialLogo) {
-    return humanReview('no-verifiable-official-logo', ['NO_VERIFIABLE_OFFICIAL_LOGO']);
+  if (noVerifiableOfficialLogo && hasManualLogoResult) {
+    return reviewerRetry('logo-absence-policy-changed');
   }
 
-  const result = codexAffiliateIngestionResultSchema.safeParse(envelope.result);
-  const manualLogoReview = result.success
-    && result.data.status === 'REVIEW_REQUIRED'
-    && result.data.logoDisposition === 'MANUAL_REVIEW'
+  const manualLogoReview = hasManualLogoResult
     && /(?:official\s+logo|logoDisposition|manual[_ -]?review|brand(?:ing)?\s+(?:asset|mark|evidence))/i.test(evidence);
-  if (manualLogoReview) return producerRepair('MANUAL_LOGO_REVIEW', ['OFFICIAL_LOGO_REPAIR_REQUIRED']);
+  if (manualLogoReview) return reviewerRetry('manual-logo-policy-review');
+
+  if (input.approvalStatus === 'DEFERRED') {
+    return humanReview('historical-deferred-evidence-review', ['INSUFFICIENT_STORED_EVIDENCE']);
+  }
 
   return humanReview('unclassified-terminal-failure', ['UNCLASSIFIED_TERMINAL_FAILURE']);
 };

@@ -360,7 +360,11 @@ export const completeAffiliateApproval = async (
         throw new Error('Mapping approval requires a valid review-required Codex ingestion result.');
       }
       if (ingestionResult.data.logoDisposition === 'MANUAL_REVIEW') {
-        throw new Error('Mapping approval requires a verified official logo disposition.');
+        if (result.checks.officialLogoVerified || !result.checks.logoAbsenceAccepted) {
+          throw new Error('Manual-logo mapping approval requires an explicit accepted logo absence.');
+        }
+      } else if (!result.checks.officialLogoVerified || result.checks.logoAbsenceAccepted) {
+        throw new Error('Official-logo mapping approval requires a verified official logo check.');
       }
       if (mappingJob.status === 'REVIEW_REQUIRED') {
         if (!dependencies.applyMappingPackage) {

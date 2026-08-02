@@ -9,6 +9,7 @@ const checks = {
   identityIndependent: true,
   packageValidationPassed: false,
   officialLogoVerified: false,
+  logoAbsenceAccepted: false,
   duplicateSafetyVerified: false,
 };
 
@@ -49,6 +50,37 @@ describe('affiliate approval result', () => {
       subjectKey: 'mapping_1',
       decision: 'APPROVE',
     })).toThrow('Mapping approval requires');
+  });
+
+  it('accepts an otherwise-valid mapping when the completed review establishes no official logo is present', () => {
+    expect(affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'APPROVE',
+      checks: {
+        ...checks,
+        packageValidationPassed: true,
+        logoAbsenceAccepted: true,
+        duplicateSafetyVerified: true,
+      },
+    }).checks.logoAbsenceAccepted).toBe(true);
+  });
+
+  it('does not allow a review to verify a logo and accept its absence simultaneously', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'APPROVE',
+      checks: {
+        ...checks,
+        packageValidationPassed: true,
+        officialLogoVerified: true,
+        logoAbsenceAccepted: true,
+        duplicateSafetyVerified: true,
+      },
+    })).toThrow('cannot both verify an official logo and accept');
   });
 
   it('requires a concrete issue for deferred reviews', () => {

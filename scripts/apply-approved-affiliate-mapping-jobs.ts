@@ -26,6 +26,7 @@ const readOption = (name: string): string | undefined => {
 
 const useLive = process.argv.includes('--live');
 const apply = process.argv.includes('--apply');
+const acceptMissingLogo = process.argv.includes('--accept-missing-logo');
 if (apply && !useLive) {
   throw new Error('--apply requires --live; local approval writes are not supported.');
 }
@@ -67,6 +68,7 @@ const main = async () => {
     const preview = {
       environment: useLive ? 'live' : 'local',
       apply,
+      acceptMissingLogo,
       approvable: selected.approvable.length,
       manualReview: selected.manualReview.length,
       selected: candidates.length,
@@ -194,7 +196,15 @@ const main = async () => {
           select: { id: true, status: true },
         }),
       ]);
-      if (!organization?.logoId) {
+      if (!organization) {
+        throw new Error(`Approved live organization ${source.organizationId} was not found.`);
+      }
+      const logoAbsenceAccepted = (
+        candidate.result.logoDisposition === 'MANUAL_REVIEW'
+        && !organization.logoId
+        && acceptMissingLogo
+      );
+      if (!organization.logoId && !logoAbsenceAccepted) {
         throw new Error(`Approved live organization ${source.organizationId} has no official logo.`);
       }
       if (organization.status !== 'UNLISTED' || organization.publicPageEnabled) {
@@ -232,6 +242,9 @@ const main = async () => {
                 mappingId: mapping.id,
                 reviewRunId: latestRun.id,
                 candidateCount,
+                logoDisposition: candidate.result.logoDisposition,
+                logoId: organization.logoId,
+                logoAbsenceAccepted,
                 autoScrapeEnabled: false,
                 mappingValidatedAt: null,
                 publicationStatus: 'UNPUBLISHED',

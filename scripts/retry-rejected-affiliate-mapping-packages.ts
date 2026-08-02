@@ -56,6 +56,12 @@ const main = async () => {
       reason: string;
       reasonCodes: string[];
     }> = [];
+    const reviewerRetries: Array<{
+      approval: any;
+      mapping: any;
+      reason: string;
+      reasonCodes: string[];
+    }> = [];
     const excluded: Record<string, number> = {};
 
     for (const approval of approvals) {
@@ -98,6 +104,15 @@ const main = async () => {
         });
         continue;
       }
+      if (selection.disposition === 'REVIEWER_RETRY') {
+        reviewerRetries.push({
+          approval,
+          mapping,
+          reason: selection.reason,
+          reasonCodes: selection.reasonCodes,
+        });
+        continue;
+      }
       excluded[selection.reason] = (excluded[selection.reason] ?? 0) + 1;
     }
 
@@ -108,6 +123,7 @@ const main = async () => {
       selectedJobId,
       terminalApprovals: approvals.length,
       producerRepairs: producerRepairs.length,
+      reviewerRetries: reviewerRetries.length,
       humanReviews: humanReviews.length,
       excluded,
       jobs: [
@@ -130,6 +146,15 @@ const main = async () => {
           reasonCodes,
           alreadyMarked: mapping.status === 'HUMAN_REVIEW_REQUIRED',
         })),
+        ...reviewerRetries.map(({ approval, mapping, reason, reasonCodes }) => ({
+          approvalJobId: approval.id,
+          approvalStatus: approval.status,
+          mappingJobId: mapping.id,
+          intakeId: mapping.intakeId,
+          disposition: 'REVIEWER_RETRY',
+          reason,
+          reasonCodes,
+        })),
       ],
     };
     if (!apply) {
@@ -138,6 +163,7 @@ const main = async () => {
     }
 
     const reset: string[] = [];
+    const requeuedForReviewer: string[] = [];
     const markedForHumanReview: string[] = [];
     for (const candidate of producerRepairs) {
       await db.$transaction(async (transaction: any) => {
@@ -199,6 +225,74 @@ const main = async () => {
           data: { status: 'READY_FOR_MAPPING' },
         });
         reset.push(currentMapping.id);
+      });
+    }
+
+    for (const candidate of reviewerRetries) {
+      await db.$transaction(async (transaction: any) => {
+        const currentApproval = await transaction.affiliateApprovalJobs.findUnique({
+          where: { id: candidate.approval.id },
+        });
+        const currentMapping = await transaction.affiliateSourceMappingJobs.findUnique({
+          where: { id: candidate.mapping.id },
+        });
+        if (!currentApproval || !currentMapping) return;
+        const selection = affiliateMappingProducerRepairEligibility({
+          approvalStatus: currentApproval.status,
+          approvalDecision: currentApproval.decision,
+          mappingStatus: currentMapping.status,
+          mappingErrorMessage: currentMapping.errorMessage,
+          resultSummary: currentMapping.resultSummary,
+        });
+        if (selection.disposition !== 'REVIEWER_RETRY') return;
+
+        const retriedAt = new Date();
+        const envelope = recordValue(currentMapping.resultSummary);
+        const { humanReviewRequired: _humanReview, ...preservedEnvelope } = envelope;
+        const retryHistory = Array.isArray(envelope.approvalRetryHistory)
+          ? envelope.approvalRetryHistory.map(recordValue)
+          : [];
+        await transaction.affiliateSourceMappingJobs.update({
+          where: { id: currentMapping.id },
+          data: {
+            status: 'REVIEW_REQUIRED',
+            claimedAt: null,
+            leaseExpiresAt: null,
+            workerId: null,
+            errorMessage: null,
+            resultSummary: {
+              ...preservedEnvelope,
+              approvalRetryHistory: [...retryHistory, {
+                retriedAt: retriedAt.toISOString(),
+                reason: selection.reason,
+                reasonCodes: selection.reasonCodes,
+                priorMappingStatus: currentMapping.status,
+                priorMappingErrorMessage: currentMapping.errorMessage,
+                approvalJobId: currentApproval.id,
+                approvalStatus: currentApproval.status,
+                reviewerId: currentApproval.reviewerId,
+                decision: currentApproval.decision,
+              }],
+            },
+          },
+        });
+        await transaction.affiliateSourceIntakes.update({
+          where: { id: currentMapping.intakeId },
+          data: { status: 'REVIEW_REQUIRED' },
+        });
+        await transaction.affiliateApprovalJobs.update({
+          where: { id: currentApproval.id },
+          data: {
+            status: 'QUEUED',
+            claimedAt: null,
+            leaseExpiresAt: null,
+            reviewerId: null,
+            decision: null,
+            errorMessage: null,
+            finishedAt: null,
+          },
+        });
+        requeuedForReviewer.push(currentMapping.id);
       });
     }
 
@@ -269,6 +363,8 @@ const main = async () => {
       ...preview,
       resetCount: reset.length,
       reset,
+      reviewerRetryCount: requeuedForReviewer.length,
+      reviewerRetry: requeuedForReviewer,
       markedForHumanReviewCount: markedForHumanReview.length,
       markedForHumanReview,
     }, null, 2));

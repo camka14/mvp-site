@@ -77,14 +77,16 @@ const main = async () => {
         if (!useLive) {
           throw new Error('Mapping package approval requires --live.');
         }
-        execFileSync(path.resolve('node_modules/.bin/tsx'), [
+        const args = [
           path.resolve('scripts/apply-approved-affiliate-mapping-jobs.ts'),
           '--live',
           '--apply',
           `--job=${mappingJobId}`,
           `--approved-by=${reviewerId}`,
           `--approval-job=${approvalResult.approvalJobId}`,
-        ], {
+          ...(approvalResult.checks.logoAbsenceAccepted ? ['--accept-missing-logo'] : []),
+        ];
+        execFileSync(path.resolve('node_modules/.bin/tsx'), args, {
           cwd: process.cwd(),
           env: process.env,
           stdio: 'inherit',

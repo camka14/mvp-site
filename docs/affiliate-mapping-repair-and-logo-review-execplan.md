@@ -35,6 +35,7 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-02 01:30Z) Added a reviewer-owned supplemental logo-evidence capture that verifies an official page reference, stores the page and image in the intake artifact system, and hands normalization back to the producer.
 - [x] (2026-08-02 01:32Z) Added automatic stale intake-run lease recovery, late-worker overwrite protection, focused tests, and updated producer/reviewer contracts so this queue state cannot remain indefinitely.
 - [x] (2026-08-02 01:32Z) Passed 32 focused tests, TypeScript, scoped ESLint, and diff validation for stale-run recovery and supplemental official-logo capture.
+- [x] (2026-08-02 02:05Z) Replaced the mandatory-logo approval gate with an explicit accepted-absence check and extended historical recovery so logo-only terminal packages return to the independent reviewer rather than the producer or a human-only queue.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
 ## Surprises & Discoveries
@@ -48,8 +49,8 @@ The result is observable in three places: focused tests prove the retry classifi
 - Observation: retrying a failed mapping job does not need a new approval row. When the repaired producer finishes the same mapping job as `REVIEW_REQUIRED`, `finishAffiliateSourceMappingClaim` resets an existing `REJECTED` or `DEFERRED` approval row back to `QUEUED`.
   Evidence: `src/server/affiliateImports/sourceMappingQueue.ts` preserves `mappingRepairHistory` and resets the matching terminal approval during a repaired completion.
 
-- Observation: a mapping with `logoDisposition = MANUAL_REVIEW` cannot be safely approved because the guarded live application also requires the resulting organization to have a logo file.
-  Evidence: `src/server/affiliateImports/approvalQueue.ts` rejects approval of manual-logo results, while `scripts/apply-approved-affiliate-mapping-jobs.ts` rejects a live organization with no `logoId`.
+- Observation: the former guarded application path made every `MANUAL_REVIEW` logo terminal even when the rest of the package was valid.
+  Evidence: before the 2026-08-02 policy change, `approvalQueue.ts` rejected every manual-logo result and the live application command required `logoId`. The replacement requires an explicit `logoAbsenceAccepted` reviewer check and passes a one-use guarded application flag only for that decision.
 
 - Observation: the first live retry preview selected 163 of 165 rejected approvals because it combined stale approval text with the mapping job's current error. Some selected jobs currently failed with terminal reasons such as `Already-finished intake` but retained an older review mentioning a refused `--live` setup.
   Evidence: the preview was run without `--apply`, so no live rows changed; inspection of selected rows showed the newer mapping failure and older approval text described different attempts.
@@ -77,9 +78,13 @@ The result is observable in three places: focused tests prove the retry classifi
 
 ## Decision Log
 
-- Decision: Keep the independent official-logo gate and send manual-logo packages back to the producer for evidence review instead of weakening approval to accept logo-less organizations.
+- Decision (superseded 2026-08-02): Keep the independent official-logo gate and send manual-logo packages back to the producer for evidence review instead of weakening approval to accept logo-less organizations.
   Rationale: the user asked to review the manual logos, and the producer is the component authorized to normalize and commit source assets. The reviewer must remain read-only and independent.
   Date/Author: 2026-08-01 / Codex
+
+- Decision: Allow an otherwise-valid manual-logo package to be approved only when the independent reviewer completes the bounded logo search and sets `logoAbsenceAccepted = true`.
+  Rationale: missing branding is not severe enough to discard a valid organization or mapping. The explicit flag preserves auditability; an official mark found during review still returns to the producer for normalization, while inaccessible or contradictory evidence still defers.
+  Date/Author: 2026-08-02 / Codex
 
 - Decision: Repair historical local-only packages by requeueing their original mapping jobs rather than bypassing the setup script's `--live` guard in the application command.
   Rationale: omitting `--live` while pointing the child at production would defeat an explicit safety declaration in the exact producer commit. A repaired producer commit is auditable and preserves the guarded application contract.
@@ -135,9 +140,10 @@ mapping approvals. Twenty packages with intact producer commits and disposable
 scrapes returned directly to the reviewer. Fourteen packages with exact evidence
 failures and 69 packages without a schema-valid review result returned to the
 producer as `PACKAGE_VALIDATION_FAILED`. Three packages whose stored evidence
-proved no supportable official logo exists are now
-`HUMAN_REVIEW_REQUIRED` with `NO_VERIFIABLE_OFFICIAL_LOGO`; they cannot be
-claimed or retried by either agent.
+proved no supportable official logo exists remain `HUMAN_REVIEW_REQUIRED` in
+the live database until the new recovery code is deployed and applied. The
+updated retry classifier returns those logo-only rows to the independent
+reviewer for explicit accepted-absence decisions.
 
 The first new-contract live rejection proved the automatic loop. Iron Courts
 Phoenix was returned to the producer with `LIVE_SETUP_UNSUPPORTED`,
@@ -179,7 +185,7 @@ An affiliate source intake is stored HTML, Markdown, screenshot, link, branding,
 
 `src/server/affiliateImports/mappingPackageRepair.ts` classifies terminal mapping-package rejections that require another producer pass. `scripts/retry-rejected-affiliate-mapping-packages.ts` previews or applies those selections. Applying a retry changes only the selected mapping job and intake back to producer-ready states and records the prior reviewer decision in `mappingRepairHistory`. When the producer completes the repaired job, `src/server/affiliateImports/sourceMappingQueue.ts` resets its matching terminal approval row to `QUEUED`.
 
-Manual-logo packages are not approvable as-is. `MANUAL_REVIEW` means the producer could not verify and commit an official normalized logo. The producer must inspect stored `LOGO_CANDIDATE`, `PAGE_BRANDING`, `PAGE_IMAGES`, screenshots, HTML, CSS references, and metadata. It may normalize or crop an official mark but must not invent one. If no official mark can be proved, the package remains unpublishable and its exact evidence gap must be reported.
+`MANUAL_REVIEW` means the producer could not verify and commit an official normalized logo. The producer must inspect stored `LOGO_CANDIDATE`, `PAGE_BRANDING`, `PAGE_IMAGES`, screenshots, HTML, CSS references, and metadata. It may normalize or crop an official mark but must not invent one. The independent reviewer repeats a bounded evidence and official-site check. If it finds an official mark, it returns the package for producer repair; if the completed search finds none, it may approve the otherwise-valid package with `logoAbsenceAccepted = true`.
 
 ## Plan of Work
 
@@ -187,7 +193,7 @@ Extend the strict mapping approval schema with a queue disposition and reason co
 
 Change mapping approval completion so a `PRODUCER_REPAIR` decision atomically appends the full reviewer feedback to `mappingRepairHistory`, resets the same mapping job to `QUEUED`, and returns its intake to `READY_FOR_MAPPING`. A human disposition sets the mapping job to an explicit terminal `HUMAN_REVIEW_REQUIRED` status and records why it must not retry. Count this status separately in the mapping queue report. On the fourth attempted repair, override automatic requeue with a durable retry-limit escalation.
 
-Broaden the historical recovery command to inspect both rejected and deferred approvals. It must preview every terminal row as producer repair or human review, requeue known fixable setup and package defects, and mark unclassifiable or evidence-dependent rows as `HUMAN_REVIEW_REQUIRED` rather than leaving them silently stranded. Claims must expose all reason codes, reviewer rationale, and blocking issues to the producer.
+Broaden the historical recovery command to inspect both rejected and deferred approvals. It must preview every terminal row as producer repair, reviewer retry, or human review; requeue known fixable setup and package defects; return logo-only terminal rows to the reviewer; and mark unclassifiable or evidence-dependent rows as `HUMAN_REVIEW_REQUIRED` rather than leaving them silently stranded. Claims must expose all reason codes, reviewer rationale, and blocking issues to the responsible agent.
 
 Update the producer goal and ingestion/source-builder skills so repairs address every blocking issue and add a source-specific regression test. When a review reveals a reusable failure class not already stated in the skill or contract, the producer must add a generalized rule in its source-scoped commit. Reinforce that unsupported child events are filtered and logged without rejecting a valid organization, and that division names follow source terminology while gender, age, skill, price, grouping, and capacity use canonical fields correctly. Update the reviewer goal and skill so concrete producer defects request repair, while only real evidence gaps stop for a human.
 
@@ -238,17 +244,17 @@ Then verify both queues:
 
 The generated setup test must prove that a generated script handles `--live` by calling the shared live-database environment helper and selecting Spaces storage, while continuing to write only an unlisted organization, disabled source, and unvalidated mapping. The generated script must never enable automatic scraping or publish its organization.
 
-The retry-classifier test must prove that live-setup, event-location, division, pricing, capacity, and manual-logo producer defects are eligible, while evidence gaps are assigned to human review. A manual-logo retry must require both a `MANUAL_REVIEW` producer result and a logo-specific reviewer decision.
+The retry-classifier test must prove that live-setup, event-location, division, pricing, capacity, and verified-logo packaging defects are eligible for producer repair; logo-only terminal packages return to the reviewer; and unrelated evidence gaps are assigned to human review. A producer logo repair still requires a concrete `OFFICIAL_LOGO_REPAIR_REQUIRED` decision showing that an official mark was found.
 
-Approval completion tests must prove that a structured producer-repair rejection is requeued with durable feedback, a human-review disposition is never claimable, and the retry limit prevents a fourth automatic producer pass. Schema tests must reject non-approved mapping results without a disposition and must reject dispositions on domain or approved results.
+Approval completion tests must prove that a structured producer-repair rejection is requeued with durable feedback, a human-review disposition is never claimable, an explicit accepted-logo-absence approval is allowed, a silent manual-logo approval is rejected, and the retry limit prevents a fourth automatic producer pass. Schema tests must reject non-approved mapping results without a disposition, reject dispositions on domain or approved results, and reject simultaneous verified-logo and accepted-absence checks.
 
 The live preview is accepted when every selected row has `REJECTED` approval, `FAILED` mapping, and one of the named repair reasons. Applying it must not create organizations, sources, mappings, candidates, events, or files; it may only change mapping/intake queue state and append repair history. After restart, active leases must belong to the expected producer and reviewer identities and `claimedWithoutLease` must remain zero.
 
-The overall recovery is accepted when the 65 packages blocked only by local-only setup are reprocessed with new commits, manual-logo packages are inspected against stored official evidence, and the approval queue begins producing new guarded approvals. Packages with genuinely missing official marks or unusable event locations may remain unresolved, but their reasons must be specific and they must not loop automatically.
+The overall recovery is accepted when the 65 packages blocked only by local-only setup are reprocessed with new commits, manual-logo packages are inspected against stored and bounded official-site evidence, and the approval queue begins producing new guarded approvals. Genuinely missing official marks may be explicitly accepted; unusable event locations and incomplete or contradictory evidence remain specific blocking reasons and must not loop automatically.
 
 ## Idempotence and Recovery
 
-The retry command defaults to preview and requires both `--live` and `--apply` to mutate the live queue. Its transaction rechecks every row before changing it. A crash after some rows are reset is safe: those rows are ordinary queued producer work and the remaining rejected rows can be previewed again. `mappingRepairHistory` preserves prior decisions across producer completion.
+The retry command defaults to preview and requires both `--live` and `--apply` to mutate the live queue. Its transaction rechecks every row before changing it. A crash after some rows are reset is safe: producer repairs become ordinary queued producer work, logo-only rows become ordinary queued reviewer work, and remaining terminal rows can be previewed again. `mappingRepairHistory` or `approvalRetryHistory` preserves prior decisions across the transition.
 
 The approval loop is paused during implementation so it cannot create new terminal failures under the old contract. If deployment or tests fail, leave the reviewer stopped and the producer running; no existing live source is published or enabled by this work. If an agent is stopped while holding a lease, release only its exact claimed row after confirming the worker identity.
 
@@ -260,10 +266,12 @@ The baseline live database snapshot at the start of this plan contained 161 reje
 
 `configureAffiliateLiveDatabaseEnvironment(liveDatabaseUrl, env?)` in `src/server/affiliateImports/agentRepository.ts` is the only helper generated setup scripts should use to select the live database. `STORAGE_PROVIDER` must be `spaces` during guarded live application.
 
-`affiliateMappingProducerRepairEligibility(input)` returns producer eligibility plus `disposition`, `reasonCodes`, and the primary legacy `repairReason`. It recognizes structured decisions first, classifies historical setup, location, division, pricing, capacity, validation, duplicate, and logo failures, preserves old reviewer-handoff failures for their evidence-verified retry, and assigns unclassifiable terminal work to human review.
+`affiliateMappingProducerRepairEligibility(input)` returns producer eligibility plus `disposition`, `reasonCodes`, and the primary legacy `repairReason`. It recognizes structured decisions first, classifies historical setup, location, division, pricing, capacity, validation, duplicate, and logo failures, returns logo-absence policy rows as `REVIEWER_RETRY`, preserves old reviewer-handoff failures for their evidence-verified retry, and assigns unclassifiable terminal work to human review.
 
 `npm run affiliate:mapping:retry-rejected` remains the operator command. It is read-only unless both `--live` and `--apply` are present.
 
 Revision note (2026-08-01): Created this plan after the live rejection audit identified guarded setup incompatibility as the primary blocker and manual-logo review as the second largest repair cohort.
 
 Revision note (2026-08-02): Expanded the plan after observing that restarted rejections and deferrals remained terminal. Added structured repair ownership, bounded automatic requeue, explicit human-review state, historical deferred recovery, and skill-learning requirements.
+
+Revision note (2026-08-02): Superseded the mandatory official-logo gate. Added explicit accepted logo absence, guarded missing-logo application, and reviewer retry for historical logo-only terminal packages.

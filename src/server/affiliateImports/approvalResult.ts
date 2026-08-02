@@ -49,6 +49,7 @@ export const affiliateApprovalResultSchema = z.object({
     identityIndependent: z.boolean(),
     packageValidationPassed: z.boolean(),
     officialLogoVerified: z.boolean(),
+    logoAbsenceAccepted: z.boolean(),
     duplicateSafetyVerified: z.boolean(),
   }).strict(),
   blockingIssues: z.array(nonEmptyString.max(5_000)).max(30).default([]),
@@ -83,16 +84,33 @@ export const affiliateApprovalResultSchema = z.object({
     if (
       !result.checks.identityIndependent
       || !result.checks.packageValidationPassed
-      || !result.checks.officialLogoVerified
+      || (!result.checks.officialLogoVerified && !result.checks.logoAbsenceAccepted)
       || !result.checks.duplicateSafetyVerified
       || !result.checks.storedEvidenceSufficient
     ) {
       context.addIssue({
         code: 'custom',
         path: ['checks'],
-        message: 'Mapping approval requires independent identity, evidence, validation, official logo, and duplicate-safety checks.',
+        message: 'Mapping approval requires independent identity, evidence, validation, an official logo or accepted logo absence, and duplicate-safety checks.',
       });
     }
+  }
+  if (result.checks.officialLogoVerified && result.checks.logoAbsenceAccepted) {
+    context.addIssue({
+      code: 'custom',
+      path: ['checks', 'logoAbsenceAccepted'],
+      message: 'A review cannot both verify an official logo and accept that no official logo is present.',
+    });
+  }
+  if (
+    result.checks.logoAbsenceAccepted
+    && (result.subjectType !== 'MAPPING_PACKAGE' || result.decision !== 'APPROVE')
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['checks', 'logoAbsenceAccepted'],
+      message: 'Logo absence may be accepted only for an approved mapping package.',
+    });
   }
   if (result.subjectType === 'DOMAIN_POLICY' && result.mappingDisposition) {
     context.addIssue({

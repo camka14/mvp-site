@@ -8,7 +8,7 @@ This document must be maintained in accordance with `PLANS.md`.
 
 BracketIQ currently pauses newly discovered domains at policy review and mapping packages at source review. After this change, a second Codex CLI process pinned to Luna x-high can independently inspect those approval items, apply evidence-backed decisions, and keep the capture-to-mapping pipeline moving without waiting for the operator to approve every routine item. The reviewer remains separate from the ingestion worker and leaves a durable decision record.
 
-The reviewer may allow or block an intake domain after checking stored robots and policy evidence, and may apply a review-ready source package to the live database after independently checking its commit, stored evidence, tests, duplicate-safe scrapes, official logo, and unpublished state. It may defer or reject uncertain work. It never publishes organizations or candidates, enables recurring scraping, validates mappings, approves training data, or approves work produced under its own reviewer identity.
+The reviewer may allow or block an intake domain after checking stored robots and policy evidence, and may apply a review-ready source package to the live database after independently checking its commit, stored evidence, tests, duplicate-safe scrapes, logo evidence, and unpublished state. When a bounded review establishes that no official logo is present, the reviewer may explicitly accept the logo absence without weakening any other package check. It may defer or reject uncertain work. It never publishes organizations or candidates, enables recurring scraping, validates mappings, approves training data, or approves work produced under its own reviewer identity.
 
 ## Progress
 
@@ -22,10 +22,11 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-07-31) Prepared the scoped implementation commit without staging unrelated VM scrape-timer and legacy-source work.
 - [x] (2026-08-01) Repaired the producer-to-reviewer handoff so exact commits and disposable review scrapes are independently verifiable across isolated containers; requeued 116 handoff-only decisions and completed one formerly rejected package through guarded live approval.
 - [ ] (2026-08-01) Repair generated guarded-live setup compatibility, requeue producer-fixable terminal packages, and route unresolved manual-logo packages through a fresh producer evidence pass before independent re-review.
+- [x] (2026-08-02) Made verified logo absence an explicit non-blocking mapping approval state and added deterministic recovery that returns logo-only terminal packages to the independent reviewer queue.
 
 ## Surprises & Discoveries
 
-- Observation: the current mapping application script already enforces useful live safety checks: one evidence-matched source, an official logo, an unlisted organization, disabled automation, an unvalidated mapping, a successful review scrape, and the expected candidate count.
+- Observation: the mapping application script enforces useful live safety checks: one evidence-matched source, an official logo or an explicit accepted-logo-absence flag, an unlisted organization, disabled automation, an unvalidated mapping, a successful review scrape, and the expected candidate count.
   Evidence: `scripts/apply-approved-affiliate-mapping-jobs.ts` performs these checks before marking the mapping job approved.
 
 - Observation: child intakes created by directory expansion do not necessarily have an `AffiliateSourceDiscoveryResults` row, while `applyAffiliateSourceDomainPolicy` currently finds affected intakes only through discovery results.
@@ -84,9 +85,13 @@ The reviewer may allow or block an intake domain after checking stored robots an
   Rationale: the independent reviewer must not edit producer files, while approving a logo-less package would violate the guarded live application checks. A producer repair preserves evidence, image normalization, and commit ownership.
   Date/Author: 2026-08-01 / Codex
 
+- Decision: Supersede logo-as-mandatory approval with an explicit `logoAbsenceAccepted` check after a bounded logo review.
+  Rationale: an otherwise-valid organization and mapping remain useful without a logo. The reviewer still searches stored and official-site evidence, returns a package to the producer when an official mark is found but not packaged, and records a distinct auditable absence flag when no mark exists. Missing or contradictory evidence still defers; confirmed absence does not.
+  Date/Author: 2026-08-02 / Codex
+
 ## Outcomes & Retrospective
 
-The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy evidence capture, guarded live application, and a model-free outer loop that cannot relaunch while its Luna child goal is running.
+The implementation now has one durable queue for domain-policy and mapping-package reviews, a strict reviewer-result contract, independent-producer enforcement, bounded policy and logo evidence capture, guarded live application with an explicit missing-logo exception, deterministic re-review of legacy logo-only terminal packages, and a model-free outer loop that cannot relaunch while its Luna child goal is running.
 
 Validation passed on 2026-07-31:
 
@@ -140,7 +145,7 @@ Before committing, stage only the files named in this plan, run `git diff --cach
 
 Tests must demonstrate that reconciliation is idempotent, claims are atomic, expired claims can be recovered, and malformed or active claims prevent false exhaustion. A domain reviewer must be able to allow a directory child intake that has no discovery-result row and observe a capture run queued. Blocking must never queue capture. Deferral must have no subject side effects.
 
-A mapping approval must fail when reviewer and producer identities match, when the ingestion package is malformed, when the logo remains manual-review, or when required validation is absent. A structurally eligible independent approval may invoke the existing live application path, but tests must replace that process boundary with a deterministic stub. Rejection and deferral must not publish or create a positive training example.
+A mapping approval must fail when reviewer and producer identities match, when the ingestion package is malformed, when a manual-logo package lacks `logoAbsenceAccepted`, when an official-logo package lacks `officialLogoVerified`, or when required validation is absent. A manual-logo package may pass only after an independent bounded review explicitly accepts the absence. A structurally eligible independent approval may invoke the existing live application path, but tests must replace that process boundary with a deterministic stub. Rejection and deferral must not publish or create a positive training example.
 
 The generated Luna objective must name the reviewer skill, all queue commands, both subject types, the independent-review rule, and the prohibited publication/training/automation actions. The skill validator, focused Jest suites, TypeScript, ESLint, Prisma validation, and diff checks must pass.
 
@@ -175,3 +180,5 @@ Revision note (2026-07-31): Recorded the completed queue, bounded policy evidenc
 Revision note (2026-08-01): Recorded the cross-container evidence mismatch and the required read-only producer/disposable-database handoff repair.
 
 Revision note (2026-08-01): Recorded the guarded-live setup and manual-logo recovery cohort and the producer-repair routing decision.
+
+Revision note (2026-08-02): Superseded the mandatory-logo gate with an explicit accepted-absence state and added reviewer-queue recovery for earlier logo-only terminal decisions.

@@ -62,13 +62,15 @@ Create or repair everything needed for review:
 - valid `[longitude, latitude]` coordinates resolved through the server-side Google Places path for the canonical organization when its own location is evidenced;
 - a generic mapping, manual candidates, or a clearly justified custom extractor;
 - official outbound action URLs;
-- an official logo asset or official screenshot crop normalized to an opaque 1024 by 1024 image;
+- an official logo asset or official screenshot crop normalized to an opaque
+  1024 by 1024 image when one can be verified, otherwise an explicit
+  `MANUAL_REVIEW` logo disposition for independent acceptance;
 - source evidence metadata and registry notes;
 - focused fixtures and tests;
 - two duplicate-safe review scrapes against a disposable database;
 - a compact result JSON and a source-scoped commit.
 
-Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and keep the organization unpublishable.
+Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and record the completed evidence search. The independent reviewer may accept that absence; the producer does not approve or publish the organization.
 
 For a `MANUAL_LOGO_REVIEW` repair, inspect every stored `LOGO_CANDIDATE`,
 `PAGE_BRANDING`, `PAGE_IMAGES`, screenshot, HTML/CSS reference, structured-data

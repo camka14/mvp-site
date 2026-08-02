@@ -131,6 +131,7 @@ const mappingApprovalResult = (reviewerId = 'codex-luna-approval-vm-1') => ({
     identityIndependent: true,
     packageValidationPassed: true,
     officialLogoVerified: true,
+    logoAbsenceAccepted: false,
     duplicateSafetyVerified: true,
   },
   blockingIssues: [],
@@ -155,6 +156,7 @@ const domainApprovalResult = (decision: 'ALLOW' | 'DEFER') => ({
     identityIndependent: true,
     packageValidationPassed: false,
     officialLogoVerified: false,
+    logoAbsenceAccepted: false,
     duplicateSafetyVerified: false,
   },
   blockingIssues: decision === 'ALLOW' ? [] : ['Policy evidence is ambiguous.'],
@@ -324,6 +326,57 @@ describe('affiliate approval queue', () => {
       expect.objectContaining({ decision: 'APPROVE' }),
     );
     expect(completed.status).toBe('APPROVED');
+  });
+
+  it('applies an independently reviewed manual-logo package when logo absence is explicit', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    mappingRows[0].resultSummary = {
+      result: { ...ingestionResult(), logoDisposition: 'MANUAL_REVIEW' },
+    };
+    const applyMappingPackage = jest.fn(async () => {
+      mappingRows[0].status = 'APPROVED';
+    });
+    const result = {
+      ...mappingApprovalResult(),
+      checks: {
+        ...mappingApprovalResult().checks,
+        officialLogoVerified: false,
+        logoAbsenceAccepted: true,
+      },
+    };
+
+    await expect(completeAffiliateApproval(result, { applyMappingPackage })).resolves.toEqual(
+      expect.objectContaining({ status: 'APPROVED' }),
+    );
+    expect(applyMappingPackage).toHaveBeenCalledWith(
+      'mapping_1',
+      'codex-luna-approval-vm-1',
+      expect.objectContaining({ checks: expect.objectContaining({ logoAbsenceAccepted: true }) }),
+    );
+  });
+
+  it('does not silently approve a manual-logo package without the explicit absence check', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    mappingRows[0].resultSummary = {
+      result: { ...ingestionResult(), logoDisposition: 'MANUAL_REVIEW' },
+    };
+
+    await expect(completeAffiliateApproval(
+      mappingApprovalResult(),
+      { applyMappingPackage: jest.fn() },
+    )).rejects.toThrow('explicit accepted logo absence');
   });
 
   it('automatically returns a producer-repair rejection to the same mapping job', async () => {
