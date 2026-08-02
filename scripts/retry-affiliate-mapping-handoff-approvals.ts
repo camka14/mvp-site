@@ -1,6 +1,9 @@
 import dotenv from 'dotenv';
 import { Client } from 'pg';
-import { affiliateMappingHandoffRetryEligibility } from '../src/server/affiliateImports/approvalHandoffRetry';
+import {
+  affiliateMappingHandoffRetryEligibility,
+  hasAffiliateProducerHandoffBlocker,
+} from '../src/server/affiliateImports/approvalHandoffRetry';
 import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 import { MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS } from '../src/server/affiliateImports/mappingPackageRepair';
 import {
@@ -64,6 +67,17 @@ const main = async () => {
         mappingStatus: mapping.status,
         resultSummary: mapping.resultSummary,
       });
+      if (
+        selection.reason === 'invalid-review-required-result'
+        && hasAffiliateProducerHandoffBlocker(approval.decision)
+      ) {
+        producerRepairCandidates.push({
+          approval,
+          mapping,
+          error: 'Mapping package does not contain a schema-valid REVIEW_REQUIRED ingestion result for evidence verification.',
+        });
+        continue;
+      }
       if (!selection.eligible || !selection.result) {
         excluded[selection.reason] = (excluded[selection.reason] ?? 0) + 1;
         continue;
@@ -198,7 +212,11 @@ const main = async () => {
           mappingStatus: currentMapping.status,
           resultSummary: currentMapping.resultSummary,
         });
-        if (!currentSelection.eligible) return;
+        const invalidHandoffPackage = (
+          currentSelection.reason === 'invalid-review-required-result'
+          && hasAffiliateProducerHandoffBlocker(currentApproval.decision)
+        );
+        if (!currentSelection.eligible && !invalidHandoffPackage) return;
 
         const envelope = recordValue(currentMapping.resultSummary);
         const history = repairHistory(currentMapping.resultSummary);

@@ -65,7 +65,7 @@ The result is observable in three places: focused tests prove the retry classifi
   Evidence: New York Elite Volleyball, NY Stingers, and NYC Parks Pickleball Courts each record `MANUAL_LOGO_REVIEW repair cannot be resolved` with the specific first-party artifacts inspected. The historical classifier now maps that producer evidence to `NO_VERIFIABLE_OFFICIAL_LOGO` human review.
 
 - Observation: 103 historical terminal reviews mention the old producer-evidence handoff, but current read-only verification split them into 20 intact packages and 14 concrete package defects; the remainder no longer matches a terminal mapping state or schema-valid review package.
-  Evidence: the guarded handoff preview verified producer commits and disposable scrapes for 20 packages. Fourteen failed exact evidence checks such as a generated path absent from the producer commit, missing setup script, changed candidate count, or missing disposable scrape and therefore require producer repair rather than reviewer recycling.
+  Evidence: the guarded handoff preview verified producer commits and disposable scrapes for 20 packages. Fourteen failed exact evidence checks such as a generated path absent from the producer commit, missing setup script, changed candidate count, or missing disposable scrape and therefore require producer repair rather than reviewer recycling. Sixty-nine have no schema-valid review package and must be rebuilt by the producer from the original intake; 87 terminal approvals point at mapping jobs that have already moved to another state and must not be reset.
 
 ## Decision Log
 
