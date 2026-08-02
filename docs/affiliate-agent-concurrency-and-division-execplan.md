@@ -27,6 +27,7 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-02 18:03Z) Updated mapper and reviewer goals, skills, and contracts.
 - [x] (2026-08-02 18:04Z) Added configurable reviewer pools and an isolated-workspace mapper pool command.
 - [x] (2026-08-02 18:07Z) Passed 8 focused suites with 44 tests, TypeScript, diff checks, and both skill validators.
+- [x] (2026-08-02 18:16Z) Made stable worker claims resumable so an agent restart renews and continues its existing live lease.
 - [ ] Commit and push the scoped files without the user's unrelated work.
 - [ ] Update the two VM checkouts, preserve in-flight claims, and start mapper 2 in a separate Git worktree.
 - [ ] Verify two unique mapper IDs, unchanged reviewer count, and no duplicate active claims.
@@ -49,6 +50,10 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 - Decision: Keep the existing conditional claim commands as the only task-assignment tools.
   Rationale: They already implement the required race boundary. A second queue API would duplicate correct logic and create two assignment paths.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Return and renew an active claim when the same stable worker ID restarts.
+  Rationale: agent count changes and code updates must not strand an in-flight job until its two-hour lease expires. A different worker ID still cannot receive that active job.
   Date/Author: 2026-08-02 / Codex
 
 - Decision: Require a separate Git workspace for each mapper.

@@ -35,7 +35,9 @@ Also read `/Users/elesesy/.codex/skills/affiliate-scrape-source-builder/SKILL.md
 The claim command is the only job-assignment tool. Do not select a queued row
 directly. Its conditional database lease is the race boundary for concurrent
 mappers. Another mapper may finish or claim a different job while this worker
-is active. Never use another worker's active lease.
+is active. Never use another worker's active lease. When the claim returns
+`resumed: true`, continue that worker's existing job and workspace instead of
+starting or claiming another package.
 
 When the stored intake is an aggregator or club directory, do not create a scraper package for the directory merely to end the claim. Inspect its stored HTML, Markdown, and link artifacts and identify the evidenced official organization websites. Write a proposal JSON using the exact batch contract in `references/completion-contract.md`, submit it through the goal's `affiliate:intakes:enqueue-urls` command, and pass the schema-validated result JSON written by that command to the normal completion command to record the parent job as `EXPANDED`. Do not visit those child sites directly: the shared intake service will deduplicate them, apply the existing policy gate, and queue ScrapingDog for current allowed domains. Run the goal's `affiliate:intakes:process` command while allowed captures are queued, then map the child intakes produced by successful captures.
 

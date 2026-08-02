@@ -29,7 +29,9 @@ mark is a deterministic logo-absence result, not a deferral by itself.
 The claim command is the only job-assignment tool. Do not select a queued row
 directly. Its conditional database lease is the race boundary for concurrent
 reviewers. Another reviewer may finish or claim a different approval while
-this worker is active. Never use another reviewer's active lease. Append
+this worker is active. Never use another reviewer's active lease. When the
+claim returns `resumed: true`, continue that reviewer's existing approval
+instead of claiming a new subject. Append
 progress only to `output/affiliate-codex-approvals/progress/<reviewer-id>.jsonl`.
 
 ## Review a domain policy

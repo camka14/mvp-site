@@ -23,6 +23,12 @@ const prismaMock = {
     findMany: jest.fn(async () => approvalRows),
     findFirst: jest.fn(async ({ where }: any) => approvalRows.find((row) => {
       if (where.id && row.id !== where.id) return false;
+      if (where.status === 'CLAIMED' && where.reviewerId) {
+        return row.status === 'CLAIMED'
+          && row.reviewerId === where.reviewerId
+          && row.leaseExpiresAt
+          && row.leaseExpiresAt >= where.leaseExpiresAt.gte;
+      }
       return row.status === 'QUEUED'
         || (row.status === 'CLAIMED' && row.leaseExpiresAt && row.leaseExpiresAt < where.OR[1].leaseExpiresAt.lt);
     }) ?? null),
@@ -34,8 +40,13 @@ const prismaMock = {
     updateMany: jest.fn(async ({ where, data }: any) => {
       const row = approvalRows.find((candidate) => candidate.id === where.id);
       if (!row) return { count: 0 };
-      const eligible = row.status === 'QUEUED'
-        || (row.status === 'CLAIMED' && row.leaseExpiresAt && row.leaseExpiresAt < where.OR[1].leaseExpiresAt.lt);
+      const eligible = where.status === 'CLAIMED' && where.reviewerId
+        ? row.status === 'CLAIMED'
+          && row.reviewerId === where.reviewerId
+          && row.leaseExpiresAt
+          && row.leaseExpiresAt >= where.leaseExpiresAt.gte
+        : row.status === 'QUEUED'
+          || (row.status === 'CLAIMED' && row.leaseExpiresAt && row.leaseExpiresAt < where.OR[1].leaseExpiresAt.lt);
       if (!eligible) return { count: 0 };
       Object.assign(row, data, {
         attemptCount: (row.attemptCount ?? 0) + (data.attemptCount?.increment ?? 0),
@@ -232,6 +243,32 @@ describe('affiliate approval queue', () => {
         deferOnlyWhen: expect.stringContaining('conflicts'),
       },
     }));
+  });
+
+  it('resumes and renews an active claim owned by the same reviewer', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'DOMAIN_POLICY',
+      subjectKey: 'example.test',
+      status: 'CLAIMED',
+      reviewerId: 'reviewer-1',
+      claimedAt: new Date('2026-08-02T10:00:00Z'),
+      leaseExpiresAt: new Date('2026-08-02T13:00:00Z'),
+      attemptCount: 1,
+      createdAt: new Date('2026-08-02T09:00:00Z'),
+    }];
+
+    const claim = await claimNextAffiliateApproval({
+      reviewerId: 'reviewer-1',
+      now: new Date('2026-08-02T12:00:00Z'),
+    });
+
+    expect(claim).toEqual(expect.objectContaining({
+      resumed: true,
+      approvalJob: expect.objectContaining({ id: 'approval_1', reviewerId: 'reviewer-1' }),
+    }));
+    expect(approvalRows[0].attemptCount).toBe(1);
+    expect(approvalRows[0].leaseExpiresAt).toEqual(new Date('2026-08-02T14:00:00Z'));
   });
 
   it('assigns concurrent reviewers different approval jobs', async () => {

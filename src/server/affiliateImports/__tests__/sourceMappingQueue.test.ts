@@ -93,6 +93,44 @@ describe('affiliate source mapping queue', () => {
     expect(await claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' })).toBeNull();
   });
 
+  it('resumes and renews an active claim owned by the same mapper', async () => {
+    prismaMock.affiliateSourceMappingJobs.findFirst.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      workerId: 'worker-1',
+      claimedAt: new Date('2026-08-02T10:00:00Z'),
+      leaseExpiresAt: new Date('2026-08-02T13:00:00Z'),
+      attemptCount: 1,
+      resultSummary: null,
+    });
+    prismaMock.affiliateSourceMappingJobs.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
+      id: 'intake_1', sourceKey: 'source-1', status: 'MAPPING_IN_PROGRESS',
+    });
+
+    const claim = await claimNextAffiliateSourceIntakeForMapping({
+      workerId: 'worker-1',
+      now: new Date('2026-08-02T12:00:00Z'),
+    });
+
+    expect(claim).toEqual(expect.objectContaining({
+      jobId: 'job_1',
+      workerId: 'worker-1',
+      resumed: true,
+      leaseExpiresAt: new Date('2026-08-02T14:00:00Z'),
+    }));
+    expect(prismaMock.affiliateSourceMappingJobs.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'job_1',
+        status: 'CLAIMED',
+        workerId: 'worker-1',
+        leaseExpiresAt: { gte: new Date('2026-08-02T12:00:00Z') },
+      },
+      data: { leaseExpiresAt: new Date('2026-08-02T14:00:00Z') },
+    });
+  });
+
   it('assigns concurrent mappers different jobs through conditional claims', async () => {
     const jobs = [
       { id: 'job_1', intakeId: 'intake_1', status: 'QUEUED', createdAt: new Date('2026-08-02T10:00:00Z') },

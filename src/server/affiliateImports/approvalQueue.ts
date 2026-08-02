@@ -253,6 +253,40 @@ export const claimNextAffiliateApproval = async (options: {
   const leaseExpiresAt = new Date(now.getTime() + leaseMs);
   const { approvals } = approvalDb();
 
+  const activeApproval = await approvals.findFirst({
+    where: {
+      ...(options.approvalJobId ? { id: options.approvalJobId } : {}),
+      status: 'CLAIMED',
+      reviewerId,
+      leaseExpiresAt: { gte: now },
+    },
+    orderBy: { claimedAt: 'asc' },
+  });
+  if (
+    activeApproval?.status === 'CLAIMED'
+    && activeApproval.reviewerId === reviewerId
+    && activeApproval.leaseExpiresAt instanceof Date
+    && activeApproval.leaseExpiresAt.getTime() >= now.getTime()
+  ) {
+    const renewed = await approvals.updateMany({
+      where: {
+        id: activeApproval.id,
+        status: 'CLAIMED',
+        reviewerId,
+        leaseExpiresAt: { gte: now },
+      },
+      data: { leaseExpiresAt },
+    });
+    if (renewed.count === 1) {
+      const claimedApproval = await approvals.findUnique({ where: { id: activeApproval.id } });
+      return {
+        approvalJob: claimedApproval,
+        subject: await approvalSubjectContext(claimedApproval),
+        resumed: true,
+      };
+    }
+  }
+
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const approval = await approvals.findFirst({
       where: {
@@ -288,6 +322,7 @@ export const claimNextAffiliateApproval = async (options: {
       return {
         approvalJob: claimedApproval,
         subject: await approvalSubjectContext(claimedApproval),
+        resumed: false,
       };
     } catch (error) {
       await approvals.update({

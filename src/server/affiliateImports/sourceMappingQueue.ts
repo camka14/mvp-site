@@ -60,6 +60,45 @@ export const claimNextAffiliateSourceIntakeForMapping = async (options: {
   const leaseExpiresAt = new Date(now.getTime() + leaseMs);
   const { intakes, jobs } = mappingDb();
 
+  const activeJob = await jobs.findFirst({
+    where: {
+      ...(options.intakeId ? { intakeId: options.intakeId } : {}),
+      status: 'CLAIMED',
+      workerId,
+      leaseExpiresAt: { gte: now },
+    },
+    orderBy: { claimedAt: 'asc' },
+  });
+  if (
+    activeJob?.status === 'CLAIMED'
+    && activeJob.workerId === workerId
+    && activeJob.leaseExpiresAt instanceof Date
+    && activeJob.leaseExpiresAt.getTime() >= now.getTime()
+  ) {
+    const renewed = await jobs.updateMany({
+      where: {
+        id: activeJob.id,
+        status: 'CLAIMED',
+        workerId,
+        leaseExpiresAt: { gte: now },
+      },
+      data: { leaseExpiresAt },
+    });
+    if (renewed.count === 1) {
+      const intake = await intakes.findUnique({ where: { id: activeJob.intakeId } });
+      if (!intake) throw new Error('Claimed affiliate source intake not found.');
+      return {
+        jobId: activeJob.id,
+        intakeId: intake.id,
+        sourceKey: intake.sourceKey,
+        workerId,
+        leaseExpiresAt,
+        resumed: true,
+        repairContext: latestMappingRepairContext(activeJob.resultSummary),
+      };
+    }
+  }
+
   for (let attempt = 0; attempt < 10; attempt += 1) {
     let job = await jobs.findFirst({
       where: {
@@ -115,6 +154,7 @@ export const claimNextAffiliateSourceIntakeForMapping = async (options: {
       sourceKey: intake.sourceKey,
       workerId,
       leaseExpiresAt,
+      resumed: false,
       repairContext: latestMappingRepairContext(job.resultSummary),
     };
   }
