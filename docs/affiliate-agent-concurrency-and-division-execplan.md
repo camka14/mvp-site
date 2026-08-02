@@ -28,9 +28,9 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-02 18:04Z) Added configurable reviewer pools and an isolated-workspace mapper pool command.
 - [x] (2026-08-02 18:07Z) Passed 8 focused suites with 44 tests, TypeScript, diff checks, and both skill validators.
 - [x] (2026-08-02 18:16Z) Made stable worker claims resumable so an agent restart renews and continues its existing live lease.
-- [ ] Commit and push the scoped files without the user's unrelated work.
-- [ ] Update the two VM checkouts, preserve in-flight claims, and start mapper 2 in a separate Git worktree.
-- [ ] Verify two unique mapper IDs, unchanged reviewer count, and no duplicate active claims.
+- [x] (2026-08-02 18:17Z) Committed and pushed the scoped implementation to `main` without the user's unrelated work.
+- [x] (2026-08-02 18:28Z) Updated the VM checkouts, preserved mapper work, and started mapper 2 in a separate Git worktree and container.
+- [x] (2026-08-02 18:30Z) Verified two unique mapper IDs, one unchanged reviewer, two different active mapping jobs, and no duplicate active claims.
 
 ## Surprises & Discoveries
 
@@ -74,10 +74,18 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 ## Outcomes & Retrospective
 
-The repository now contains the division gate and both pool controls. Focused
-tests and TypeScript pass at the current checkpoint. The live VM change remains
-until the scoped commit is pushed and both agent checkouts can load it. The
-first live scale setting will be two mappers and one reviewer.
+The repository now contains the division gate and both pool controls. The main
+branch contains the implementation and restart-safe claim renewal. The live VM
+runs two isolated mapper containers with worker IDs `codex-luna-vm-1` and
+`codex-luna-vm-2`. It still runs one reviewer, as intended. A live database
+check showed two `CLAIMED` rows with different job IDs, intake IDs, worker IDs,
+and leases. The reviewer checkout contains the configurable pool code, so an
+operator can increase its count during a later authorized restart.
+
+The focused live-checkout queue, goal, and pool run passed 28 tests. Its broad
+TypeScript check remains blocked by existing generated-package errors in the
+Denver, Next Generation Sports, CMSA, LA Flag Football, and NEAAU source files.
+The local main checkout passed TypeScript before deployment.
 
 ## Context and Orientation
 
@@ -223,3 +231,6 @@ Prisma for live queue rows, and `pg` for the disposable validation database.
 Revision note, 2026-08-02: Created this plan after live rate measurement and
 implementation. It records why mapper 2 is the first capacity increase and why
 each mapper requires an isolated Git workspace.
+
+Revision note, 2026-08-02: Recorded the scoped main-branch commits and the live
+two-mapper, one-reviewer deployment with distinct database claims.
