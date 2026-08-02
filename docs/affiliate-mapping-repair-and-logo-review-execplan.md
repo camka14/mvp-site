@@ -31,6 +31,10 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-02 00:38Z) Added a Razumly-admin Affiliate imports view for explicit `HUMAN_REVIEW_REQUIRED` mapping jobs, including source identity, structured reason codes, blocking issues, attempt count, and a direct path into the stored intake evidence.
 - [x] (2026-08-02 00:38Z) Replaced the 15-minute intake-automation email with intake/discovery/mapping totals in the existing once-daily affiliate operations email, while keeping the 15-minute capture worker unchanged.
 - [x] (2026-08-02 00:38Z) Passed 30 focused tests, TypeScript, scoped ESLint, all 4,110 repository tests, and the 315-route coverage gate.
+- [x] (2026-08-02 01:34Z) Recovered the four abandoned live intake capture attempts by preserving each failed attempt and queueing one auditable replacement; no worker or timer was restarted.
+- [x] (2026-08-02 01:30Z) Added a reviewer-owned supplemental logo-evidence capture that verifies an official page reference, stores the page and image in the intake artifact system, and hands normalization back to the producer.
+- [x] (2026-08-02 01:32Z) Added automatic stale intake-run lease recovery, late-worker overwrite protection, focused tests, and updated producer/reviewer contracts so this queue state cannot remain indefinitely.
+- [x] (2026-08-02 01:32Z) Passed 32 focused tests, TypeScript, scoped ESLint, and diff validation for stale-run recovery and supplemental official-logo capture.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
 ## Surprises & Discoveries
@@ -109,6 +113,14 @@ The result is observable in three places: focused tests prove the retry classifi
   Rationale: the daily scheduler already has a Postgres advisory lock, a configured recipient, and a single 05:00 America/Los_Angeles timer. Combining the summaries produces one daily operational email without changing capture cadence or adding another scheduler.
   Date/Author: 2026-08-02 / Codex
 
+- Decision: Let the independent reviewer capture supplemental official-logo evidence, but never normalize, assign, or commit the logo itself.
+  Rationale: a bounded capture can turn a manual browsing observation into durable provenance-backed intake evidence without crossing the producer/reviewer identity boundary. The producer remains responsible for visual normalization, setup changes, tests, and the source-scoped commit.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Recover an abandoned intake run by marking the stale attempt failed and creating a fresh queued run rather than resetting the same row.
+  Rationale: a replacement row preserves worker, timing, and failure history while preventing a late result from the abandoned worker from overwriting the replacement attempt.
+  Date/Author: 2026-08-02 / Codex
+
 ## Outcomes & Retrospective
 
 The repair is deployed to both OVH agent checkouts. The earlier live requeue reset 91
@@ -134,6 +146,20 @@ Phoenix was returned to the producer with `LIVE_SETUP_UNSUPPORTED`,
 and its repair history contains the complete reviewer rationale and issues.
 This preserves the valid organization identity while requiring the producer to
 exclude and log child events that cannot support a location.
+
+The four intake captures stranded under dead worker IDs were repaired in one
+live transaction. Their original rows are terminal `FAILED` with the stale
+worker and replacement-run ID retained in the error and summary; four new rows
+are `QUEUED` with the same intake, requested pages, requester, and provider. The
+existing 15-minute worker was not manually started or restarted.
+
+Manual-logo review now has a governed evidence-acquisition path. A reviewer who
+owns the active approval claim may identify an official public page and exact
+logo URL. The command recaptures the page through ScrapingDog, enforces intake
+policy scope and robots, proves the page references that image, validates the
+bounded image response, and stores both page provenance and a `LOGO_CANDIDATE`
+under a new intake run. The reviewer must then return the package to the
+producer; it cannot normalize, assign, or commit the asset itself.
 
 The local repair implementation passes 33 focused tests, repository CI,
 TypeScript, and diff validation. Generated setup scripts select the live

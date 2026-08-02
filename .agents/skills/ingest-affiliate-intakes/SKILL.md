@@ -73,6 +73,10 @@ Never invent dates, prices, addresses, divisions, tags, organization facts, or l
 For a `MANUAL_LOGO_REVIEW` repair, inspect every stored `LOGO_CANDIDATE`,
 `PAGE_BRANDING`, `PAGE_IMAGES`, screenshot, HTML/CSS reference, structured-data
 logo, Open Graph image, and favicon before concluding that the logo is missing.
+Start with the intake's current `lastRunId`; approval-created supplemental runs
+contain reviewer-verified official-page provenance and an exact
+`LOGO_CANDIDATE` selected for producer repair. Treat that artifact as evidence,
+not as a finished asset.
 Open and visually inspect plausible image artifacts. Normalize or crop only a
 verified first-party organization mark and update the setup script, fixture,
 result disposition, and rendered-fit evidence in a new commit. If no official

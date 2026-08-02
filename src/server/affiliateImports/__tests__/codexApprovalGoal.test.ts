@@ -46,6 +46,9 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('affiliate:approvals:claim -- --live --worker=codex-luna-approval-vm-1');
     expect(goal).toContain('affiliate:approvals:policy-evidence -- --live --policy=<policy-key>');
     expect(goal).toContain('affiliate:approvals:package-evidence -- --live --job=<mapping-job-id>');
+    expect(goal).toContain('affiliate:approvals:logo-evidence -- --live --approval=<approval-job-id>');
+    expect(goal).toContain('--reviewer=codex-luna-approval-vm-1');
+    expect(goal).toContain('--page-url=<official-page-url> --logo-url=<official-logo-url>');
     expect(goal).toContain('affiliate:approvals:complete -- --live');
     expect(goal).toContain('claimableJobs=0, activeLeases=0, and claimedWithoutLease=0');
     expect(goal).toContain('Never approve a package produced by this reviewer identity');
@@ -62,7 +65,9 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('canonical gender M/F/C, ratingType AGE/SKILL');
     expect(goal).toContain('differing division prices require a compact event range');
     expect(goal).toContain('For MANUAL_REVIEW logos');
-    expect(goal).toContain('DEFER when no official mark can be verified');
+    expect(goal).toContain('manually inspect the public official site');
+    expect(goal).toContain('OFFICIAL_LOGO_REPAIR_REQUIRED');
+    expect(goal).toContain('DEFER only when neither stored nor freshly captured official-site evidence');
     expect(goal).toContain('Every non-approved MAPPING_PACKAGE result must include mappingDisposition');
     expect(goal).toContain('nextAction PRODUCER_REPAIR');
     expect(goal).toContain('Use HUMAN_REVIEW_REQUIRED only');

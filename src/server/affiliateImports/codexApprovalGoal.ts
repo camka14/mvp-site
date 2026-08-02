@@ -50,6 +50,14 @@ export const buildCodexAffiliateApprovalObjective = (
     ...liveArguments,
     '--job=<mapping-job-id>',
   ]);
+  const logoEvidenceCommand = npmRunCommand('affiliate:approvals:logo-evidence', [
+    ...liveArguments,
+    '--approval=<approval-job-id>',
+    '--job=<mapping-job-id>',
+    `--reviewer=${reviewerId}`,
+    '--page-url=<official-page-url>',
+    '--logo-url=<official-logo-url>',
+  ]);
   return [
     'Independently review every eligible BracketIQ affiliate approval until',
     'claimableJobs=0, activeLeases=0, and claimedWithoutLease=0.',
@@ -68,9 +76,13 @@ export const buildCodexAffiliateApprovalObjective = (
     'Use its read-only producer commit and generated-file evidence plus its disposable',
     'validation database review-scrape evidence to inspect file scope, tests, two stable',
     'duplicate-safe scrapes, candidate output, official logo, and location resolution.',
-    'For MANUAL_REVIEW logos, inspect all stored branding and image evidence. REJECT',
-    'for producer repair when an evidenced official mark was missed or not normalized;',
-    'DEFER when no official mark can be verified. Never approve or fabricate a logo.',
+    'For MANUAL_REVIEW logos, inspect all stored branding and image evidence first.',
+    'When that is insufficient, manually inspect the public official site. If it exposes',
+    'an official mark, persist the fresh page and image evidence with',
+    `${logoEvidenceCommand}. Cite its run and artifact IDs, then REJECT with`,
+    'OFFICIAL_LOGO_REPAIR_REQUIRED so the producer normalizes, tests, and commits it.',
+    'DEFER only when neither stored nor freshly captured official-site evidence can',
+    'verify a mark. Never approve, normalize, assign, commit, or fabricate a logo.',
     'Every non-approved MAPPING_PACKAGE result must include mappingDisposition.',
     'Use nextAction PRODUCER_REPAIR with all applicable reasonCodes for concrete setup,',
     'location-filtering, division, pricing, capacity, logo, validation, or duplicate',

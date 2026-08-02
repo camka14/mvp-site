@@ -14,6 +14,7 @@ import type { AffiliateFirecrawlClient } from './firecrawlClient';
 import {
   processNextAffiliateSourceIntakeRun,
   queueAffiliateSourceIntakeRun,
+  recoverStaleAffiliateSourceIntakeRuns,
   reviewAffiliateSourceIntakePolicy,
 } from './sourceIntake';
 import {
@@ -877,8 +878,20 @@ export const runAffiliateIntakeAutomation = async (options: {
 } = {}, dependencies: DiscoveryDependencies = {}) => {
   const startedAt = dependencies.now?.() ?? new Date();
   const lock = await acquireAutomationLock();
-  if (!lock) return { lockAcquired: false, startedAt, finishedAt: new Date(), queuedCampaigns: 0, discoveryRuns: [], intakeRuns: [], emailSent: false };
+  if (!lock) return {
+    lockAcquired: false,
+    startedAt,
+    finishedAt: new Date(),
+    queuedCampaigns: 0,
+    recoveredIntakeRuns: [],
+    discoveryRuns: [],
+    intakeRuns: [],
+    emailSent: false,
+  };
   try {
+    const recoveredIntakeRuns = await recoverStaleAffiliateSourceIntakeRuns({
+      now: dependencies.now?.() ?? new Date(),
+    });
     let queuedCampaigns = 0;
     const discoveryRuns: any[] = [];
     for (let index = 0; index < Math.min(options.discoveryLimit ?? MAX_AUTOMATION_DISCOVERY_RUNS, 25); index += 1) {
@@ -908,11 +921,13 @@ export const runAffiliateIntakeAutomation = async (options: {
       startedAt,
       finishedAt,
       queuedCampaigns,
+      recoveredIntakeRuns,
       discoveryRuns,
       intakeRuns,
       emailSent: false,
     };
     const needsEmail = queuedCampaigns > 0
+      || recoveredIntakeRuns.length > 0
       || discoveryRuns.length > 0
       || intakeRuns.length > 0
       || discoveryRuns.some((entry) => ['FAILED', 'PARTIAL'].includes(entry.run?.status))
@@ -926,6 +941,7 @@ export const runAffiliateIntakeAutomation = async (options: {
           `Started: ${startedAt.toISOString()}`,
           `Finished: ${finishedAt.toISOString()}`,
           `Campaigns queued: ${queuedCampaigns}`,
+          `Stale intake runs recovered: ${recoveredIntakeRuns.length}`,
           `Discovery runs processed: ${discoveryRuns.length}`,
           `Intake captures processed: ${intakeRuns.length}`,
           `Review: ${automationAdminUrl()}`,

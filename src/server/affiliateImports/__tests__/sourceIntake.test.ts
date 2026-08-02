@@ -15,6 +15,7 @@ const prismaMock = {
   affiliateSourceIntakeRuns: {
     create: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     findUnique: jest.fn(),
     updateMany: jest.fn(),
     update: jest.fn(),
@@ -45,8 +46,10 @@ jest.mock('@/server/affiliateImports/sourceIntakeArtifacts', () => ({
 
 import {
   classifyAffiliateSourceEvidence,
+  findStaleAffiliateSourceIntakeRuns,
   processNextAffiliateSourceIntakeRun,
   queueAffiliateSourceIntakeRun,
+  recoverStaleAffiliateSourceIntakeRuns,
   reviewAffiliateSourceIntakePolicy,
 } from '@/server/affiliateImports/sourceIntake';
 
@@ -155,9 +158,117 @@ describe('affiliate source intake service', () => {
         blockedPages: [expect.objectContaining({ pageId: 'page_1' })],
       }),
     }));
-    expect(prismaMock.affiliateSourceIntakeRuns.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(prismaMock.affiliateSourceIntakeRuns.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'run_1', status: 'RUNNING', workerId: 'worker_1' }),
       data: expect.objectContaining({ status: 'BLOCKED' }),
     }));
+  });
+
+  it('preserves an abandoned capture attempt and queues one fresh replacement', async () => {
+    const now = new Date('2026-08-02T01:30:00.000Z');
+    const staleRun = {
+      id: 'stale_run_1',
+      intakeId: 'intake_1',
+      requestedPageIds: ['page_1'],
+      requestedByUserId: 'admin_1',
+      provider: 'SCRAPINGDOG',
+      status: 'RUNNING',
+      startedAt: new Date('2026-08-02T00:00:00.000Z'),
+      claimedAt: new Date('2026-08-02T00:00:00.000Z'),
+      workerId: 'dead_worker',
+      attemptCount: 1,
+      summary: { prior: true },
+    };
+    prismaMock.affiliateSourceIntakeRuns.findMany.mockResolvedValue([staleRun]);
+    prismaMock.affiliateSourceIntakeRuns.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.affiliateSourceIntakeRuns.findFirst.mockResolvedValue(null);
+    prismaMock.affiliateSourceIntakeRuns.create.mockImplementation(async ({ data }) => data);
+
+    const preview = await findStaleAffiliateSourceIntakeRuns({ now, maxAgeMs: 30 * 60 * 1000 });
+    const recovered = await recoverStaleAffiliateSourceIntakeRuns({
+      runIds: [staleRun.id],
+      now,
+      maxAgeMs: 30 * 60 * 1000,
+    });
+
+    expect(preview).toEqual([staleRun]);
+    expect(prismaMock.affiliateSourceIntakeRuns.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: staleRun.id,
+        status: 'RUNNING',
+        workerId: staleRun.workerId,
+      }),
+      data: expect.objectContaining({
+        status: 'FAILED',
+        errorMessage: expect.stringContaining('replacement run generated_id was queued'),
+      }),
+    }));
+    expect(prismaMock.affiliateSourceIntakeRuns.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'generated_id',
+        intakeId: staleRun.intakeId,
+        requestedPageIds: staleRun.requestedPageIds,
+        status: 'QUEUED',
+      }),
+    });
+    expect(recovered).toEqual([{
+      staleRunId: staleRun.id,
+      replacementRunId: 'generated_id',
+      intakeId: staleRun.intakeId,
+    }]);
+  });
+
+  it('does not let a late worker overwrite a run after its lease was recovered', async () => {
+    const run = {
+      id: 'run_lost',
+      intakeId: 'intake_1',
+      requestedPageIds: ['page_1'],
+      provider: 'SCRAPINGDOG',
+      status: 'QUEUED',
+    };
+    const page = {
+      id: 'page_1',
+      intakeId: 'intake_1',
+      url: 'https://example.com/private/events',
+      status: 'ACTIVE',
+      createdAt: new Date(),
+    };
+    prismaMock.affiliateSourceIntakeRuns.findFirst.mockResolvedValue(run);
+    prismaMock.affiliateSourceIntakeRuns.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    prismaMock.affiliateSourceIntakeRuns.findUnique.mockResolvedValue({ ...run, status: 'RUNNING' });
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
+      id: 'intake_1',
+      complianceStatus: 'ALLOWED',
+    });
+    prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([page]);
+    const fetchResource = jest.fn().mockResolvedValue({
+      finalUrl: 'https://example.com/robots.txt',
+      statusCode: 200,
+      contentType: 'text/plain',
+      body: Buffer.from('User-agent: *\nDisallow: /private/\n'),
+    });
+
+    const result = await processNextAffiliateSourceIntakeRun(
+      { runId: run.id, workerId: 'late_worker' },
+      {
+        captureClient: {
+          provider: 'SCRAPINGDOG',
+          captureSourcePage: jest.fn(),
+          captureScreenshot: jest.fn(),
+        },
+        fallbackCaptureClient: null,
+        fetchResource,
+      },
+    );
+
+    expect(result).toEqual(expect.objectContaining({
+      runId: run.id,
+      status: 'LEASE_LOST',
+      leaseLost: true,
+    }));
+    expect(prismaMock.affiliateSourceIntakes.update).not.toHaveBeenCalled();
   });
 
   it('records an authentication-gated registration action without invoking a scraper', async () => {

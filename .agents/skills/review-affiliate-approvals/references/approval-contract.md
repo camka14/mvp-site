@@ -76,12 +76,17 @@ A terminal domain decision requires `robotsReviewed`, `termsReviewed`, and
 `duplicateSafetyVerified`, and `storedEvidenceSufficient`.
 
 A producer result with `logoDisposition = MANUAL_REVIEW` is never approved as
-written. The reviewer must still inspect the stored logo and branding evidence.
-Use `REJECT` when that evidence contains an official organization mark that the
-producer can normalize and commit in a repair pass. Use `DEFER` when the stored
-evidence contains no verifiable official mark and a human must supply or approve
-new evidence. Do not use an unrelated platform logo, photograph, generated
-initials, or fabricated brand mark.
+written. The reviewer must inspect stored logo and branding evidence first. If
+that is insufficient, the reviewer may inspect the public official site and run
+the governed `affiliate:approvals:logo-evidence` command. That command captures
+the official page through ScrapingDog, verifies the selected image URL is
+referenced by the page, and stores both page provenance and a `LOGO_CANDIDATE`
+under a new intake run. Cite the returned run and artifact IDs and use `REJECT`
+with `OFFICIAL_LOGO_REPAIR_REQUIRED`; the producer owns normalization and the
+new commit. Use `DEFER` with `NO_VERIFIABLE_OFFICIAL_LOGO` only when neither
+stored nor freshly captured official-site evidence verifies a mark. Do not use
+an unrelated platform logo, photograph, generated initials, or fabricated
+brand mark.
 
 For a mapping approval, `packageValidationPassed` also means accepted event
 locations were independently checked and rejected event-location failures are

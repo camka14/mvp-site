@@ -19,8 +19,10 @@ Act only as an independent reviewer. Read `AGENTS.md`,
    `activeLeases=0`, and `claimedWithoutLease=0`.
 
 Never claim a second job while the current claim is unfinished. Never invent
-evidence. Use `DEFER` when stored evidence cannot support a deterministic
-decision.
+evidence. For a manual-logo claim only, the goal's governed logo-evidence
+command may add a freshly verified official-page reference to the intake. Use
+`DEFER` when neither stored evidence nor that bounded official-site check can
+support a deterministic decision.
 
 ## Review a domain policy
 
@@ -109,19 +111,27 @@ organization fallback is unevidenced, or when scrape failures were hidden; do
 not reject it simply because invalid events were correctly filtered and logged.
 
 For a package whose producer result says `logoDisposition = MANUAL_REVIEW`,
-inspect all stored branding and image evidence named by the package. If a
-first-party official mark is present but the producer failed to normalize,
-assign, or commit it, `REJECT` with that exact producer repair. If no official
-mark can be verified from the stored evidence, `DEFER` for a human evidence
-decision instead of treating the organization identity itself as invalid. A
+inspect all stored branding and image evidence named by the package first. If
+that evidence has no usable mark, manually inspect the public official site.
+When the site exposes an official mark, run the goal's
+`affiliate:approvals:logo-evidence` command with the active approval ID,
+mapping-job ID, stable reviewer ID, official page URL, and exact image URL. The
+command must confirm the page is in the intake's policy scope, recapture it
+through ScrapingDog, verify that the page references the image, and store a
+new provenance-backed `LOGO_CANDIDATE`. Cite the returned run and artifact IDs,
+then `REJECT` with `PRODUCER_REPAIR` and
+`OFFICIAL_LOGO_REPAIR_REQUIRED`. The producer—not the reviewer—normalizes,
+assigns, tests, and commits it. If neither stored nor newly captured official
+evidence verifies a mark, `DEFER` with `NO_VERIFIABLE_OFFICIAL_LOGO`. A
 reviewer never edits the package, approves a logo-less package, or invents a
 brand mark.
 
 - `APPROVE` only when every required check in the result schema is true.
 - `REJECT` with `mappingDisposition.nextAction = PRODUCER_REPAIR` for a
   concrete setup, parser, event-filtering, division, pricing, capacity, logo,
-  validation, or duplicate-safety defect that stored evidence lets the producer
-  fix. Include every applicable reason code and blocking issue.
+  validation, or duplicate-safety defect that stored or governed supplemental
+  evidence lets the producer fix. Include every applicable reason code and
+  blocking issue.
 - `DEFER` with `mappingDisposition.nextAction = HUMAN_REVIEW_REQUIRED` when
   evidence is incomplete, contradictory, or needs a human. Do not defer a
   concrete producer defect.

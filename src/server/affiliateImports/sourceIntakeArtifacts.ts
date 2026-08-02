@@ -75,6 +75,8 @@ const extensionFor = (kind: AffiliateSourceIntakeArtifactKind, mimeType?: string
   if (mimeType?.includes('png')) return 'png';
   if (mimeType?.includes('jpeg') || mimeType?.includes('jpg')) return 'jpg';
   if (mimeType?.includes('webp')) return 'webp';
+  if (mimeType?.includes('gif')) return 'gif';
+  if (mimeType?.includes('avif')) return 'avif';
   if (mimeType?.includes('svg')) return 'svg';
   if (mimeType?.includes('html')) return 'html';
   if (kind === 'PAGE_MARKDOWN') return 'md';

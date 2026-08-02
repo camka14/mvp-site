@@ -124,6 +124,7 @@ const addPageMock = jest.fn(async () => ({}));
 const queueIntakeMock = jest.fn();
 const reviewPolicyMock = jest.fn();
 const processIntakeMock = jest.fn();
+const recoverStaleIntakesMock = jest.fn();
 const isEmailEnabledMock = jest.fn();
 const sendEmailMock = jest.fn();
 const mockPgClient = {
@@ -148,6 +149,7 @@ jest.mock('@/server/affiliateImports/sourceIntake', () => ({
   queueAffiliateSourceIntakeRun: (...args: any[]) => queueIntakeMock(...args),
   reviewAffiliateSourceIntakePolicy: (...args: any[]) => reviewPolicyMock(...args),
   processNextAffiliateSourceIntakeRun: (...args: any[]) => processIntakeMock(...args),
+  recoverStaleAffiliateSourceIntakeRuns: (...args: any[]) => recoverStaleIntakesMock(...args),
 }));
 
 import {
@@ -174,6 +176,7 @@ describe('affiliate source discovery orchestration', () => {
     prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([]);
     isEmailEnabledMock.mockReturnValue(true);
     sendEmailMock.mockResolvedValue(undefined);
+    recoverStaleIntakesMock.mockResolvedValue([]);
     queuedRuns.splice(0, queuedRuns.length,
       { id: 'run_1', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
       { id: 'run_2', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
@@ -396,6 +399,29 @@ describe('affiliate source discovery orchestration', () => {
     expect(result.discoveryRuns).toHaveLength(1);
     expect(result.emailSent).toBe(false);
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('recovers stale capture leases before processing the normal intake queue', async () => {
+    queuedRuns.splice(0, queuedRuns.length);
+    recoverStaleIntakesMock.mockResolvedValue([{
+      staleRunId: 'stale_1',
+      replacementRunId: 'replacement_1',
+      intakeId: 'intake_1',
+    }]);
+    processIntakeMock.mockResolvedValue(null);
+
+    const result = await runAffiliateIntakeAutomation(
+      { discoveryLimit: 1, intakeLimit: 1, sendSummary: false },
+      { now: () => new Date('2026-08-02T01:30:00.000Z') },
+    );
+
+    expect(result.recoveredIntakeRuns).toEqual([expect.objectContaining({
+      staleRunId: 'stale_1',
+      replacementRunId: 'replacement_1',
+    })]);
+    expect(recoverStaleIntakesMock.mock.invocationCallOrder[0]).toBeLessThan(
+      processIntakeMock.mock.invocationCallOrder[0],
+    );
   });
 
   it('makes an incomplete location query cycle immediately due again', async () => {

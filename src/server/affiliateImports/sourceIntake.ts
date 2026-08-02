@@ -46,12 +46,23 @@ const MAX_DISCOVERED_URLS = 50;
 const MAX_LOGO_CANDIDATES_PER_PAGE = 5;
 const ROBOTS_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_ROBOTS_TIMEOUT_MS = 30_000;
+const DEFAULT_STALE_RUN_AGE_MS = 30 * 60 * 1000;
 
 const robotsTimeoutMs = (): number => {
   const configured = Number.parseInt(process.env.AFFILIATE_INTAKE_ROBOTS_TIMEOUT_MS ?? '', 10);
   return Number.isInteger(configured) && configured >= 15_000 && configured <= 60_000
     ? configured
     : DEFAULT_ROBOTS_TIMEOUT_MS;
+};
+
+const staleRunAgeMs = (): number => {
+  const configuredMinutes = Number.parseInt(
+    process.env.AFFILIATE_INTAKE_STALE_RUN_MINUTES ?? '',
+    10,
+  );
+  return Number.isInteger(configuredMinutes) && configuredMinutes >= 20 && configuredMinutes <= 24 * 60
+    ? configuredMinutes * 60 * 1000
+    : DEFAULT_STALE_RUN_AGE_MS;
 };
 
 const VALID_PAGE_ROLES = new Set([
@@ -682,6 +693,138 @@ const claimQueuedRun = async (runId: string | undefined, workerId: string, now: 
   return null;
 };
 
+const completeClaimedRun = async (
+  run: any,
+  workerId: string,
+  data: Record<string, unknown>,
+) => {
+  const { runs } = intakePrisma();
+  const completed = await runs.updateMany({
+    where: { id: run.id, status: 'RUNNING', workerId },
+    data,
+  });
+  return completed.count === 1 ? { ...run, ...data } : null;
+};
+
+export type StaleAffiliateSourceIntakeRun = {
+  id: string;
+  intakeId: string;
+  requestedPageIds: string[];
+  requestedByUserId: string | null;
+  provider: string;
+  claimedAt: Date | null;
+  startedAt: Date | null;
+  workerId: string | null;
+  attemptCount: number;
+  summary: unknown;
+};
+
+export type RecoveredAffiliateSourceIntakeRun = {
+  staleRunId: string;
+  replacementRunId: string;
+  intakeId: string;
+};
+
+export const findStaleAffiliateSourceIntakeRuns = async (options: {
+  runIds?: string[];
+  now?: Date;
+  maxAgeMs?: number;
+} = {}): Promise<StaleAffiliateSourceIntakeRun[]> => {
+  const now = options.now ?? new Date();
+  const maxAgeMs = Math.max(20 * 60 * 1000, options.maxAgeMs ?? staleRunAgeMs());
+  const cutoff = new Date(now.getTime() - maxAgeMs);
+  const runIds = Array.from(new Set(stringArray(options.runIds)));
+  return intakePrisma().runs.findMany({
+    where: {
+      status: 'RUNNING',
+      ...(runIds.length ? { id: { in: runIds } } : {}),
+      OR: [
+        { claimedAt: { lte: cutoff } },
+        { claimedAt: null, startedAt: { lte: cutoff } },
+      ],
+    },
+    orderBy: { startedAt: 'asc' },
+  });
+};
+
+export const recoverStaleAffiliateSourceIntakeRuns = async (options: {
+  runIds?: string[];
+  now?: Date;
+  maxAgeMs?: number;
+} = {}): Promise<RecoveredAffiliateSourceIntakeRun[]> => {
+  const now = options.now ?? new Date();
+  const maxAgeMs = Math.max(20 * 60 * 1000, options.maxAgeMs ?? staleRunAgeMs());
+  const staleRuns = await findStaleAffiliateSourceIntakeRuns({ ...options, now, maxAgeMs });
+  const recovered: RecoveredAffiliateSourceIntakeRun[] = [];
+  const maxAgeMinutes = Math.round(maxAgeMs / 60_000);
+  const { runs } = intakePrisma();
+
+  for (const staleRun of staleRuns) {
+    const otherActiveRun = await runs.findFirst({
+      where: {
+        intakeId: staleRun.intakeId,
+        id: { not: staleRun.id },
+        status: { in: ['QUEUED', 'RUNNING'] },
+      },
+      orderBy: { queuedAt: 'asc' },
+    });
+    const replacementRunId = otherActiveRun?.id ?? createId();
+    const recovery = {
+      reason: 'STALE_WORKER_LEASE',
+      recoveredAt: now.toISOString(),
+      maxAgeMinutes,
+      staleWorkerId: staleRun.workerId,
+      replacementRunId,
+    };
+    const priorSummary = recordValue(staleRun.summary);
+    const marked = await runs.updateMany({
+      where: {
+        id: staleRun.id,
+        status: 'RUNNING',
+        workerId: staleRun.workerId,
+        claimedAt: staleRun.claimedAt,
+      },
+      data: {
+        status: 'FAILED',
+        finishedAt: now,
+        errorMessage: otherActiveRun
+          ? `Capture worker lease exceeded ${maxAgeMinutes} minutes; active replacement run ${replacementRunId} already exists.`
+          : `Capture worker lease exceeded ${maxAgeMinutes} minutes; replacement run ${replacementRunId} was queued.`,
+        summary: { ...priorSummary, recovery },
+      },
+    });
+    if (marked.count !== 1) continue;
+
+    if (!otherActiveRun) {
+      await runs.create({
+        data: {
+          id: replacementRunId,
+          intakeId: staleRun.intakeId,
+          requestedPageIds: staleRun.requestedPageIds,
+          requestedByUserId: staleRun.requestedByUserId,
+          provider: staleRun.provider,
+          status: 'QUEUED',
+          queuedAt: now,
+          summary: {
+            recovery: {
+              reason: 'STALE_WORKER_LEASE_REPLACEMENT',
+              replacesRunId: staleRun.id,
+              recoveredAt: now.toISOString(),
+            },
+          },
+        },
+      });
+    }
+    recovered.push({
+      staleRunId: staleRun.id,
+      replacementRunId,
+      intakeId: staleRun.intakeId,
+    });
+  }
+
+  return recovered;
+};
+
 const robotsUrlFor = (pageUrl: string): string => new URL('/robots.txt', new URL(pageUrl).origin).toString();
 
 const persistCaptureArtifact = async (
@@ -1077,11 +1220,21 @@ export const processNextAffiliateSourceIntakeRun = async (
   const { intakes, pages, runs, artifacts, mappingJobs } = intakePrisma();
   const intake = await intakes.findUnique({ where: { id: run.intakeId } });
   if (!intake) {
-    await runs.update({ where: { id: run.id }, data: { status: 'FAILED', finishedAt: now, errorMessage: 'Affiliate source intake not found.' } });
+    const updated = await completeClaimedRun(run, workerId, {
+      status: 'FAILED',
+      finishedAt: now,
+      errorMessage: 'Affiliate source intake not found.',
+    });
+    if (!updated) return { runId: run.id, status: 'LEASE_LOST', leaseLost: true };
     return { runId: run.id, status: 'FAILED', errorMessage: 'Affiliate source intake not found.' };
   }
   if (intake.complianceStatus !== 'ALLOWED') {
-    await runs.update({ where: { id: run.id }, data: { status: 'BLOCKED', finishedAt: now, errorMessage: 'Source policy is not allowed.' } });
+    const updated = await completeClaimedRun(run, workerId, {
+      status: 'BLOCKED',
+      finishedAt: now,
+      errorMessage: 'Source policy is not allowed.',
+    });
+    if (!updated) return { runId: run.id, status: 'LEASE_LOST', leaseLost: true };
     return { runId: run.id, status: 'BLOCKED', errorMessage: 'Source policy is not allowed.' };
   }
 
@@ -1090,7 +1243,12 @@ export const processNextAffiliateSourceIntakeRun = async (
     orderBy: { createdAt: 'asc' },
   });
   if (!selectedPages.length) {
-    await runs.update({ where: { id: run.id }, data: { status: 'FAILED', finishedAt: now, errorMessage: 'No active intake pages were selected.' } });
+    const updated = await completeClaimedRun(run, workerId, {
+      status: 'FAILED',
+      finishedAt: now,
+      errorMessage: 'No active intake pages were selected.',
+    });
+    if (!updated) return { runId: run.id, status: 'LEASE_LOST', leaseLost: true };
     return { runId: run.id, status: 'FAILED', errorMessage: 'No active intake pages were selected.' };
   }
 
@@ -1215,18 +1373,16 @@ export const processNextAffiliateSourceIntakeRun = async (
           ? 'PARTIAL'
           : 'SUCCEEDED';
     const finishedAt = dependencies.now?.() ?? new Date();
-    const updatedRun = await runs.update({
-      where: { id: run.id },
-      data: {
-        status,
-        finishedAt,
-        providerJobIds: Array.from(new Set(providerJobIds)),
-        discoveredUrlCount: summary.discoveredUrls,
-        capturedPageCount: summary.capturedPages.length,
-        errorMessage: status === 'FAILED' ? summary.failedPages[0]?.error ?? 'No pages were captured.' : null,
-        summary,
-      },
+    const updatedRun = await completeClaimedRun(run, workerId, {
+      status,
+      finishedAt,
+      providerJobIds: Array.from(new Set(providerJobIds)),
+      discoveredUrlCount: summary.discoveredUrls,
+      capturedPageCount: summary.capturedPages.length,
+      errorMessage: status === 'FAILED' ? summary.failedPages[0]?.error ?? 'No pages were captured.' : null,
+      summary,
     });
+    if (!updatedRun) return { runId: run.id, status: 'LEASE_LOST', leaseLost: true, summary };
     const hasMappingEvidence = ['SUCCEEDED', 'PARTIAL'].includes(status)
       && await artifacts.count({
         where: { intakeId: intake.id, runId: run.id, kind: { in: ['PAGE_HTML', 'PAGE_MARKDOWN'] } },
@@ -1260,10 +1416,13 @@ export const processNextAffiliateSourceIntakeRun = async (
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown intake processing error';
     const finishedAt = dependencies.now?.() ?? new Date();
-    const failedRun = await runs.update({
-      where: { id: run.id },
-      data: { status: 'FAILED', finishedAt, errorMessage: message, summary },
+    const failedRun = await completeClaimedRun(run, workerId, {
+      status: 'FAILED',
+      finishedAt,
+      errorMessage: message,
+      summary,
     });
+    if (!failedRun) return { runId: run.id, status: 'LEASE_LOST', leaseLost: true, summary };
     await intakes.update({ where: { id: intake.id }, data: { lastRunId: run.id, status: 'FAILED' } });
     return { run: failedRun, summary };
   }

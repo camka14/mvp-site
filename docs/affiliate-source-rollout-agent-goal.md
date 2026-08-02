@@ -68,7 +68,9 @@ When a requeued claim contains `repairContext`, the agent must repair the named
 defect rather than rebuilding the prior result unchanged. For
 `MANUAL_LOGO_REVIEW`, exhaust and visually inspect the stored branding, image,
 logo-candidate, screenshot, HTML/CSS, structured-data, metadata, and favicon
-evidence. Commit a verified official normalized asset or official screenshot
+evidence. Inspect the current intake `lastRunId` first because a reviewer may
+have added a supplemental official-page capture and verified `LOGO_CANDIDATE`.
+Commit a verified official normalized asset or official screenshot
 crop when supportable. If none is supportable, record the exact evidence gap
 and stop the package from cycling; never invent a replacement mark.
 

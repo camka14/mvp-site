@@ -78,6 +78,10 @@ requires a new commit and `OFFICIAL_ASSET` or `OFFICIAL_SCREENSHOT_CROP` backed
 by stable stored evidence. If all candidates remain insufficient, report the
 exact inspected artifacts and keep the package unpublishable rather than
 fabricating a logo or resubmitting an unchanged manual-review result.
+When `lastRunId` points to a supplemental approval run, inspect its official
+page artifacts and reviewer-verified `LOGO_CANDIDATE` first. The reviewer only
+adds evidence; the producer must still visually verify, normalize, fit-test,
+wire, and commit the official mark.
 
 ## Result states
 
