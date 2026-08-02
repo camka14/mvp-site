@@ -917,7 +917,7 @@ export const runAffiliateIntakeAutomation = async (options: {
       || intakeRuns.length > 0
       || discoveryRuns.some((entry) => ['FAILED', 'PARTIAL'].includes(entry.run?.status))
       || intakeRuns.some((entry) => ['FAILED', 'PARTIAL', 'BLOCKED'].includes(entry.run?.status ?? entry.status));
-    if (options.sendSummary !== false && needsEmail && isEmailEnabled()) {
+    if (options.sendSummary === true && needsEmail && isEmailEnabled()) {
       await sendEmail({
         to: process.env.AFFILIATE_SCRAPE_SUMMARY_EMAIL_TO?.trim() || DEFAULT_SUMMARY_RECIPIENT,
         subject: `[BracketIQ] Affiliate intake automation: ${discoveryRuns.length} discovery, ${intakeRuns.length} capture runs`,

@@ -21,6 +21,7 @@ import {
 } from '@mantine/core';
 import { ExternalLink, Play, ShieldCheck, Trash2, UploadCloud } from 'lucide-react';
 import { normalizeApiEntity } from '@/lib/apiMappers';
+import AdminAffiliateMappingReviewPanel from './AdminAffiliateMappingReviewPanel';
 import AdminAffiliateSourceIntakePanel from './AdminAffiliateSourceIntakePanel';
 
 type AdminAffiliateSourceRow = {
@@ -269,7 +270,8 @@ const persistentScrapeIssueMessage = (run?: AdminAffiliateScrapeRunRow | null): 
 export default function AdminAffiliateImportsPanel({ active, refreshKey }: AdminAffiliateImportsPanelProps) {
   const [sources, setSources] = useState<AdminAffiliateSourceRow[]>([]);
   const [candidates, setCandidates] = useState<AdminAffiliateCandidateRow[]>([]);
-  const [affiliateTab, setAffiliateTab] = useState<'intake' | 'sources' | 'candidates'>('sources');
+  const [affiliateTab, setAffiliateTab] = useState<'intake' | 'humanReview' | 'sources' | 'candidates'>('sources');
+  const [requestedIntakeId, setRequestedIntakeId] = useState<string | null>(null);
   const [candidateStatusView, setCandidateStatusView] = useState<'DISCOVERED' | 'PUBLISHED'>('DISCOVERED');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -664,19 +666,36 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
       <Tabs
         value={affiliateTab}
         onChange={(value) => {
-          if (value === 'intake' || value === 'sources' || value === 'candidates') {
+          if (value === 'intake' || value === 'humanReview' || value === 'sources' || value === 'candidates') {
             setAffiliateTab(value);
           }
         }}
       >
         <Tabs.List>
           <Tabs.Tab value="intake">Source Intake</Tabs.Tab>
+          <Tabs.Tab value="humanReview">Human review</Tabs.Tab>
           <Tabs.Tab value="sources">Sources ({sources.length})</Tabs.Tab>
           <Tabs.Tab value="candidates">Candidates ({candidates.length})</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="intake" pt="md">
-          <AdminAffiliateSourceIntakePanel active={active && affiliateTab === 'intake'} refreshKey={refreshKey} />
+          <AdminAffiliateSourceIntakePanel
+            active={active && affiliateTab === 'intake'}
+            refreshKey={refreshKey}
+            requestedIntakeId={requestedIntakeId}
+            onRequestedIntakeHandled={() => setRequestedIntakeId(null)}
+          />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="humanReview" pt="md">
+          <AdminAffiliateMappingReviewPanel
+            active={active && affiliateTab === 'humanReview'}
+            refreshKey={refreshKey}
+            onReviewIntake={(intakeId) => {
+              setRequestedIntakeId(intakeId);
+              setAffiliateTab('intake');
+            }}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel value="sources" pt="md">

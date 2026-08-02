@@ -15,6 +15,16 @@ const prismaMock = {
     findMany: jest.fn(),
     count: jest.fn(),
   },
+  affiliateSourceDiscoveryRuns: {
+    findMany: jest.fn(),
+  },
+  affiliateSourceIntakeRuns: {
+    findMany: jest.fn(),
+  },
+  affiliateSourceMappingJobs: {
+    findMany: jest.fn(),
+    count: jest.fn(),
+  },
   organizations: {
     updateMany: jest.fn(),
   },
@@ -77,6 +87,10 @@ describe('scheduled affiliate scrapes', () => {
     }));
     prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([]);
     prismaMock.affiliateImportCandidates.count.mockResolvedValue(0);
+    prismaMock.affiliateSourceDiscoveryRuns.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceIntakeRuns.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceMappingJobs.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceMappingJobs.count.mockResolvedValue(0);
     prismaMock.organizations.updateMany.mockResolvedValue({ count: 0 });
     runAffiliateSourceScrapeMock.mockResolvedValue({
       run: {
@@ -352,6 +366,19 @@ describe('scheduled affiliate scrapes', () => {
   });
 
   it('sends the daily completion email even when no full scrape or lightweight check is due', async () => {
+    prismaMock.affiliateSourceDiscoveryRuns.findMany.mockResolvedValue([
+      { status: 'SUCCEEDED', newResultCount: 12, createdIntakeCount: 4 },
+      { status: 'PARTIAL', newResultCount: 3, createdIntakeCount: 1 },
+    ]);
+    prismaMock.affiliateSourceIntakeRuns.findMany.mockResolvedValue([
+      { status: 'SUCCEEDED', capturedPageCount: 8 },
+      { status: 'BLOCKED', capturedPageCount: 0 },
+    ]);
+    prismaMock.affiliateSourceMappingJobs.findMany.mockResolvedValue([
+      { status: 'APPROVED' },
+      { status: 'HUMAN_REVIEW_REQUIRED' },
+    ]);
+    prismaMock.affiliateSourceMappingJobs.count.mockResolvedValue(3);
     const result = await runDueAffiliateScrapes({
       now: new Date('2026-07-04T12:00:00.000Z'),
       fetchImpl: lightweightFetchMock,
@@ -360,9 +387,33 @@ describe('scheduled affiliate scrapes', () => {
     expect(result.dueSourceCount).toBe(0);
     expect(result.lightweightSourceCount).toBe(0);
     expect(sendEmailMock).toHaveBeenCalledWith(expect.objectContaining({
-      subject: expect.stringContaining('0 source changes'),
-      text: expect.stringContaining('No full scrapes were due.'),
+      subject: expect.stringContaining('2 intake captures'),
+      text: expect.stringContaining('Intakes created: 5'),
     }));
+    const email = sendEmailMock.mock.calls[0][0] as { subject: string; text: string };
+    expect(email.subject).toContain('0 source changes');
+    expect(email.text).toContain('Capture runs: 2 (blocked 1, succeeded 1)');
+    expect(email.text).toContain('Pages captured: 8');
+    expect(email.text).toContain('Current human-review backlog: 3');
+    expect(email.text).toContain('No full scrapes were due.');
+    expect(result.intakeDigest).toEqual(expect.objectContaining({
+      discoveryRunCount: 2,
+      newDiscoveryResultCount: 15,
+      createdIntakeCount: 5,
+      intakeRunCount: 2,
+      capturedPageCount: 8,
+      mappingJobUpdateCount: 2,
+      humanReviewRequiredJobs: 3,
+    }));
+    expect(prismaMock.affiliateSourceIntakeRuns.findMany).toHaveBeenCalledWith({
+      where: {
+        finishedAt: {
+          gte: new Date('2026-07-03T12:00:00.000Z'),
+          lt: new Date('2026-07-04T12:00:00.000Z'),
+        },
+      },
+      select: { status: true, capturedPageCount: true },
+    });
   });
 
   it('isolates a lightweight check failure and includes it in the daily summary', async () => {

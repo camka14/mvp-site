@@ -94,9 +94,25 @@ export type RunDueAffiliateScrapesResult = {
   lightweightSourceCount: number;
   results: ScheduledScrapeResultRow[];
   lightweightResults: LightweightSourceCheckResult[];
+  intakeDigest: AffiliateIntakeDailyDigest;
   emailSent: boolean;
   lockAcquired: boolean;
   dryRun: boolean;
+};
+
+export type AffiliateIntakeDailyDigest = {
+  windowStartedAt: Date;
+  windowFinishedAt: Date;
+  discoveryRunCount: number;
+  discoveryStatusCounts: Record<string, number>;
+  newDiscoveryResultCount: number;
+  createdIntakeCount: number;
+  intakeRunCount: number;
+  intakeStatusCounts: Record<string, number>;
+  capturedPageCount: number;
+  mappingJobUpdateCount: number;
+  mappingStatusCounts: Record<string, number>;
+  humanReviewRequiredJobs: number;
 };
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -153,6 +169,85 @@ const readRecord = (value: unknown): Record<string, unknown> => (
 const readString = (value: unknown): string | undefined => (
   typeof value === 'string' && value.trim() ? value.trim() : undefined
 );
+
+const countStatuses = (rows: Array<{ status?: string | null }>): Record<string, number> => {
+  const counts: Record<string, number> = {};
+  rows.forEach((row) => {
+    const status = readString(row.status)?.toUpperCase() ?? 'UNKNOWN';
+    counts[status] = (counts[status] ?? 0) + 1;
+  });
+  return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)));
+};
+
+const emptyIntakeDigest = (windowFinishedAt: Date): AffiliateIntakeDailyDigest => ({
+  windowStartedAt: new Date(windowFinishedAt.getTime() - 86_400_000),
+  windowFinishedAt,
+  discoveryRunCount: 0,
+  discoveryStatusCounts: {},
+  newDiscoveryResultCount: 0,
+  createdIntakeCount: 0,
+  intakeRunCount: 0,
+  intakeStatusCounts: {},
+  capturedPageCount: 0,
+  mappingJobUpdateCount: 0,
+  mappingStatusCounts: {},
+  humanReviewRequiredJobs: 0,
+});
+
+const loadIntakeDailyDigest = async (windowFinishedAt: Date): Promise<AffiliateIntakeDailyDigest> => {
+  const digest = emptyIntakeDigest(windowFinishedAt);
+  const finishedWindow = {
+    gte: digest.windowStartedAt,
+    lt: digest.windowFinishedAt,
+  };
+  const [discoveryRuns, intakeRuns, mappingJobs, humanReviewRequiredJobs] = await Promise.all([
+    (prisma as any).affiliateSourceDiscoveryRuns.findMany({
+      where: { finishedAt: finishedWindow },
+      select: {
+        status: true,
+        newResultCount: true,
+        createdIntakeCount: true,
+      },
+    }),
+    (prisma as any).affiliateSourceIntakeRuns.findMany({
+      where: { finishedAt: finishedWindow },
+      select: {
+        status: true,
+        capturedPageCount: true,
+      },
+    }),
+    (prisma as any).affiliateSourceMappingJobs.findMany({
+      where: { updatedAt: finishedWindow },
+      select: { status: true },
+    }),
+    (prisma as any).affiliateSourceMappingJobs.count({
+      where: { status: 'HUMAN_REVIEW_REQUIRED' },
+    }),
+  ]);
+
+  return {
+    ...digest,
+    discoveryRunCount: discoveryRuns.length,
+    discoveryStatusCounts: countStatuses(discoveryRuns),
+    newDiscoveryResultCount: discoveryRuns.reduce(
+      (total: number, run: { newResultCount?: number | null }) => total + readNumber(run.newResultCount),
+      0,
+    ),
+    createdIntakeCount: discoveryRuns.reduce(
+      (total: number, run: { createdIntakeCount?: number | null }) => total + readNumber(run.createdIntakeCount),
+      0,
+    ),
+    intakeRunCount: intakeRuns.length,
+    intakeStatusCounts: countStatuses(intakeRuns),
+    capturedPageCount: intakeRuns.reduce(
+      (total: number, run: { capturedPageCount?: number | null }) => total + readNumber(run.capturedPageCount),
+      0,
+    ),
+    mappingJobUpdateCount: mappingJobs.length,
+    mappingStatusCounts: countStatuses(mappingJobs),
+    humanReviewRequiredJobs: readNumber(humanReviewRequiredJobs),
+  };
+};
 
 const lightweightCheckTimeoutMs = (): number => {
   const configured = Number.parseInt(process.env.AFFILIATE_LIGHTWEIGHT_CHECK_TIMEOUT_MS ?? '', 10);
@@ -587,6 +682,13 @@ const lightweightResultLine = (result: LightweightSourceCheckResult): string => 
   return `- ${result.sourceName}: ${result.status.toLowerCase()}`;
 };
 
+const statusCountsLine = (counts: Record<string, number>): string => {
+  const entries = Object.entries(counts);
+  return entries.length
+    ? entries.map(([status, count]) => `${status.toLowerCase()} ${count}`).join(', ')
+    : 'none';
+};
+
 const buildSummaryText = (result: RunDueAffiliateScrapesResult): string => {
   const succeeded = result.results.filter((row) => row.status === 'SUCCEEDED').length;
   const failed = result.results.filter((row) => row.status === 'FAILED').length;
@@ -615,7 +717,7 @@ const buildSummaryText = (result: RunDueAffiliateScrapesResult): string => {
   ));
 
   return [
-    'BracketIQ daily affiliate scrape summary',
+    'BracketIQ daily affiliate operations summary',
     '',
     `Started: ${result.startedAt.toISOString()}`,
     `Finished: ${result.finishedAt.toISOString()}`,
@@ -634,6 +736,16 @@ const buildSummaryText = (result: RunDueAffiliateScrapesResult): string => {
     `Sources unchanged: ${unchanged}`,
     `Sources baselined: ${baselined}`,
     `Lightweight check failures: ${checkFailed}`,
+    '',
+    'Intake activity (previous 24 hours):',
+    `Window: ${result.intakeDigest.windowStartedAt.toISOString()} to ${result.intakeDigest.windowFinishedAt.toISOString()}`,
+    `Discovery runs: ${result.intakeDigest.discoveryRunCount} (${statusCountsLine(result.intakeDigest.discoveryStatusCounts)})`,
+    `New discovery results: ${result.intakeDigest.newDiscoveryResultCount}`,
+    `Intakes created: ${result.intakeDigest.createdIntakeCount}`,
+    `Capture runs: ${result.intakeDigest.intakeRunCount} (${statusCountsLine(result.intakeDigest.intakeStatusCounts)})`,
+    `Pages captured: ${result.intakeDigest.capturedPageCount}`,
+    `Mapping jobs updated: ${result.intakeDigest.mappingJobUpdateCount} (${statusCountsLine(result.intakeDigest.mappingStatusCounts)})`,
+    `Current human-review backlog: ${result.intakeDigest.humanReviewRequiredJobs}`,
     '',
     'Full scrape results:',
     ...(result.results.length ? result.results.map(resultLine) : ['- No full scrapes were due.']),
@@ -661,6 +773,8 @@ const sendSummaryEmail = async (result: RunDueAffiliateScrapesResult): Promise<b
     to: summaryRecipient(),
     subject: [
       '[BracketIQ] Daily affiliate scrapes:',
+      `${result.intakeDigest.intakeRunCount} intake captures,`,
+      `${result.intakeDigest.humanReviewRequiredJobs} human review,`,
       `${changed} source changes,`,
       `${pendingApproval} pending approval,`,
       `${failed + checkFailed} failed`,
@@ -685,6 +799,7 @@ export const runDueAffiliateScrapes = async (
       lightweightSourceCount: 0,
       results: [],
       lightweightResults: [],
+      intakeDigest: emptyIntakeDigest(startedAt),
       emailSent: false,
       lockAcquired: false,
       dryRun: options.dryRun === true,
@@ -733,6 +848,9 @@ export const runDueAffiliateScrapes = async (
         options.fetchImpl ?? globalThis.fetch.bind(globalThis),
       );
 
+    const intakeDigest = options.dryRun
+      ? emptyIntakeDigest(startedAt)
+      : await loadIntakeDailyDigest(startedAt);
     const finishedAt = new Date();
     const result: RunDueAffiliateScrapesResult = {
       startedAt,
@@ -742,6 +860,7 @@ export const runDueAffiliateScrapes = async (
       lightweightSourceCount: lightweightSources.length,
       results,
       lightweightResults,
+      intakeDigest,
       emailSent: false,
       lockAcquired: true,
       dryRun: options.dryRun === true,

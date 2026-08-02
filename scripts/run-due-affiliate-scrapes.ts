@@ -27,6 +27,7 @@ const main = async () => {
     dueSourceCount: result.dueSourceCount,
     lightweightSourceCount: result.lightweightSourceCount,
     emailSent: result.emailSent,
+    intakeDigest: result.intakeDigest,
     results: result.results,
     lightweightResults: result.lightweightResults,
   }, null, 2));

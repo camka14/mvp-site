@@ -124,6 +124,8 @@ const addPageMock = jest.fn(async () => ({}));
 const queueIntakeMock = jest.fn();
 const reviewPolicyMock = jest.fn();
 const processIntakeMock = jest.fn();
+const isEmailEnabledMock = jest.fn();
+const sendEmailMock = jest.fn();
 const mockPgClient = {
   connect: jest.fn(async () => undefined),
   query: jest.fn(async (sql: string) => ({
@@ -136,7 +138,10 @@ jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/id', () => ({ createId: () => `generated_${++idCounter}` }));
 jest.mock('@/lib/prismaConfig', () => ({ resolvePrismaPgPoolConfig: () => ({}) }));
 jest.mock('pg', () => ({ Client: jest.fn(() => mockPgClient) }));
-jest.mock('@/server/email', () => ({ isEmailEnabled: () => false, sendEmail: jest.fn() }));
+jest.mock('@/server/email', () => ({
+  isEmailEnabled: () => isEmailEnabledMock(),
+  sendEmail: (...args: unknown[]) => sendEmailMock(...args),
+}));
 jest.mock('@/server/affiliateImports/sourceIntake', () => ({
   createAffiliateSourceIntake: (...args: any[]) => createIntakeMock(...args),
   addAffiliateSourceIntakePage: (...args: any[]) => addPageMock(...args),
@@ -167,6 +172,8 @@ describe('affiliate source discovery orchestration', () => {
     prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([]);
     prismaMock.affiliateSourceIntakes.findMany.mockResolvedValue([]);
     prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([]);
+    isEmailEnabledMock.mockReturnValue(true);
+    sendEmailMock.mockResolvedValue(undefined);
     queuedRuns.splice(0, queuedRuns.length,
       { id: 'run_1', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
       { id: 'run_2', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
@@ -365,6 +372,30 @@ describe('affiliate source discovery orchestration', () => {
     expect(result.queuedCampaigns).toBe(3);
     expect(result.discoveryRuns).toHaveLength(3);
     expect(firecrawlClient.searchSources).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not email from the frequent intake worker unless explicitly requested', async () => {
+    queuedRuns.splice(0, queuedRuns.length);
+    prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([campaign]);
+    const firecrawlClient = {
+      searchSources: jest.fn(async () => ({
+        request: {},
+        response: {},
+        rows: [],
+        providerJobId: null,
+      })),
+      mapSourceUrls: jest.fn(),
+      scrapeSourcePage: jest.fn(),
+    };
+
+    const result = await runAffiliateIntakeAutomation(
+      { discoveryLimit: 1, intakeLimit: 1 },
+      { firecrawlClient, now: () => new Date('2026-07-21T12:00:00Z') },
+    );
+
+    expect(result.discoveryRuns).toHaveLength(1);
+    expect(result.emailSent).toBe(false);
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
   it('makes an incomplete location query cycle immediately due again', async () => {

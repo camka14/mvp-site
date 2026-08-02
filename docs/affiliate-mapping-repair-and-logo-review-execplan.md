@@ -28,6 +28,9 @@ The result is observable in three places: focused tests prove the retry classifi
 - [x] (2026-08-02 00:20Z) Applied the historical live classification: 20 intact packages returned to independent review, 83 incomplete or evidence-invalid packages returned to the producer, and 3 exhausted-logo packages became explicit human-review work.
 - [x] (2026-08-02 00:21Z) Verified the new live review cycle on Iron Courts Phoenix: one structured rejection atomically requeued the mapping with four reason codes and full reviewer feedback.
 - [x] (2026-08-02 00:22Z) Restarted both OVH goals with the updated skills and zero core-dump limits. Producer and reviewer each held one valid lease; both queues reported zero claims without leases.
+- [x] (2026-08-02 00:38Z) Added a Razumly-admin Affiliate imports view for explicit `HUMAN_REVIEW_REQUIRED` mapping jobs, including source identity, structured reason codes, blocking issues, attempt count, and a direct path into the stored intake evidence.
+- [x] (2026-08-02 00:38Z) Replaced the 15-minute intake-automation email with intake/discovery/mapping totals in the existing once-daily affiliate operations email, while keeping the 15-minute capture worker unchanged.
+- [x] (2026-08-02 00:38Z) Passed 30 focused tests, TypeScript, scoped ESLint, all 4,110 repository tests, and the 315-route coverage gate.
 - [ ] Record final queue counts, newly approved organizations, unresolved logos, and any packages that still need human evidence.
 
 ## Surprises & Discoveries
@@ -96,6 +99,14 @@ The result is observable in three places: focused tests prove the retry classifi
 
 - Decision: Keep invalid-event handling separate from organization acceptance. A producer must exclude and log an event lacking a usable address, coordinates, or documented organization-location fallback; that event cannot cause rejection of an otherwise supported organization/source package.
   Rationale: organization discovery and event ingestion are different data-quality boundaries. The scraper can later surface event failures in the admin flow without discarding a valid organization.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Surface terminal human-review work as a fourth Affiliate imports sub-tab and reuse the existing source-intake evidence modal for investigation.
+  Rationale: intake pages, artifacts, sources, candidates, and terminal mapping issues belong to one operational workspace. Reusing the protected evidence viewer avoids duplicating private artifact access or exposing evidence through a public route.
+  Date/Author: 2026-08-02 / Codex
+
+- Decision: Stop all automatic intake emails from the 15-minute automation run and append a rolling 24-hour intake digest to the existing daily affiliate scrape email.
+  Rationale: the daily scheduler already has a Postgres advisory lock, a configured recipient, and a single 05:00 America/Los_Angeles timer. Combining the summaries produces one daily operational email without changing capture cadence or adding another scheduler.
   Date/Author: 2026-08-02 / Codex
 
 ## Outcomes & Retrospective

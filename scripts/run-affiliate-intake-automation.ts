@@ -44,7 +44,7 @@ const main = async () => {
     const result = await runAffiliateIntakeAutomation({
       discoveryLimit: readInteger('--discovery-limit', 5),
       intakeLimit: readInteger('--intake-limit', 10),
-      sendSummary: !process.argv.includes('--no-email'),
+      sendSummary: process.argv.includes('--send-email') && !process.argv.includes('--no-email'),
     });
     console.log(JSON.stringify(result, null, 2));
   } finally {

@@ -99,7 +99,12 @@ type IntakeContext = {
   relatedDiscoveryResults?: Array<{ id: string; title?: string | null; canonicalUrl: string; score: number; status: string }>;
 };
 
-type Props = { active: boolean; refreshKey: number };
+type Props = {
+  active: boolean;
+  refreshKey: number;
+  requestedIntakeId?: string | null;
+  onRequestedIntakeHandled?: () => void;
+};
 type Message = { color: 'red' | 'teal' | 'yellow' | 'blue'; title: string; body: string };
 
 const targetKindOptions = ['EVENT', 'RENTAL', 'CLUB', 'TEAM'];
@@ -123,7 +128,12 @@ const statusColor = (value: string): string => {
   return 'yellow';
 };
 
-export default function AdminAffiliateSourceIntakePanel({ active, refreshKey }: Props) {
+export default function AdminAffiliateSourceIntakePanel({
+  active,
+  refreshKey,
+  requestedIntakeId,
+  onRequestedIntakeHandled,
+}: Props) {
   const [intakes, setIntakes] = useState<IntakeRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
@@ -278,7 +288,7 @@ export default function AdminAffiliateSourceIntakePanel({ active, refreshKey }: 
     }
   };
 
-  const openReview = async (intakeId: string) => {
+  const openReview = useCallback(async (intakeId: string) => {
     setSaving(true);
     try {
       await loadContext(intakeId);
@@ -288,7 +298,14 @@ export default function AdminAffiliateSourceIntakePanel({ active, refreshKey }: 
     } finally {
       setSaving(false);
     }
-  };
+  }, [loadContext]);
+
+  useEffect(() => {
+    if (!active || !requestedIntakeId) return;
+    void openReview(requestedIntakeId).finally(() => {
+      onRequestedIntakeHandled?.();
+    });
+  }, [active, onRequestedIntakeHandled, openReview, requestedIntakeId]);
 
   const queueInspection = async () => {
     if (!selectedIntakeId) return;

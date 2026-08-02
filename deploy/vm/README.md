@@ -168,7 +168,7 @@ Install the tracked units and start one manual run before enabling the timer:
     sudo journalctl -u bracketiq-affiliate-intake-automation.service -n 200 --no-pager
     sudo systemctl enable --now bracketiq-affiliate-intake-automation.timer
 
-The timer invokes the lock-protected job every 15 minutes. Each invocation processes up to five sequential discovery slices so an incomplete location search can continue without waiting for another timer interval. Campaign cadence controls whether the selected discovery provider actually runs, while the frequent invocation drains approved intake captures promptly. Inspect current and historical execution with:
+The timer invokes the lock-protected job every 15 minutes. Each invocation processes up to five sequential discovery slices so an incomplete location search can continue without waiting for another timer interval. Campaign cadence controls whether the selected discovery provider actually runs, while the frequent invocation drains approved intake captures promptly. These frequent runs use `--no-email`; discovery, capture, mapping, and human-review totals are included in the single daily affiliate operations email sent by the mapped-source job. Inspect current and historical execution with:
 
     systemctl status bracketiq-affiliate-intake-automation.timer
     systemctl list-timers bracketiq-affiliate-intake-automation.timer
@@ -187,6 +187,10 @@ discovery timer finds and captures new source sites. The daily mapped-source
 timer runs validated mappings whose source rows have `autoScrapeEnabled=true`;
 each source's `scrapeIntervalMinutes` determines whether the daily invocation
 performs a full scrape or a lightweight change check.
+
+The daily email includes the preceding 24 hours of discovery runs, newly created
+intakes, capture results, captured page totals, mapping-job transitions, and the
+current human-review backlog. The 15-minute intake worker does not send email.
 
 Install and enable the daily mapped-source timer only when explicitly requested:
 

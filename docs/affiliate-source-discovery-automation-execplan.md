@@ -222,7 +222,7 @@ At the end of this milestone, an unvalidated source cannot be selected by the au
 
 ### Milestone 7: Schedule and verify the complete automation loop
 
-Keep scheduling outside the Next.js web process. The canonical entrypoint is `npm run affiliate:intake:automation -- --live --summary`. It uses advisory locks and campaign cadence, so it is safe to invoke every 15 minutes even though ordinary discovery campaigns run weekly or monthly. A frequent invocation drains capture queues promptly without repeatedly charging search credits.
+Keep scheduling outside the Next.js web process. The canonical entrypoint is `npm run affiliate:intake:automation -- --live --summary --no-email`. It uses advisory locks and campaign cadence, so it is safe to invoke every 15 minutes even though ordinary discovery campaigns run weekly or monthly. A frequent invocation drains capture queues promptly without repeatedly charging search credits. It does not send per-run email; the daily affiliate scrape job includes the preceding 24 hours of intake activity in its single operations summary.
 
 For the tracked VM deployment, add `deploy/vm/systemd/bracketiq-affiliate-intake-automation.service` and `.timer`. The service runs the command inside the deployed application container with the production environment; the timer runs every 15 minutes with randomized delay and persistent catch-up after downtime. Document installation, logs, manual start, disable, and rollback in `deploy/vm/README.md`. If production is still on DigitalOcean App Platform when this milestone ships, use the same command in its supported scheduled-job mechanism or a protected operator runner; do not add an in-process `setInterval` fallback.
 

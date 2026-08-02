@@ -157,7 +157,7 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
     });
   });
 
-  it('separates source intake, sources, and candidates into sub-tabs', async () => {
+  it('separates source intake, human review, sources, and candidates into sub-tabs', async () => {
     const fetchMock = jest.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/admin/affiliate-sources') {
@@ -177,6 +177,7 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Source Intake' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Human review' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Sources (2)' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Candidates (0)' })).toBeInTheDocument();
     });
