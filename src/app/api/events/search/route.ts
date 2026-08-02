@@ -19,6 +19,12 @@ import { getEventTagsForEventIds, slugifyEventTagName } from '@/server/eventTags
 import { buildDivisionDiscoveryWhere } from '@/server/divisionDiscovery';
 import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
 import { protectAffiliateRow } from '@/server/affiliateOutbound';
+import {
+  EVENT_SEARCH_SORT_VALUES,
+  rankEventSearchCandidates,
+  type EventSearchSort,
+  type OrganizationRankingMetadata,
+} from '@/server/events/recommendedEventRanking';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +59,7 @@ const filterSchema = z.object({
 
 const searchSchema = z.object({
   filters: filterSchema.optional(),
+  sort: z.enum(EVENT_SEARCH_SORT_VALUES).optional(),
   limit: z.number().int().optional(),
   offset: z.number().int().optional(),
 }).partial();
@@ -144,7 +151,7 @@ const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
 
 const loadEventOrganizationsById = async (
   events: Array<{ organizationId?: string | null }>,
-): Promise<Map<string, Record<string, unknown>>> => {
+): Promise<Map<string, OrganizationRankingMetadata & Record<string, unknown>>> => {
   const organizationIds = uniqueStrings(events.map((event) => event.organizationId));
   if (!organizationIds.length) {
     return new Map();
@@ -338,15 +345,6 @@ const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; userIds?: u
   return normalizeIds(event.userIds).length;
 };
 
-const getComparableTime = (value: unknown): number => {
-  if (value instanceof Date) return value.getTime();
-  if (typeof value === 'string' || typeof value === 'number') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
-  }
-  return Number.MAX_SAFE_INTEGER;
-};
-
 const resolveSessionContext = async (
   req: NextRequest,
 ): Promise<{ userId: string; isAdmin: boolean; hiddenEventIds: string[] } | null> => {
@@ -423,6 +421,7 @@ export async function POST(req: NextRequest) {
   }
 
   const filters = parsed.data.filters ?? {};
+  const sort: EventSearchSort = parsed.data.sort ?? 'RECOMMENDED';
   const limit = parsed.data.limit ?? 50;
   const offset = parsed.data.offset ?? 0;
   const queryTerm = (filters.query ?? '').trim();
@@ -605,7 +604,9 @@ export async function POST(req: NextRequest) {
       isUsableUserLocation(userLocation.lat, userLongitude),
   );
   const hasDistanceFilter = hasUserLocation && typeof filters.maxDistance === 'number';
-  const candidateTake = hasDistanceFilter
+  const candidateTake = sort === 'RECOMMENDED'
+    ? undefined
+    : hasDistanceFilter
     ? undefined
     : hasQuery
       ? Math.min(Math.max((offset + limit + 1) * 5, 50), 500)
@@ -657,6 +658,10 @@ export async function POST(req: NextRequest) {
       })
   }
 
+  const organizationsById = await loadEventOrganizationsById(events).catch((error) => {
+    console.error('Failed to load event organizations for ranking', error);
+    return new Map<string, OrganizationRankingMetadata & Record<string, unknown>>();
+  });
   const sortedCandidateEvents = hasQuery
     ? events.sort((left, right) => {
         const leftScore = eventRelevanceScore(left, normalizedQuery);
@@ -666,31 +671,13 @@ export async function POST(req: NextRequest) {
         if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
         return (left.name ?? '').localeCompare(right.name ?? '');
       })
-    : events.sort((left, right) => {
-        if (hasUserLocation && userLocation && typeof userLongitude === 'number') {
-          const leftDistance = isUsableCoordinatePair(left.coordinates)
-            ? haversineMiles(
-                userLocation.lat,
-                userLongitude,
-                left.coordinates[1],
-                left.coordinates[0],
-              )
-            : null;
-          const rightDistance = isUsableCoordinatePair(right.coordinates)
-            ? haversineMiles(
-                userLocation.lat,
-                userLongitude,
-                right.coordinates[1],
-                right.coordinates[0],
-              )
-            : null;
-          if (leftDistance !== null && rightDistance !== null && leftDistance !== rightDistance) {
-            return leftDistance - rightDistance;
-          }
-          if (leftDistance !== null) return -1;
-          if (rightDistance !== null) return 1;
-        }
-        return getComparableTime((left as any).start) - getComparableTime((right as any).start);
+    : rankEventSearchCandidates(events, {
+        sort,
+        userLocation: hasUserLocation && userLocation && typeof userLongitude === 'number'
+          ? { lat: userLocation.lat, lng: userLongitude }
+          : null,
+        organizationsById,
+        diversifyOrganizations: !organizationId,
       });
   if (hasUserLocation) {
     totalCount = sortedCandidateEvents.length;
@@ -729,11 +716,6 @@ export async function POST(req: NextRequest) {
     console.error('Failed to enrich event tags for event search', error);
     return new Map<string, Array<Record<string, unknown>>>();
   });
-  const organizationsById = await loadEventOrganizationsById(eventsWithParticipants).catch((error) => {
-    console.error('Failed to enrich event organizations for event search', error);
-    return new Map<string, Record<string, unknown>>();
-  });
-
   const normalized = eventsWithParticipants.map((event) => {
     const divisionDetails = divisionDetailsByEventId.get(event.id) ?? [];
     const organizationId = typeof event.organizationId === 'string' ? event.organizationId : '';

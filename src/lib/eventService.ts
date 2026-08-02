@@ -194,6 +194,8 @@ export interface EventFilters {
   tags?: string[];
 }
 
+export type EventSearchSort = 'RECOMMENDED' | 'NEAREST' | 'SOONEST';
+
 export interface FieldBlockingResult {
   events: Event[];
   rentalSlots: TimeSlot[];
@@ -243,7 +245,8 @@ const buildPaginatedEventsRequestKey = (
   filters: EventFilters,
   limit: number,
   offset: number,
-): string => JSON.stringify(toStableRequestValue({ filters, limit, offset }));
+  sort: EventSearchSort,
+): string => JSON.stringify(toStableRequestValue({ filters, limit, offset, sort }));
 
 const PAGINATED_EVENTS_RECENT_CACHE_MS = 2_000;
 type PaginatedEventsPage = {
@@ -3326,10 +3329,11 @@ class EventService {
     filters: EventFilters,
     limit: number = 18,
     offset: number = 0,
+    sort: EventSearchSort = 'RECOMMENDED',
   ): Promise<PaginatedEventsPage> {
     try {
-      const body = { filters, limit, offset };
-      const requestKey = buildPaginatedEventsRequestKey(filters, limit, offset);
+      const body = { filters, sort, limit, offset };
+      const requestKey = buildPaginatedEventsRequestKey(filters, limit, offset, sort);
       const cachedResponse = recentPaginatedEventsResponses.get(requestKey);
       if (cachedResponse && cachedResponse.expiresAt > Date.now()) {
         return cachedResponse.page;
@@ -3413,8 +3417,9 @@ class EventService {
     filters: EventFilters,
     limit: number = 18,
     offset: number = 0,
+    sort: EventSearchSort = 'RECOMMENDED',
   ): Promise<Event[]> {
-    const page = await this.getEventsPage(filters, limit, offset);
+    const page = await this.getEventsPage(filters, limit, offset, sort);
     return page.events;
   }
 

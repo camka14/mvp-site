@@ -167,6 +167,15 @@ describe('eventService', () => {
 
     expect(page.events.map((event) => event.$id)).toEqual(['evt_1']);
     expect(page.pagination).toEqual({ hasMore: true, nextOffset: 1, totalCount: 25 });
+    expect(apiRequestMock).toHaveBeenLastCalledWith('/api/events/search', {
+      method: 'POST',
+      body: {
+        filters: { query: 'metadata-page' },
+        sort: 'RECOMMENDED',
+        limit: 18,
+        offset: 0,
+      },
+    });
 
     apiRequestMock.mockResolvedValueOnce({
       events: [

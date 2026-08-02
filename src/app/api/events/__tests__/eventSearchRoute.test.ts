@@ -267,7 +267,7 @@ describe('POST /api/events/search', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      take: 100,
+      take: undefined,
       skip: 0,
     }));
     expect(prismaMock.events.count).toHaveBeenCalledWith({
@@ -401,6 +401,117 @@ describe('POST /api/events/search', () => {
     expect(json.pagination.totalCount).toBe(2);
   });
 
+  it('uses claimed status and organization diversity in the default recommended order', async () => {
+    prismaMock.organizations.findMany.mockResolvedValue([
+      {
+        id: 'recs',
+        name: 'RECS',
+        ownershipStatus: 'UNCLAIMED',
+        claimVerificationLevel: 'NONE',
+      },
+      {
+        id: 'claimed-org',
+        name: 'Claimed Club',
+        ownershipStatus: 'CLAIMED',
+        claimVerificationLevel: 'AFFILIATION',
+      },
+    ]);
+    prismaMock.events.findMany.mockResolvedValue([
+      ...Array.from({ length: 6 }, (_, index) => ({
+        ...eventRow(`recs-${index + 1}`, 'Round Robin'),
+        organizationId: 'recs',
+        sourceType: 'AFFILIATE_IMPORT',
+      })),
+      {
+        ...eventRow('claimed-event', 'Claimed Event'),
+        organizationId: 'claimed-org',
+        sourceType: 'AFFILIATE_IMPORT',
+      },
+      {
+        ...eventRow('native-event', 'BracketIQ Event'),
+        organizationId: null,
+        sourceType: null,
+      },
+    ]);
+    prismaMock.events.count.mockResolvedValue(8);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {},
+        limit: 4,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events.map((event: any) => event.id)).toEqual(expect.arrayContaining([
+      'native-event',
+      'claimed-event',
+    ]));
+    expect(json.events.filter((event: any) => event.organizationId === 'recs')).toHaveLength(2);
+    expect(json.pagination).toEqual({ hasMore: true, nextOffset: 4, totalCount: 8 });
+
+    const secondResponse = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: {},
+        limit: 4,
+        offset: 4,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const secondJson = await secondResponse.json();
+    const firstIds = json.events.map((event: any) => event.id);
+    const secondIds = secondJson.events.map((event: any) => event.id);
+
+    expect(secondResponse.status).toBe(200);
+    expect(firstIds.filter((id: string) => secondIds.includes(id))).toEqual([]);
+    expect([...firstIds, ...secondIds].sort()).toEqual([
+      'claimed-event',
+      'native-event',
+      'recs-1',
+      'recs-2',
+      'recs-3',
+      'recs-4',
+      'recs-5',
+      'recs-6',
+    ]);
+    expect(secondJson.pagination).toEqual({ hasMore: false, nextOffset: 8, totalCount: 8 });
+  });
+
+  it('honors an explicit nearest order without recommendation boosts', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        ...eventRow('far-native', 'Far native event'),
+        coordinates: [-123.2, 45.5152],
+        sourceType: null,
+      },
+      {
+        ...eventRow('near-affiliate', 'Near affiliate event'),
+        coordinates: [-122.68, 45.5152],
+        sourceType: 'AFFILIATE_IMPORT',
+      },
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { userLocation: { lat: 45.5152, lng: -122.6784 } },
+        sort: 'NEAREST',
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events.map((event: any) => event.id)).toEqual(['near-affiliate', 'far-native']);
+  });
+
   it('returns a nearby sport-filtered event without requiring an event division row', async () => {
     prismaMock.sports.findMany.mockResolvedValue([{ id: 'Tennis' }]);
     prismaMock.events.findMany.mockResolvedValue([
@@ -514,7 +625,7 @@ describe('POST /api/events/search', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(json.events.map((event: any) => event.id)).toEqual(['good', 'bad']);
+    expect(json.events.map((event: any) => event.id)).toEqual(['bad', 'good']);
     expect(json.pagination).toEqual({ hasMore: false, nextOffset: 2, totalCount: 2 });
   });
 });

@@ -739,7 +739,7 @@ export default function DiscoverMapModal({
               dateTo: eventDateRange.dateTo,
               tags: selectedTags.length > 0 ? selectedTags : undefined,
               sports: selectedSports.length > 0 ? selectedSports : undefined,
-            }, 100, 0)
+            }, 100, 0, 'NEAREST')
           : Promise.resolve([]),
         target === 'events'
           ? Promise.resolve([])

@@ -34,13 +34,14 @@ import DiscoverSearchControls from './DiscoverSearchControls';
 import DivisionDiscoveryFilters, { type DivisionDiscoveryFilterValue } from './DivisionDiscoveryFilters';
 
 const EVENT_SORT_OPTIONS = [
+  { value: 'recommended', label: 'Recommended' },
   { value: 'soonest', label: 'Soonest' },
   { value: 'nearest', label: 'Nearest' },
   { value: 'price-low', label: 'Price (Low to High)' },
   { value: 'popular', label: 'Most popular' },
   { value: 'alpha', label: 'A to Z' },
 ] as const;
-type EventSortValue = (typeof EVENT_SORT_OPTIONS)[number]['value'];
+export type EventSortValue = (typeof EVENT_SORT_OPTIONS)[number]['value'];
 
 const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
@@ -109,6 +110,8 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   hideWeeklyChildren?: boolean;
   setHideWeeklyChildren?: (value: boolean) => void;
   defaultSort?: EventSortValue;
+  eventSort?: EventSortValue;
+  onEventSortChange?: (value: EventSortValue) => void;
 };
 
 export default function EventsTabContent<TEventType extends string = Event['eventType']>(
@@ -157,10 +160,20 @@ export default function EventsTabContent<TEventType extends string = Event['even
     createEventHelperText = null,
     hideWeeklyChildren = false,
     setHideWeeklyChildren,
-    defaultSort = 'soonest',
+    defaultSort = 'recommended',
+    eventSort: controlledEventSort,
+    onEventSortChange,
   } = props;
 
-  const [eventSort, setEventSort] = useState<EventSortValue>(defaultSort);
+  const [internalEventSort, setInternalEventSort] = useState<EventSortValue>(defaultSort);
+  const eventSort = controlledEventSort ?? internalEventSort;
+  const setEventSort = useCallback((value: EventSortValue) => {
+    if (onEventSortChange) {
+      onEventSortChange(value);
+      return;
+    }
+    setInternalEventSort(value);
+  }, [onEventSortChange]);
   const [sportSearchTerm, setSportSearchTerm] = useState('');
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const allEventTypesSelected = selectedEventTypes.length === eventTypeOptions.length;
@@ -256,6 +269,8 @@ export default function EventsTabContent<TEventType extends string = Event['even
     };
 
     switch (eventSort) {
+      case 'recommended':
+        break;
       case 'nearest':
         sorted.sort((a, b) => {
           const aDistance = getEventDistanceKm(a);
@@ -638,7 +653,7 @@ export default function EventsTabContent<TEventType extends string = Event['even
               aria-label="Sort events"
               data={EVENT_SORT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
               value={eventSort}
-              onChange={(value) => setEventSort((value as (typeof EVENT_SORT_OPTIONS)[number]['value']) ?? 'soonest')}
+              onChange={(value) => setEventSort((value as (typeof EVENT_SORT_OPTIONS)[number]['value']) ?? 'recommended')}
               leftSection={<ArrowUpDown size={14} />}
               style={{ minWidth: 220 }}
             />

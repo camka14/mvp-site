@@ -30,7 +30,7 @@ import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
 import { Event, EventTag, Facility, Field, Organization, OrganizationTag, Team, TimeSlot } from '@/types';
-import { eventService } from '@/lib/eventService';
+import { eventService, type EventSearchSort } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { teamService } from '@/lib/teamService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
@@ -47,7 +47,7 @@ import {
 } from '@/lib/discoverFilters';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
-import EventsTabContent from './components/EventsTabContent';
+import EventsTabContent, { type EventSortValue } from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
 import DiscoverMapModal from './components/DiscoverMapModal';
 import DivisionDiscoveryFilters, { type DivisionDiscoveryFilterValue } from './components/DivisionDiscoveryFilters';
@@ -218,6 +218,12 @@ function DiscoverPageContent() {
     urlPreset.tab === 'events' ? discoverDateParamToDate(urlPreset.endDate) : null
   ));
   const [searchTerm, setSearchTerm] = useState(urlPreset.query);
+  const [eventSort, setEventSort] = useState<EventSortValue>('recommended');
+  const serverEventSort: EventSearchSort = eventSort === 'nearest'
+    ? 'NEAREST'
+    : eventSort === 'soonest'
+      ? 'SOONEST'
+      : 'RECOMMENDED';
   const debouncedSearch = useDebounce(searchTerm, 500);
 
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
@@ -576,7 +582,7 @@ function DiscoverPageContent() {
     setEventsError(null);
     try {
       const filters = buildEventFilters(queryOverride);
-      const page = await eventService.getEventsPage(filters, EVENTS_LIMIT, 0);
+      const page = await eventService.getEventsPage(filters, EVENTS_LIMIT, 0, serverEventSort);
       if (requestId !== latestFirstPageRequestRef.current) {
         return;
       }
@@ -608,7 +614,7 @@ function DiscoverPageContent() {
         setIsLoadingInitial(false);
       }
     }
-  }, [buildEventFilters, hiddenEventIds]);
+  }, [buildEventFilters, hiddenEventIds, serverEventSort]);
 
   const loadMoreEvents = useCallback(async () => {
     if (
@@ -623,7 +629,7 @@ function DiscoverPageContent() {
     setEventsError(null);
     try {
       const filters = buildEventFilters();
-      const page = await eventService.getEventsPage(filters, EVENTS_LIMIT, eventOffset);
+      const page = await eventService.getEventsPage(filters, EVENTS_LIMIT, eventOffset, serverEventSort);
       const visiblePageEvents = page.events.filter((event) => !hiddenEventIds.has(event.$id));
       const addedVisibleEventCount = visiblePageEvents.filter((event) => !visibleEventIdsRef.current.has(event.$id)).length;
       setEvents((prev) => {
@@ -646,7 +652,7 @@ function DiscoverPageContent() {
       isLoadMoreRequestInFlightRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents, hiddenEventIds]);
+  }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents, hiddenEventIds, serverEventSort]);
 
   useEffect(() => {
     if (hiddenEventIds.size === 0) {
@@ -1279,7 +1285,8 @@ function DiscoverPageContent() {
               eventsError={eventsError}
               onEventClick={handleSelectEvent}
               onCreateEvent={handleCreateEventNavigation}
-              defaultSort="nearest"
+              eventSort={eventSort}
+              onEventSortChange={setEventSort}
             />
           </Tabs.Panel>
 

@@ -1452,7 +1452,7 @@ function OrganizationDetailContent() {
       const filters = buildEventFilters();
       const shouldLoadHostedEvents = selectedHostedEventTypes.length > 0;
       const hostedEventsPromise = shouldLoadHostedEvents
-        ? eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, 0)
+        ? eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, 0, 'SOONEST')
         : Promise.resolve<Event[]>([]);
       const rentalEventsPromise = includeRentalEventType
         ? loadRentalEventsForOrganization(normalizedOrganizationId, filters.dateFrom, filters.dateTo)
@@ -1492,7 +1492,7 @@ function OrganizationDetailContent() {
     setEventsTabError(null);
     try {
       const filters = buildEventFilters();
-      const page = await eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, eventsTabOffset);
+      const page = await eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, eventsTabOffset, 'SOONEST');
       const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
       setEventsTabEvents((previous) => {
         const merged = [...previous, ...page.filter((event) => !hiddenEventIds.has(event.$id))];

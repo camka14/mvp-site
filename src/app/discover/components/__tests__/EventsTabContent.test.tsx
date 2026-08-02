@@ -119,6 +119,7 @@ describe('EventsTabContent', () => {
     );
 
     expect(screen.getByText('37 events available.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Sort events' })).toHaveValue('Recommended');
   });
 
   it('shows the server event total as near you when distance filtering is active', () => {

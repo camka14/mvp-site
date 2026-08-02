@@ -373,6 +373,7 @@ function WidgetEventSearchPicker({
           },
           8,
           0,
+          'SOONEST',
         )
         .then((events) => {
           if (cancelled) {
