@@ -95,8 +95,8 @@ export const buildAffiliatePlaceLocationQueries = (params: {
     : address;
 
   return uniqueStrings([
-    name && fullAddress && !fullAddress.toLowerCase().includes(name.toLowerCase()) ? `${name}, ${fullAddress}` : null,
     fullAddress,
+    name && fullAddress && !fullAddress.toLowerCase().includes(name.toLowerCase()) ? `${name}, ${fullAddress}` : null,
     location && fullAddress && !fullAddress.toLowerCase().includes(location.toLowerCase())
       ? `${location}, ${fullAddress}`
       : null,

@@ -1335,11 +1335,28 @@ const assertAffiliateCoordinatesForPublication = (params: {
   queries: string[];
 }) => {
   if (isValidGeocodeCoordinates(params.coordinates)) return;
-  const querySummary = params.queries.length
-    ? ` Attempted location queries: ${params.queries.join(' | ')}.`
-    : ' No source-backed address, city, or place was available.';
+  if (params.queries.length === 0) {
+    throw new Error(
+      `Affiliate ${params.targetLabel} cannot be published without valid non-zero coordinates. `
+      + 'No geocoding request was made because this candidate has no source-backed address, city, or venue. '
+      + 'Add a verified location to the candidate or repair its source mapping, then retry publication.',
+    );
+  }
+
+  const attemptedQueries = `Attempted location queries: ${params.queries.join(' | ')}.`;
+  if (!process.env.GOOGLE_MAPS_API_KEY?.trim()) {
+    throw new Error(
+      `Affiliate ${params.targetLabel} cannot be published without valid non-zero coordinates. `
+      + 'The server-only GOOGLE_MAPS_API_KEY is missing, so the stored location could not be geocoded. '
+      + `Configure Places API (New) and Geocoding API, then retry publication. ${attemptedQueries}`,
+    );
+  }
+
   throw new Error(
-    `Affiliate ${params.targetLabel} cannot be published without valid non-zero coordinates. Configure the server-only GOOGLE_MAPS_API_KEY for Places API (New) and Geocoding API, or correct the stored location evidence.${querySummary}`,
+    `Affiliate ${params.targetLabel} cannot be published without valid non-zero coordinates. `
+    + 'Google Places and Geocoding did not resolve the stored source-backed location. '
+    + 'Verify or correct the candidate location. If it is correct, verify the API key restrictions and enabled APIs. '
+    + attemptedQueries,
   );
 };
 
@@ -1495,13 +1512,56 @@ const loadSourceOrganization = async (source: { organizationId?: string | null }
   return organization;
 };
 
+const sourceHasSeparatePublishedClubTarget = async (
+  source: { id?: string | null; organizationId?: string | null },
+): Promise<boolean> => {
+  const sourceId = nullableString(source.id);
+  const sourceOrganizationId = nullableString(source.organizationId);
+  if (!sourceId || !sourceOrganizationId) return false;
+  const publishedClub = await affiliatePrisma().candidates.findFirst({
+    where: {
+      sourceId,
+      listingKind: 'CLUB',
+      status: 'PUBLISHED',
+      publishedOrganizationId: { not: null },
+    },
+    select: { publishedOrganizationId: true },
+  });
+  const targetOrganizationId = nullableString(publishedClub?.publishedOrganizationId);
+  return Boolean(targetOrganizationId && targetOrganizationId !== sourceOrganizationId);
+};
+
+const keepSourceOrganizationPrivateForPublishedClub = async (
+  source: { organizationId?: string | null },
+  targetOrganizationId: string,
+) => {
+  const sourceOrganizationId = nullableString(source.organizationId);
+  if (!sourceOrganizationId || sourceOrganizationId === targetOrganizationId) return;
+  const { organizations } = affiliatePrisma();
+  const sourceOrganization = await organizations.findUnique({
+    where: { id: sourceOrganizationId },
+    select: { status: true, publicPageEnabled: true },
+  });
+  if (!sourceOrganization || sourceOrganization.publicPageEnabled === true || sourceOrganization.status === 'UNLISTED') {
+    return;
+  }
+  await organizations.update({
+    where: { id: sourceOrganizationId },
+    data: {
+      status: 'UNLISTED',
+      updatedAt: new Date(),
+    },
+  });
+};
+
 const assertSourceOrganization = async (source: { organizationId?: string | null }) => {
   await loadSourceOrganization(source);
 };
 
 const markSourceOrganizationListedForPublishedContent = async (
-  source: { organizationId?: string | null },
+  source: { id?: string | null; organizationId?: string | null },
 ) => {
+  if (await sourceHasSeparatePublishedClubTarget(source)) return;
   const organization = await loadSourceOrganization(source);
   const { organizations } = affiliatePrisma();
   const geocodeQueries = buildAffiliatePlaceLocationQueries({
@@ -2249,6 +2309,9 @@ export const runAffiliateSourceScrape = async (
             publishedOrganizationId: organization.id,
           },
         });
+        if (shouldPublishCandidate) {
+          await keepSourceOrganizationPrivateForPublishedClub(source, organization.id);
+        }
         savedCandidates.push(savedWithOrganization);
       } else {
         if (shouldPublishCandidate && initialCandidateStatus !== 'PUBLISHED') {
@@ -2581,6 +2644,7 @@ export const publishAffiliateCandidate = async (
         publishedOrganizationId: organization.id,
       },
     });
+    await keepSourceOrganizationPrivateForPublishedClub(source, organization.id);
     return organization;
   }
 

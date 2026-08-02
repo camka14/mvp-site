@@ -34,6 +34,19 @@ describe('affiliate location resolution inputs', () => {
     ]);
   });
 
+  it('tries an evidenced organization address before a fuzzy organization-name search', () => {
+    expect(buildAffiliatePlaceLocationQueries({
+      name: 'Chicago United Hockey League',
+      address: '1321 N Dee Rd',
+      city: 'Park Ridge, IL 60068',
+    })).toEqual([
+      '1321 N Dee Rd, Park Ridge, IL 60068',
+      'Chicago United Hockey League, 1321 N Dee Rd, Park Ridge, IL 60068',
+      'Chicago United Hockey League, Park Ridge, IL 60068',
+      'Park Ridge, IL 60068',
+    ]);
+  });
+
   it('requires a venue or street address for a specific event location', () => {
     expect(buildAffiliateSpecificEventLocationQueries({ city: 'Houston, TX' })).toEqual([]);
     expect(buildAffiliateSpecificEventLocationQueries({

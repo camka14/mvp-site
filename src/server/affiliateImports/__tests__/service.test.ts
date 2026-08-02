@@ -3,6 +3,7 @@
 const prismaMock = {
   affiliateImportCandidates: {
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
@@ -104,6 +105,7 @@ describe('affiliate import service', () => {
     idCounter = 0;
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.6765, 45.5231]);
     prismaMock.divisions.findMany.mockResolvedValue([]);
+    prismaMock.affiliateImportCandidates.findFirst.mockResolvedValue(null);
     prismaMock.divisions.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.divisions.upsert.mockImplementation(async ({ create }) => create);
     prismaMock.events.deleteMany.mockResolvedValue({ count: 0 });
@@ -1449,6 +1451,8 @@ describe('affiliate import service', () => {
   });
 
   it('does not list an affiliate club when its source-backed location cannot resolve', async () => {
+    const originalGoogleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+    process.env.GOOGLE_MAPS_API_KEY = 'test-google-key';
     geocodeAddressToCoordinatesMock.mockResolvedValue(null);
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_missing_club_coordinates',
@@ -1471,9 +1475,84 @@ describe('affiliate import service', () => {
       ownershipStatus: 'UNCLAIMED',
     });
 
-    await expect(publishAffiliateCandidate('candidate_missing_club_coordinates')).rejects.toThrow(
-      'Affiliate organization cannot be published without valid non-zero coordinates.',
+    try {
+      await expect(publishAffiliateCandidate('candidate_missing_club_coordinates')).rejects.toThrow(
+        'Google Places and Geocoding did not resolve the stored source-backed location. Verify or correct the candidate location.',
+      );
+    } finally {
+      if (originalGoogleMapsApiKey === undefined) {
+        delete process.env.GOOGLE_MAPS_API_KEY;
+      } else {
+        process.env.GOOGLE_MAPS_API_KEY = originalGoogleMapsApiKey;
+      }
+    }
+
+    expect(prismaMock.organizations.upsert).not.toHaveBeenCalled();
+  });
+
+  it('explains when an affiliate club has no source-backed location to geocode', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_without_club_location',
+      sourceId: 'source_1',
+      listingKind: 'CLUB',
+      title: 'Locationless Volleyball Club',
+      officialActionUrl: 'https://example.com/club',
+      sourceUrl: 'https://example.com/clubs',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      sourceKey: 'example-clubs',
+      organizationId: 'source_org',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'source_org',
+      ownerId: 'owner_1',
+      ownershipStatus: 'UNCLAIMED',
+    });
+
+    await expect(publishAffiliateCandidate('candidate_without_club_location')).rejects.toThrow(
+      'No geocoding request was made because this candidate has no source-backed address, city, or venue. Add a verified location to the candidate or repair its source mapping, then retry publication.',
     );
+
+    expect(geocodeAddressToCoordinatesMock).not.toHaveBeenCalled();
+    expect(prismaMock.organizations.upsert).not.toHaveBeenCalled();
+  });
+
+  it('explains when an affiliate club location cannot be geocoded because the server key is missing', async () => {
+    const originalGoogleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+    delete process.env.GOOGLE_MAPS_API_KEY;
+    geocodeAddressToCoordinatesMock.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_without_server_geocoder',
+      sourceId: 'source_1',
+      listingKind: 'CLUB',
+      title: 'Brooklyn Volleyball Club',
+      city: 'Brooklyn, NY',
+      officialActionUrl: 'https://example.com/club',
+      sourceUrl: 'https://example.com/clubs',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      sourceKey: 'example-clubs',
+      organizationId: 'source_org',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'source_org',
+      ownerId: 'owner_1',
+      ownershipStatus: 'UNCLAIMED',
+    });
+
+    try {
+      await expect(publishAffiliateCandidate('candidate_without_server_geocoder')).rejects.toThrow(
+        'The server-only GOOGLE_MAPS_API_KEY is missing, so the stored location could not be geocoded.',
+      );
+    } finally {
+      if (originalGoogleMapsApiKey !== undefined) {
+        process.env.GOOGLE_MAPS_API_KEY = originalGoogleMapsApiKey;
+      }
+    }
 
     expect(prismaMock.organizations.upsert).not.toHaveBeenCalled();
   });
@@ -2647,10 +2726,59 @@ describe('affiliate import service', () => {
         publishedOrganizationId: 'affiliate_org_existing',
       },
     });
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith({
+      where: { id: 'source_org' },
+      data: {
+        status: 'UNLISTED',
+        updatedAt: expect.any(Date),
+      },
+    });
     expect(organization).toEqual(expect.objectContaining({
       id: 'affiliate_org_existing',
       status: 'LISTED',
       publicPageEnabled: true,
+    }));
+  });
+
+  it('does not relist a private source organization after its separate club target is published', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_event_for_published_club',
+      sourceId: 'source_clubs',
+      listingKind: 'EVENT',
+      title: 'Portland Juniors Clinic',
+      venueName: 'Portland Sports Center',
+      city: 'Portland, OR',
+      startsAt: new Date('2099-08-18T04:00:00.000Z'),
+      officialActionUrl: 'https://example.com/clinic',
+      sourceUrl: 'https://example.com/clubs',
+    });
+    prismaMock.affiliateImportCandidates.findFirst.mockResolvedValue({
+      id: 'candidate_club',
+      publishedOrganizationId: 'affiliate_org_existing',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_clubs',
+      name: 'Portland Juniors Clubs',
+      sourceKey: 'portland-juniors-clubs',
+      organizationId: 'source_org',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'source_org',
+      ownerId: 'owner_1',
+      status: 'UNLISTED',
+      publicPageEnabled: false,
+      coordinates: [-122.6765, 45.5231],
+    });
+    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ id: 'event_1', ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_event_for_published_club' });
+
+    await publishAffiliateCandidate('candidate_event_for_published_club');
+
+    expect(prismaMock.organizations.update).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'LISTED' }),
     }));
   });
 
