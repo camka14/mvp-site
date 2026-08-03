@@ -12,6 +12,7 @@ export const affiliateMappingReviewDispositionSchema = z.object({
   reasonCodes: z.array(z.enum([
     'LIVE_SETUP_UNSUPPORTED',
     'EVENT_LOCATION_INVALID',
+    'ORGANIZATION_LOCATION_INVALID',
     'EVENT_DIVISION_GROUPING_INVALID',
     'EVENT_DIVISION_CLASSIFICATION_INVALID',
     'EVENT_PRICING_INVALID',
@@ -151,6 +152,7 @@ export const affiliateApprovalResultSchema = z.object({
   const producerReasonCodes = new Set([
     'LIVE_SETUP_UNSUPPORTED',
     'EVENT_LOCATION_INVALID',
+    'ORGANIZATION_LOCATION_INVALID',
     'EVENT_DIVISION_GROUPING_INVALID',
     'EVENT_DIVISION_CLASSIFICATION_INVALID',
     'EVENT_PRICING_INVALID',

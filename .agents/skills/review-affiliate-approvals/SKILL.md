@@ -99,6 +99,17 @@ review scrapes rejected events without usable locations. Confirm that those
 events were excluded from candidate/target persistence and that both scrape
 runs contain stable title-and-reason rejection summaries.
 
+Review the canonical organization location independently. Prefer an evidenced
+street address, but do not require one. When no address exists, require the most
+specific defensible city, locality, metro, or region from first-party content,
+stored intake discovery context, or explicit parent-directory evidence. Accept
+server-side Google Places coordinates for that locality or region as the
+organization fallback. Confirm that source metadata or notes identify the
+fallback evidence. Return missing or invalid organization location and
+coordinates to `PRODUCER_REPAIR` with `ORGANIZATION_LOCATION_INVALID` when a
+defensible locality exists. Use human review only for conflicting or genuinely
+absent locality evidence. Do not apply this city-level fallback to events.
+
 Also review event and division integrity independently of the organization:
 
 - Compare the organization description and inspected event descriptions with

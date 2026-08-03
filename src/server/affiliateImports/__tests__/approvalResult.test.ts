@@ -136,6 +136,20 @@ describe('affiliate approval result', () => {
     });
   });
 
+  it('accepts a missing organization locality as a producer repair', () => {
+    expect(affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['The organization omitted an evidenced city and coordinates.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['ORGANIZATION_LOCATION_INVALID'],
+      },
+    }).mappingDisposition?.reasonCodes).toEqual(['ORGANIZATION_LOCATION_INVALID']);
+  });
+
   it('accepts description defects as producer repairs', () => {
     expect(affiliateApprovalResultSchema.parse({
       ...domainResult,

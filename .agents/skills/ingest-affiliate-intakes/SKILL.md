@@ -65,8 +65,13 @@ Create or repair everything needed for review:
 - an idempotent source setup script and package command that supports the normal
   guarded `--live` application path; validate it only against the disposable
   database because the producer goal never authorizes live application;
-- the canonical organization draft with website, description, sport, city, and address when evidenced; for US locations, persist the city as `City, ST` whenever the stored evidence establishes the state so public search and sitemap location filters can classify it, but never infer a missing state;
-- valid `[longitude, latitude]` coordinates resolved through the server-side Google Places path for the canonical organization when its own location is evidenced;
+- the canonical organization draft with website, description, sport, and the
+  best defensible location. Prefer a street address. When no address exists,
+  persist the most specific evidenced city or region. For US locations, use
+  `City, ST` when the state is known;
+- valid `[longitude, latitude]` coordinates resolved through the server-side
+  Google Places path. A city or region centroid is an acceptable organization
+  fallback when a street address is unavailable;
 - a generic mapping, manual candidates, or a clearly justified custom extractor;
 - official outbound action URLs;
 - an official logo asset or official screenshot crop normalized to an opaque
@@ -119,6 +124,18 @@ lacks a usable location. The review scrape must exclude those events, record
 their titles and location rejection reasons in the scrape run, and keep the
 organization/source package reviewable. Never mark the canonical organization
 or its `CLUB` candidate failed solely because an `EVENT` child was excluded.
+
+Resolve the canonical organization location with progressive specificity.
+Prefer a source-backed street address or named facility. Otherwise use the most
+specific supported city, locality, metro, or region from first-party content,
+the stored intake discovery context, or a parent directory that explicitly
+places the organization in that market. Record the fallback evidence in source
+metadata or notes. Geocode that locality through the server-side Google Places
+path and persist its `[longitude, latitude]` centroid. Do not leave organization
+location and coordinates empty merely because the street address is missing.
+When location evidence conflicts, use human review. Never invent a street
+address or choose an unrelated city. This city-level organization fallback does
+not weaken the event-location requirements below.
 
 For an event with its own evidenced venue or address, let the normal
 server-side Google Places resolver obtain its coordinates. When stored evidence

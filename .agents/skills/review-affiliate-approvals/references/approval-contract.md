@@ -60,7 +60,8 @@ rejection is escalated to human review even if the reviewer requested repair.
 Mapping `APPROVE` results and all domain-policy results must omit this field.
 
 Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
-`EVENT_LOCATION_INVALID`, `EVENT_DIVISION_GROUPING_INVALID`,
+`EVENT_LOCATION_INVALID`, `ORGANIZATION_LOCATION_INVALID`,
+`EVENT_DIVISION_GROUPING_INVALID`,
 `EVENT_DIVISION_CLASSIFICATION_INVALID`, `EVENT_PRICING_INVALID`,
 `EVENT_CAPACITY_INVALID`, `EVENT_DESCRIPTION_INVALID`,
 `ORGANIZATION_DESCRIPTION_INVALID`, `OFFICIAL_LOGO_REPAIR_REQUIRED`,
@@ -112,6 +113,17 @@ valid for an event only when the candidate explicitly records
 the referenced canonical organization has valid coordinates. Cite the stored
 intake artifact plus candidate/target or rejection-log evidence. Correctly
 filtered bad events do not invalidate an otherwise valid organization package.
+
+The canonical organization does not require a street address when one is not
+published. It does require the most specific defensible city, locality, metro,
+or region and valid non-zero coordinates resolved through the server-side
+Google Places path. First-party content is preferred; stored intake discovery
+context or explicit parent-directory evidence is a valid fallback. City or
+region centroid coordinates are acceptable for the organization when source
+metadata or notes record that evidence. Use `ORGANIZATION_LOCATION_INVALID`
+with `PRODUCER_REPAIR` when this fallback is available but missing or invalid.
+Use human review only when locality evidence is absent or conflicting. This
+organization rule does not make city-only event locations valid.
 
 `packageValidationPassed` also requires division and pricing integrity. Every
 source division must be grouped under the correct parent event; adjacent

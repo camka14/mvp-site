@@ -91,6 +91,9 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('never narrate where a record was listed, found, scraped, or mapped');
     expect(goal).toContain('or start event copy with its full title');
     expect(goal).toContain('organization-level activity description');
+    expect(goal).toContain('Give every organization its best defensible location');
+    expect(goal).toContain('otherwise geocode the most specific supported city or region');
+    expect(goal).toContain('Do not leave organization location null merely because its address is missing');
     expect(goal).toContain('Setup scripts must support guarded --live');
     expect(goal).toContain('MANUAL_LOGO_REVIEW');
     expect(goal).toContain('inspect stored branding');

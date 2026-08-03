@@ -28,8 +28,12 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-08-01) Changed domain review to default allow when no explicit target-path prohibition exists and added a guarded deferred-policy requeue with decision-history preservation.
 - [x] (2026-08-01) Previewed and requeued 249 live deferred domain policies without restarting the approval loop. The same cutoff then returned zero eligible deferred policies.
 - [x] (2026-08-02) Added configurable reviewer pools, unique reviewer IDs, concurrent claim tests, worker-specific progress files, and required valid-event-division review.
+- [x] (2026-08-02) Required reviewers to accept an evidenced city or region centroid when an organization has no street address and to return a missing defensible fallback as `ORGANIZATION_LOCATION_INVALID` producer repair.
 
 ## Surprises & Discoveries
+
+- Observation: every current mapping job in `HUMAN_REVIEW_REQUIRED` was marked by the Luna reviewer, not by the legacy pre-reviewer workflow.
+  Evidence: the 2026-08-03 live audit found 82 terminal jobs, all with a `humanReviewRequired` envelope and reviewer ID `codex-luna-approval-vm-1`. Luna deferred 76 for insufficient evidence and rejected six that then exceeded the automatic producer-repair limit.
 
 - Observation: the mapping application script enforces useful live safety checks: one evidence-matched source, an official logo or an explicit accepted-logo-absence flag, an unlisted organization, disabled automation, an unvalidated mapping, a successful review scrape, and the expected candidate count.
   Evidence: `scripts/apply-approved-affiliate-mapping-jobs.ts` performs these checks before marking the mapping job approved.

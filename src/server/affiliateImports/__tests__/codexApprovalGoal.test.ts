@@ -77,6 +77,9 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('NOT_APPLIED before approval is expected');
     expect(goal).toContain('need not exist in production');
     expect(goal).toContain('Review organizations independently from child events');
+    expect(goal).toContain('A street address is optional');
+    expect(goal).toContain('best defensible city/region and server-side Places coordinates');
+    expect(goal).toContain('ORGANIZATION_LOCATION_INVALID producer repair');
     expect(goal).toContain('event locations do not invalidate a valid organization');
     expect(goal).toContain('evidenced SOURCE_ORGANIZATION fallback');
     expect(goal).toContain('Verify division grouping, source labels');

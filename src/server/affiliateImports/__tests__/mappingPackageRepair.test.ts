@@ -179,6 +179,22 @@ describe('affiliate mapping producer repair eligibility', () => {
     }));
   });
 
+  it('returns a structured organization location defect to the producer', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      approvalDecision: {
+        mappingDisposition: {
+          nextAction: 'PRODUCER_REPAIR',
+          reasonCodes: ['ORGANIZATION_LOCATION_INVALID'],
+        },
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      repairReason: 'ORGANIZATION_LOCATION_INVALID',
+      reasonCodes: ['ORGANIZATION_LOCATION_INVALID'],
+    }));
+  });
+
   it('returns structured event and organization description defects to the producer', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,

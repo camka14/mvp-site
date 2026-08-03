@@ -63,7 +63,7 @@ export const buildCodexAffiliateIngestionObjective = (
   );
 
   return [
-    'Process every eligible BracketIQ affiliate source intake without stopping',
+    'Process eligible BracketIQ affiliate source intakes without stopping',
     'until the read-only queue report proves claimableJobs=0 and',
     'eligibleReadyIntakesWithoutJob=0 and claimedWithoutLease=0 and',
     'queuedCaptureRuns=0 and runningCaptureRuns=0.',
@@ -77,8 +77,7 @@ export const buildCodexAffiliateIngestionObjective = (
     `and record each terminal result with ${completeCommand}.`,
     'For repairContext, fix every repairReason and blockingIssue in a new commit',
     'and add a source regression test. Add one generalized rule there when missing.',
-    'MANUAL_LOGO_REVIEW means inspect stored branding, images, logo candidates,',
-    'HTML/CSS, metadata, and screenshots; use only a verified official mark or crop.',
+    'MANUAL_LOGO_REVIEW: inspect stored branding and use only a verified official mark or crop.',
     'For a directory, enqueue every evidenced official organization URL with',
     `${enqueueUrlsCommand}. Complete that parent job as EXPANDED, run`,
     `${processCapturesCommand}, and map successful child captures.`,
@@ -101,18 +100,21 @@ export const buildCodexAffiliateIngestionObjective = (
     'activity or services; never narrate where a record was listed, found, scraped, or mapped',
     'or start event copy with its full title. If needed, reuse a source-backed',
     'organization-level activity description for related events.',
+    'Give every organization its best defensible location and Places coordinates.',
+    'Prefer an address; otherwise geocode the most specific supported city or region',
+    'from first-party, intake, or directory evidence.',
+    'Do not leave organization location null merely because its address is missing.',
     'Keep valid organizations reviewable when individual events lack locations.',
     'Accepted events need an evidenced event venue/address or an explicit',
     'SOURCE_ORGANIZATION fallback with stored evidence; reject and log only invalid',
     'events during each review scrape. Setup scripts must support guarded --live',
     'application even though this producer goal must validate them only disposably.',
-    'Use sufficient stored evidence. Skip failed, blocked, incomplete, held-out,',
+    'Skip failed, blocked, incomplete, held-out,',
     'duplicate, already-finished, and TEAM-only intakes.',
     'Never invent dates, organization facts, or logos.',
     'Do not publish candidates or organizations, enable automation, mark mappings',
     'validated, promote training data, push, deploy, or mutate live organization,',
     'source, mapping, or candidate rows.',
-    'The live flag permits intake, capture, and queue work only.',
     `Keep output/affiliate-codex-ingestion/progress/${workerId}.jsonl current and report final status.`,
   ].join(' ');
 };

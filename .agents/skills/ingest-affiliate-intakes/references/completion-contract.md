@@ -13,7 +13,10 @@ Supported target kinds are `EVENT`, `RENTAL`, and `CLUB`. Do not create `TEAM` m
 Every successful checkpoint must contain:
 
 1. A canonical organization ID and idempotent setup code.
-2. Source organization fields supported by evidence: name, official website, description, sports, city, address, and valid non-zero `[longitude, latitude]` coordinates resolved from that evidence when a place is identifiable.
+2. Source organization fields supported by evidence: name, official website,
+   description, sports, the best defensible location, and valid non-zero
+   `[longitude, latitude]` coordinates. Prefer a street address. When it is
+   unavailable, persist and geocode the most specific supported city or region.
 3. A disabled affiliate source and unvalidated mapping or reviewed custom extractor.
 4. Official action URLs and source provenance.
 5. An official logo reference normalized to an opaque 1024 by 1024 asset, or an
@@ -28,6 +31,16 @@ Every successful checkpoint must contain:
 ## Candidate checks
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.
+
+Resolve organization location separately from event location. A missing street
+address is not an organization defect when first-party content, stored intake
+discovery context, or a parent directory supports a city, locality, metro, or
+region. Persist the most specific defensible value, normalize US cities to
+`City, ST` when the state is known, and geocode it through the server-side
+Google Places path. City or region centroid coordinates are valid for the
+organization. Record the fallback evidence in source metadata or notes. Do not
+leave a defensible organization locality or its coordinates null, and do not
+invent a street address. Conflicting locality evidence requires human review.
 
 Check every organization description and at least the inspected event
 descriptions against stored first-party evidence. Public copy must describe the
