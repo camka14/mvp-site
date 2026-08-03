@@ -23,7 +23,7 @@ The observable outcome is that a mapping package with an official logo and valid
 - [x] (2026-08-03 06:13Z) Confirmed that the reviewer has only mapper 1 mounted at `/producer-workspace`, while all exact unresolved-commit human-review rows were produced by mapper 2 and their commits remain available in mapper 2's isolated checkout. The initial count was 58; it reached 60 before the old reviewer stopped.
 - [x] (2026-08-03 06:25Z) Added worker-aware producer repository resolution to evidence reporting, approval completion, guarded application, and handoff recovery. Added guarded recovery for exact handoff-generated human-review rows.
 - [x] (2026-08-03 06:25Z) Passed 11 focused tests, TypeScript, targeted ESLint, full Jest coverage and route coverage, the production build, and whitespace validation.
-- [ ] (2026-08-03 06:25Z) Commit and push the repair, deploy read-only mounts for both mapper workspaces, and requeue only the affected handoff decisions for independent review.
+- [x] (2026-08-03 06:40Z) Committed and pushed the repair through `23d134dd` and `9b3226d5`. Replaced only the reviewer container with read-only mounts for both mapper workspaces, verified mapper 2 package evidence, reset all 60 handoff-only rows, and started independent re-review.
 
 ## Surprises & Discoveries
 
@@ -98,6 +98,8 @@ The observable outcome is that a mapping package with an official logo and valid
 
 The repaired reviewer handoff is running on the OVH VM. Twenty-two focused tests, TypeScript, targeted ESLint, whitespace validation, the repository-local skill validator, the complete Jest/coverage suite, the production build, and the main CI run pass. The live dry run and apply requeued 116 packages whose producer commits and disposable scrapes now verify while preserving the old decisions in history; 59 manual-logo packages and 14 packages with genuine evidence failures were not recycled. Luna independently approved the formerly rejected Pro Skills Basketball Chicago package using producer commit `af5514644307cc283b35eb0e3b7dc30ab774df54` and two disposable review scrapes. Guarded application then created one review-only candidate and left the live organization `UNLISTED` with its public page disabled, recurring scraping disabled, and mapping unvalidated. The approval loop, mapper, intake campaign timer, and daily scrape timer continue running.
 
+The multi-mapper extension is also live. Local validation passed 11 focused tests, TypeScript, targeted ESLint, the full Jest coverage and route-coverage gates, the production build, and whitespace checks. The replacement reviewer maps `codex-luna-vm-1` and `codex-luna-vm-2` to separate read-only repositories. A live preflight resolved the previously inaccessible TPH Academy Philadelphia commit `ad5b7a1e0d9d021db6332fa148abf1508a85a871` from mapper 2 and verified its two disposable review scrapes. The guarded recovery preview selected exactly 60 handoff-only human-review rows with zero evidence failures; apply reset all 60 and preserved their prior decisions. The reviewer then claimed a mapper 2 package and the authoritative evidence report resolved commit `4921a2cf6a64054aa752b420095dc4d4655a1d7d` through `/producer-workspaces/codex-luna-vm-2`, proving that the false unresolved-commit path is repaired.
+
 ## Context and Orientation
 
 `AffiliateSourceMappingJobs` stores the producer's compact result in `resultSummary.result`. That result contains the producer identity, branch, exact 40-character commit, generated paths, logo disposition, candidate count, and two disposable review-scrape IDs with stable hashes. `scripts/complete-affiliate-source-mapping.ts` validates this result and records it in the live queue without applying the package live.
@@ -169,7 +171,7 @@ The handoff is intentionally asymmetric:
 
 No Docker socket, host root, production filesystem, or write access to a producer checkout is granted to the reviewer.
 
-Revision note (2026-08-03): Expanded the original single-producer handoff plan for the deployed two-mapper pool after mapper 2 packages were systematically deferred because the reviewer could inspect only mapper 1's Git repository.
+Revision note (2026-08-03): Expanded the original single-producer handoff plan for the deployed two-mapper pool after mapper 2 packages were systematically deferred because the reviewer could inspect only mapper 1's Git repository. Recorded the deployed read-only mounts, 60-row guarded recovery, and successful mapper 2 evidence lookup.
 
 ## Interfaces and Dependencies
 
