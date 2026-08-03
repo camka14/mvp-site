@@ -267,6 +267,7 @@ describe('Discover organization loading', () => {
         }),
         18,
         0,
+        'RECOMMENDED',
       );
       expect(window.location.search).toContain('distanceMiles=50');
     });
@@ -284,11 +285,13 @@ describe('Discover organization loading', () => {
         expect.objectContaining({ maxDistance: expect.closeTo(80.467, 3) }),
         18,
         0,
+        'RECOMMENDED',
       );
       expect(getEventsPageMock).toHaveBeenCalledWith(
         expect.objectContaining({ maxDistance: undefined }),
         18,
         0,
+        'RECOMMENDED',
       );
       expect(window.location.search).not.toContain('distanceMiles=');
     });

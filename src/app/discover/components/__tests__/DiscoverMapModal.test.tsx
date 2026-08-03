@@ -335,6 +335,7 @@ describe('DiscoverMapModal', () => {
       }),
       100,
       0,
+      'NEAREST',
     );
     expect(mockedEventService.getEventsPaginated).not.toHaveBeenCalledWith(
       expect.objectContaining({
@@ -342,6 +343,7 @@ describe('DiscoverMapModal', () => {
       }),
       expect.any(Number),
       expect.any(Number),
+      expect.any(String),
     );
     expect(screen.getByText('Tags')).toBeInTheDocument();
     expect(screen.getAllByText('Tryouts').length).toBeGreaterThan(0);
@@ -365,6 +367,7 @@ describe('DiscoverMapModal', () => {
         expect.objectContaining({ sports: ['Tennis'] }),
         100,
         0,
+        'NEAREST',
       );
     });
     expect(await screen.findByRole('button', { name: 'Ladder Tournament 2026' })).toBeInTheDocument();

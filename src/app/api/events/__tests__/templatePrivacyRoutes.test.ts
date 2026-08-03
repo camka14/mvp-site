@@ -895,7 +895,7 @@ describe('event template privacy routes', () => {
         where: expect.objectContaining({
           OR: expect.any(Array),
         }),
-        take: 50,
+        take: undefined,
         skip: 0,
       }),
     );
