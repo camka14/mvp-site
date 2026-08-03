@@ -20,7 +20,7 @@ The observable outcome is that a mapping package with an official logo and valid
 - [x] (2026-08-01 20:10Z) Committed and pushed the scoped handoff repair through `79feb1a2`; the full main CI run passed.
 - [x] (2026-08-01 20:12Z) Created a clean reviewer checkout with the producer checkout mounted read-only, preserved the disposable validation URL across the live queue handoff, and restarted the approval loop.
 - [x] (2026-08-01 20:13Z) Requeued 116 evidence-verifiable handoff-only decisions, left 59 manual-logo decisions and 14 genuine evidence failures untouched, and proved the formerly rejected Pro Skills Basketball Chicago package could be independently approved and guardedly applied.
-- [x] (2026-08-03 06:13Z) Confirmed that the reviewer has only mapper 1 mounted at `/producer-workspace`, while all 58 exact unresolved-commit human-review rows were produced by mapper 2 and all 58 commits remain available in mapper 2's isolated checkout.
+- [x] (2026-08-03 06:13Z) Confirmed that the reviewer has only mapper 1 mounted at `/producer-workspace`, while all exact unresolved-commit human-review rows were produced by mapper 2 and their commits remain available in mapper 2's isolated checkout. The initial count was 58; it reached 60 before the old reviewer stopped.
 - [x] (2026-08-03 06:25Z) Added worker-aware producer repository resolution to evidence reporting, approval completion, guarded application, and handoff recovery. Added guarded recovery for exact handoff-generated human-review rows.
 - [x] (2026-08-03 06:25Z) Passed 11 focused tests, TypeScript, targeted ESLint, full Jest coverage and route coverage, the production build, and whitespace validation.
 - [ ] (2026-08-03 06:25Z) Commit and push the repair, deploy read-only mounts for both mapper workspaces, and requeue only the affected handoff decisions for independent review.
@@ -52,7 +52,10 @@ The observable outcome is that a mapping package with an official logo and valid
   Evidence: the guarded retry requeued 116 packages, skipped all 59 `MANUAL_REVIEW` logo packages, and left 14 official-logo packages terminal because their committed generated paths, review runs, source candidate count, or setup-script evidence still failed deterministic verification.
 
 - Observation: the first handoff repair assumed one producer checkout and did not scale with the later two-mapper pool.
-  Evidence: the live reviewer mounts `/home/bracketiq/mvp-site-codex-luna-test` at `/producer-workspace`, but mapper 2 writes to `/home/bracketiq/mvp-site-codex-luna-worker-2`. The live audit found 83 human-review rows, including 58 exact unresolved-commit failures, all produced by `codex-luna-vm-2`. Every one of those 58 commits resolves in mapper 2's checkout.
+  Evidence: the live reviewer mounted `/home/bracketiq/mvp-site-codex-luna-test` at `/producer-workspace`, but mapper 2 writes to `/home/bracketiq/mvp-site-codex-luna-worker-2`. The first audit found 58 exact unresolved-commit failures, all produced by `codex-luna-vm-2`; the count reached 60 before replacement. All audited commits resolve in mapper 2's checkout.
+
+- Observation: equivalent Git failure wording must lead to the same narrow recovery result.
+  Evidence: seven rows said `fatal: Needed a single revision` instead of `cannot resolve`, and one affected package had a `MANUAL_REVIEW` logo disposition. Both states still represent the same inaccessible exact-commit handoff. The current reviewer contract can inspect the manual-logo package after evidence becomes available.
 
 - Observation: the deployed producer mount is writable even though the approval contract requires read-only access.
   Evidence: Docker reports `RW=true` for the current `/producer-workspace` bind mount. The replacement container must use explicit read-only mounts for both mapper repositories.

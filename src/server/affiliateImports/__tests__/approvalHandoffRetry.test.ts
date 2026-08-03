@@ -119,6 +119,23 @@ describe('affiliate mapping handoff retry eligibility', () => {
 
     expect(affiliateMappingHandoffRetryEligibility({
       approvalStatus: 'DEFERRED',
+      approvalDecision: {
+        rationale: 'The producer commit failed in /producer-workspace with fatal: Needed a single revision.',
+      },
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      resultSummary: {
+        ...resultSummary('MANUAL_REVIEW'),
+        humanReviewRequired: {
+          rationale: 'The producer commit failed in /producer-workspace with fatal: Needed a single revision.',
+        },
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      reason: 'verified-human-review-handoff-retry-candidate',
+    }));
+
+    expect(affiliateMappingHandoffRetryEligibility({
+      approvalStatus: 'DEFERRED',
       approvalDecision: decision,
       mappingStatus: 'HUMAN_REVIEW_REQUIRED',
       resultSummary: {

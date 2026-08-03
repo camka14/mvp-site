@@ -46,6 +46,7 @@ export const hasAffiliateProducerRepositoryHandoffBlocker = (decision: unknown):
     || text.includes('could not be resolved')
     || text.includes('inaccessible producer handoff')
     || text.includes('single-revision error')
+    || text.includes('needed a single revision')
     || text.includes('not a valid object name');
   return namesRepository && namesCommit && namesResolutionFailure;
 };
@@ -80,7 +81,7 @@ export const affiliateMappingHandoffRetryEligibility = (
   if (!parsed.success || parsed.data.status !== 'REVIEW_REQUIRED') {
     return { eligible: false, reason: 'invalid-review-required-result', result: null };
   }
-  if (parsed.data.logoDisposition === 'MANUAL_REVIEW') {
+  if (parsed.data.logoDisposition === 'MANUAL_REVIEW' && !humanReviewHandoff) {
     return { eligible: false, reason: 'manual-logo-review-still-required', result: parsed.data };
   }
   if (!hasAffiliateProducerHandoffBlocker(input.approvalDecision)) {
