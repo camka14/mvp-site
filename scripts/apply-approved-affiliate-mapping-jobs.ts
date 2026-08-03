@@ -87,9 +87,6 @@ const main = async () => {
     }
 
     const repositoryRoot = process.cwd();
-    const producerRepositoryRoot = process.env.AFFILIATE_PRODUCER_REPOSITORY_ROOT?.trim()
-      ? resolveAffiliateProducerRepositoryRoot()
-      : repositoryRoot;
     const tsxExecutable = path.join(repositoryRoot, 'node_modules', '.bin', 'tsx');
     if (!fs.existsSync(tsxExecutable)) {
       throw new Error(`tsx executable was not found at ${tsxExecutable}`);
@@ -97,6 +94,9 @@ const main = async () => {
     const applied: Array<Record<string, unknown>> = [];
 
     for (const candidate of candidates) {
+      const producerRepositoryRoot = resolveAffiliateProducerRepositoryRoot(
+        candidate.result.workerId,
+      );
       if (approvalJobId) {
         const approvalJob = await db.affiliateApprovalJobs.findUnique({
           where: { id: approvalJobId },

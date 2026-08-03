@@ -20,6 +20,10 @@ The observable outcome is that a mapping package with an official logo and valid
 - [x] (2026-08-01 20:10Z) Committed and pushed the scoped handoff repair through `79feb1a2`; the full main CI run passed.
 - [x] (2026-08-01 20:12Z) Created a clean reviewer checkout with the producer checkout mounted read-only, preserved the disposable validation URL across the live queue handoff, and restarted the approval loop.
 - [x] (2026-08-01 20:13Z) Requeued 116 evidence-verifiable handoff-only decisions, left 59 manual-logo decisions and 14 genuine evidence failures untouched, and proved the formerly rejected Pro Skills Basketball Chicago package could be independently approved and guardedly applied.
+- [x] (2026-08-03 06:13Z) Confirmed that the reviewer has only mapper 1 mounted at `/producer-workspace`, while all 58 exact unresolved-commit human-review rows were produced by mapper 2 and all 58 commits remain available in mapper 2's isolated checkout.
+- [x] (2026-08-03 06:25Z) Added worker-aware producer repository resolution to evidence reporting, approval completion, guarded application, and handoff recovery. Added guarded recovery for exact handoff-generated human-review rows.
+- [x] (2026-08-03 06:25Z) Passed 11 focused tests, TypeScript, targeted ESLint, full Jest coverage and route coverage, the production build, and whitespace validation.
+- [ ] (2026-08-03 06:25Z) Commit and push the repair, deploy read-only mounts for both mapper workspaces, and requeue only the affected handoff decisions for independent review.
 
 ## Surprises & Discoveries
 
@@ -47,6 +51,12 @@ The observable outcome is that a mapping package with an official logo and valid
 - Observation: not every old handoff decision became eligible once the infrastructure was repaired.
   Evidence: the guarded retry requeued 116 packages, skipped all 59 `MANUAL_REVIEW` logo packages, and left 14 official-logo packages terminal because their committed generated paths, review runs, source candidate count, or setup-script evidence still failed deterministic verification.
 
+- Observation: the first handoff repair assumed one producer checkout and did not scale with the later two-mapper pool.
+  Evidence: the live reviewer mounts `/home/bracketiq/mvp-site-codex-luna-test` at `/producer-workspace`, but mapper 2 writes to `/home/bracketiq/mvp-site-codex-luna-worker-2`. The live audit found 83 human-review rows, including 58 exact unresolved-commit failures, all produced by `codex-luna-vm-2`. Every one of those 58 commits resolves in mapper 2's checkout.
+
+- Observation: the deployed producer mount is writable even though the approval contract requires read-only access.
+  Evidence: Docker reports `RW=true` for the current `/producer-workspace` bind mount. The replacement container must use explicit read-only mounts for both mapper repositories.
+
 ## Decision Log
 
 - Decision: mount the producer checkout read-only into the reviewer container instead of pushing hundreds of source commits to GitHub.
@@ -73,6 +83,14 @@ The observable outcome is that a mapping package with an official logo and valid
   Rationale: child processes inherit the parent's environment. A stable `DATABASE_URL_DISPOSABLE_VALIDATION` prevents the generic `DATABASE_URL` mutation from redirecting package evidence to production while retaining live Prisma access for the queue and guarded application.
   Date/Author: 2026-08-01 / Codex
 
+- Decision: resolve producer evidence through an allowlisted worker-to-repository map and retain the singular root only as a backward-compatible fallback.
+  Rationale: mapper workspaces must remain isolated, and a commit from mapper 2 cannot be verified in mapper 1's Git object database. Binding the result's stable `workerId` to one configured root makes evidence and guarded application deterministic without searching arbitrary host paths.
+  Date/Author: 2026-08-03 / Codex
+
+- Decision: recover human-review rows only when their stored decision names the known producer-handoff failure and the exact commit plus disposable review evidence now verify.
+  Rationale: the handoff failure is infrastructure state, not a source defect. A broad reset could recycle genuine evidence conflicts. The recovery remains dry-run-first, preserves the prior decision, and clears only the handoff-generated human-review marker.
+  Date/Author: 2026-08-03 / Codex
+
 ## Outcomes & Retrospective
 
 The repaired reviewer handoff is running on the OVH VM. Twenty-two focused tests, TypeScript, targeted ESLint, whitespace validation, the repository-local skill validator, the complete Jest/coverage suite, the production build, and the main CI run pass. The live dry run and apply requeued 116 packages whose producer commits and disposable scrapes now verify while preserving the old decisions in history; 59 manual-logo packages and 14 packages with genuine evidence failures were not recycled. Luna independently approved the formerly rejected Pro Skills Basketball Chicago package using producer commit `af5514644307cc283b35eb0e3b7dc30ab774df54` and two disposable review scrapes. Guarded application then created one review-only candidate and left the live organization `UNLISTED` with its public page disabled, recurring scraping disabled, and mapping unvalidated. The approval loop, mapper, intake campaign timer, and daily scrape timer continue running.
@@ -83,7 +101,7 @@ The repaired reviewer handoff is running on the OVH VM. Twenty-two focused tests
 
 `AffiliateApprovalJobs` is the independent review queue. `src/server/affiliateImports/approvalQueue.ts` reconciles, claims, and completes approvals. `src/server/affiliateImports/codexApprovalGoal.ts` constructs the Luna x-high objective. `.agents/skills/review-affiliate-approvals` defines the evidence and authority contract. `scripts/apply-approved-affiliate-mapping-jobs.ts` is the guarded boundary that may apply an approved setup to production while keeping its organization unlisted, mapping unvalidated, and recurring scrape disabled.
 
-The producer checkout on OVH is `/home/bracketiq/mvp-site-codex-luna-test`. The clean reviewer checkout will be mounted at `/workspace`; the producer checkout will be mounted read-only at `/producer-workspace`. Both containers can reach `bracketiq-affiliate-codex-postgres`, which is disposable validation data, and the private production PostgreSQL network. Secrets remain in the existing read-only environment-file mount and must never be printed.
+The two producer checkouts on OVH are `/home/bracketiq/mvp-site-codex-luna-test` for `codex-luna-vm-1` and `/home/bracketiq/mvp-site-codex-luna-worker-2` for `codex-luna-vm-2`. The clean reviewer checkout is mounted at `/workspace`. Each producer checkout must be mounted read-only under `/producer-workspaces/<worker-id>`. Both containers can reach `bracketiq-affiliate-codex-postgres`, which is disposable validation data, and the private production PostgreSQL network. Secrets remain in the existing environment-file mount and must never be printed.
 
 ## Plan of Work
 
@@ -96,6 +114,10 @@ Update `codexApprovalGoal.ts`, the reviewer skill, its approval contract, and th
 Update `scripts/apply-approved-affiliate-mapping-jobs.ts` to take the producer root from `AFFILIATE_PRODUCER_REPOSITORY_ROOT`, verify the reviewed commit, archive it to a temporary directory, link the already-installed `node_modules`, run the exact setup script there, and remove the temporary directory in `finally`. Existing live postconditions remain mandatory.
 
 Create a dry-run-first retry service and CLI for mapping approval rows. Selection requires a mapping subject, `REJECTED` or `DEFERRED` approval state, a valid `REVIEW_REQUIRED` ingestion result with an official logo disposition, known handoff-blocker text, verified producer evidence, and both disposable run rows. Applying archives the old decision into `resultSummary.approvalReviewHistory`, restores a rejected mapping job to `REVIEW_REQUIRED`, keeps its intake `REVIEW_REQUIRED`, and resets the unique approval row to `QUEUED`. Manual-logo packages remain untouched.
+
+Extend producer-root resolution so `AFFILIATE_PRODUCER_REPOSITORY_ROOTS` contains a JSON object whose keys are stable producer worker IDs and whose values are read-only repository paths. Evidence reporting, approval completion, guarded application, and handoff recovery must select the root with the ingestion result's `workerId`. Keep `AFFILIATE_PRODUCER_REPOSITORY_ROOT` as the one-producer fallback for development and older deployments.
+
+Extend the guarded handoff recovery to accept a `HUMAN_REVIEW_REQUIRED` mapping row only when its terminal approval is `DEFERRED` or `REJECTED`, the stored human-review envelope and approval decision contain a known handoff blocker, and exact producer plus disposable evidence now pass. Preserve the old decision and human-review envelope in history before returning the mapping to `REVIEW_REQUIRED` and the approval to `QUEUED`.
 
 On OVH, preserve the old dirty reviewer checkout, create a new clean checkout at the exact tested main commit, install dependencies, and recreate only the approval container with the same user, capabilities, networks, Codex state, and environment mounts plus the producer checkout read-only at `/producer-workspace`. Restart the approval loop only after the evidence command succeeds for a known previously rejected package.
 
@@ -142,7 +164,9 @@ The handoff is intentionally asymmetric:
         -> disposable PostgreSQL for duplicate-safe scrape evidence
         -> production PostgreSQL only for queue state and guarded unpublished application
 
-No Docker socket, host root, production filesystem, or write access to the producer checkout is granted to the reviewer.
+No Docker socket, host root, production filesystem, or write access to a producer checkout is granted to the reviewer.
+
+Revision note (2026-08-03): Expanded the original single-producer handoff plan for the deployed two-mapper pool after mapper 2 packages were systematically deferred because the reviewer could inspect only mapper 1's Git repository.
 
 ## Interfaces and Dependencies
 

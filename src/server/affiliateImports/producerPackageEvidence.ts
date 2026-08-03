@@ -47,6 +47,9 @@ export type AffiliateReviewEvidenceQueryable = {
 type AffiliateDatabaseEnvironment = Record<string, string | undefined>;
 
 const DISPOSABLE_DATABASE_ENV = 'DATABASE_URL_DISPOSABLE_VALIDATION';
+const PRODUCER_REPOSITORY_ROOT_ENV = 'AFFILIATE_PRODUCER_REPOSITORY_ROOT';
+const PRODUCER_REPOSITORY_ROOTS_ENV = 'AFFILIATE_PRODUCER_REPOSITORY_ROOTS';
+const PRODUCER_WORKER_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/;
 
 export const preserveAffiliateDisposableDatabaseUrl = (
   environment: AffiliateDatabaseEnvironment = process.env,
@@ -80,16 +83,50 @@ const git = (repositoryRoot: string, args: string[], encoding: BufferEncoding | 
   })
 );
 
-export const resolveAffiliateProducerRepositoryRoot = (
-  configuredRoot = process.env.AFFILIATE_PRODUCER_REPOSITORY_ROOT,
-): string => {
-  const value = configuredRoot?.trim();
-  if (!value) throw new Error('AFFILIATE_PRODUCER_REPOSITORY_ROOT is required.');
+const resolveProducerRepositoryDirectory = (value: string): string => {
   const root = path.resolve(value);
   if (!fs.statSync(root, { throwIfNoEntry: false })?.isDirectory()) {
     throw new Error(`Affiliate producer repository was not found: ${root}`);
   }
   return root;
+};
+
+export const resolveAffiliateProducerRepositoryRoot = (
+  workerId: string | null | undefined,
+  environment: AffiliateDatabaseEnvironment = process.env,
+): string => {
+  const configuredRoots = environment[PRODUCER_REPOSITORY_ROOTS_ENV]?.trim();
+  if (configuredRoots) {
+    const producerId = workerId?.trim();
+    if (!producerId || !PRODUCER_WORKER_ID_PATTERN.test(producerId)) {
+      throw new Error('A valid producer worker id is required for worker-aware repository resolution.');
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(configuredRoots);
+    } catch {
+      throw new Error(`${PRODUCER_REPOSITORY_ROOTS_ENV} must contain a JSON object.`);
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`${PRODUCER_REPOSITORY_ROOTS_ENV} must contain a JSON object.`);
+    }
+    const roots = parsed as Record<string, unknown>;
+    const configuredRoot = Object.prototype.hasOwnProperty.call(roots, producerId)
+      ? roots[producerId]
+      : undefined;
+    if (typeof configuredRoot !== 'string' || !configuredRoot.trim()) {
+      throw new Error(`Affiliate producer repository is not configured for worker ${producerId}.`);
+    }
+    return resolveProducerRepositoryDirectory(configuredRoot.trim());
+  }
+
+  const configuredRoot = environment[PRODUCER_REPOSITORY_ROOT_ENV]?.trim();
+  if (!configuredRoot) {
+    throw new Error(
+      `${PRODUCER_REPOSITORY_ROOTS_ENV} or ${PRODUCER_REPOSITORY_ROOT_ENV} is required.`,
+    );
+  }
+  return resolveProducerRepositoryDirectory(configuredRoot);
 };
 
 export const normalizeAffiliateProducerPath = (value: string): string => {

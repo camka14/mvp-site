@@ -12,6 +12,7 @@ import {
   normalizeAffiliateProducerPath,
   preserveAffiliateDisposableDatabaseUrl,
   resolveAffiliateDisposableDatabaseUrl,
+  resolveAffiliateProducerRepositoryRoot,
 } from '../producerPackageEvidence';
 
 const HASH = 'a'.repeat(64);
@@ -70,6 +71,36 @@ describe('affiliate producer package evidence', () => {
     environment.DATABASE_URL = 'postgresql://live/bracketiq';
     expect(resolveAffiliateDisposableDatabaseUrl(environment))
       .toBe('postgresql://disposable/affiliate_codex');
+  });
+
+  it('selects the allowlisted producer repository for the result worker', () => {
+    const first = createRepository();
+    const second = createRepository();
+    try {
+      const environment = {
+        AFFILIATE_PRODUCER_REPOSITORY_ROOTS: JSON.stringify({
+          'producer-1': first.root,
+          'producer-2': second.root,
+        }),
+      };
+      expect(resolveAffiliateProducerRepositoryRoot('producer-2', environment)).toBe(second.root);
+      expect(() => resolveAffiliateProducerRepositoryRoot('producer-3', environment))
+        .toThrow('not configured for worker producer-3');
+    } finally {
+      first.cleanup();
+      second.cleanup();
+    }
+  });
+
+  it('retains the singular producer root as a backward-compatible fallback', () => {
+    const repository = createRepository();
+    try {
+      expect(resolveAffiliateProducerRepositoryRoot('producer-1', {
+        AFFILIATE_PRODUCER_REPOSITORY_ROOT: repository.root,
+      })).toBe(repository.root);
+    } finally {
+      repository.cleanup();
+    }
   });
 
   it('verifies generated files in the exact commit and materializes that commit after HEAD advances', () => {

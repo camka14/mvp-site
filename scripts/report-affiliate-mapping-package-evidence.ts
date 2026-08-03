@@ -29,7 +29,6 @@ if (useLive) configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_
 const main = async () => {
   const jobId = readOption('--job');
   if (!jobId) throw new Error('--job=<mapping-job-id> is required.');
-  const producerRoot = resolveAffiliateProducerRepositoryRoot();
   const { prisma } = await import('../src/lib/prisma');
   const disposable = new Client({ connectionString: disposableDatabaseUrl });
   try {
@@ -45,7 +44,7 @@ const main = async () => {
       throw new Error('Mapping result identity does not match its live queue row.');
     }
     const producer = inspectAffiliateProducerPackage({
-      repositoryRoot: producerRoot,
+      repositoryRoot: resolveAffiliateProducerRepositoryRoot(result.workerId),
       result,
     });
     await disposable.connect();

@@ -34,6 +34,11 @@ const decision = {
   blockingIssues: ['The review scrape IDs and candidate output are absent from live.'],
 };
 
+const inaccessibleRepositoryDecision = {
+  rationale: 'The exact producer commit cannot resolve in the required /producer-workspace repository.',
+  blockingIssues: ['The producer checkout is inaccessible to the reviewer.'],
+};
+
 describe('affiliate mapping handoff retry eligibility', () => {
   it('selects official-logo rejection and deferral states caused by the old handoff', () => {
     expect(affiliateMappingHandoffRetryEligibility({
@@ -92,6 +97,34 @@ describe('affiliate mapping handoff retry eligibility', () => {
       approvalDecision: decision,
       mappingStatus: 'REVIEW_REQUIRED',
       resultSummary: resultSummary('OFFICIAL_ASSET'),
+    })).toEqual(expect.objectContaining({
+      eligible: false,
+      reason: 'mapping-status-does-not-match-decision',
+    }));
+  });
+
+  it('recovers a human-review row only for the exact repository handoff failure', () => {
+    expect(affiliateMappingHandoffRetryEligibility({
+      approvalStatus: 'DEFERRED',
+      approvalDecision: inaccessibleRepositoryDecision,
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      resultSummary: {
+        ...resultSummary('OFFICIAL_ASSET'),
+        humanReviewRequired: inaccessibleRepositoryDecision,
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      reason: 'verified-human-review-handoff-retry-candidate',
+    }));
+
+    expect(affiliateMappingHandoffRetryEligibility({
+      approvalStatus: 'DEFERRED',
+      approvalDecision: decision,
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      resultSummary: {
+        ...resultSummary('OFFICIAL_ASSET'),
+        humanReviewRequired: decision,
+      },
     })).toEqual(expect.objectContaining({
       eligible: false,
       reason: 'mapping-status-does-not-match-decision',

@@ -62,7 +62,7 @@ const main = async () => {
         : {};
       const ingestionResult = codexAffiliateIngestionResultSchema.parse(envelope.result);
       inspectAffiliateProducerPackage({
-        repositoryRoot: resolveAffiliateProducerRepositoryRoot(),
+        repositoryRoot: resolveAffiliateProducerRepositoryRoot(ingestionResult.workerId),
         result: ingestionResult,
       });
       disposable = new Client({ connectionString: disposableDatabaseUrl });

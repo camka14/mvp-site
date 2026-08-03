@@ -19,8 +19,16 @@ dotenv.config({ path: '.env.local', override: false, quiet: true });
 const disposableDatabaseUrl = resolveAffiliateDisposableDatabaseUrl();
 const useLive = process.argv.includes('--live');
 const apply = process.argv.includes('--apply');
+const humanReviewOnly = process.argv.includes('--human-review-only');
+const expectedCountArgument = process.argv.find((argument) => argument.startsWith('--expected-count='));
+const expectedCount = expectedCountArgument
+  ? Number.parseInt(expectedCountArgument.slice('--expected-count='.length), 10)
+  : null;
 if (!useLive) throw new Error('Affiliate approval handoff retry requires --live.');
 if (apply && !process.argv.includes('--live')) throw new Error('--apply requires --live.');
+if (expectedCount !== null && (!Number.isInteger(expectedCount) || expectedCount < 0)) {
+  throw new Error('--expected-count must be a non-negative integer.');
+}
 configureAffiliateLiveDatabaseEnvironment(process.env.DATABASE_URL_LIVE);
 
 const recordValue = (value: unknown): Record<string, unknown> => (
@@ -35,7 +43,6 @@ const repairHistory = (resultSummary: unknown): Record<string, unknown>[] => {
 };
 
 const main = async () => {
-  const producerRoot = resolveAffiliateProducerRepositoryRoot();
   const { prisma } = await import('../src/lib/prisma');
   const db = prisma as any;
   const disposable = new Client({ connectionString: disposableDatabaseUrl });
@@ -55,10 +62,15 @@ const main = async () => {
     const eligible: Array<{ approval: any; mapping: any; result: any }> = [];
     const excluded: Record<string, number> = {};
     const producerRepairCandidates: Array<{ approval: any; mapping: any; error: string }> = [];
+    const humanReviewEvidenceFailures: Array<{ approval: any; mapping: any; error: string }> = [];
     for (const approval of approvals) {
       const mapping = mappingById.get(approval.subjectKey) as any;
       if (!mapping) {
         excluded['mapping-job-missing'] = (excluded['mapping-job-missing'] ?? 0) + 1;
+        continue;
+      }
+      if (humanReviewOnly && mapping.status !== 'HUMAN_REVIEW_REQUIRED') {
+        excluded['not-human-review-required'] = (excluded['not-human-review-required'] ?? 0) + 1;
         continue;
       }
       const selection = affiliateMappingHandoffRetryEligibility({
@@ -83,15 +95,23 @@ const main = async () => {
         continue;
       }
       try {
-        inspectAffiliateProducerPackage({ repositoryRoot: producerRoot, result: selection.result });
+        inspectAffiliateProducerPackage({
+          repositoryRoot: resolveAffiliateProducerRepositoryRoot(selection.result.workerId),
+          result: selection.result,
+        });
         await inspectAffiliateDisposableReviewScrapes({ queryable: disposable, result: selection.result });
         eligible.push({ approval, mapping, result: selection.result });
       } catch (error) {
-        producerRepairCandidates.push({
+        const failure = {
           approval,
           mapping,
           error: error instanceof Error ? error.message : String(error),
-        });
+        };
+        if (mapping.status === 'HUMAN_REVIEW_REQUIRED') {
+          humanReviewEvidenceFailures.push(failure);
+        } else {
+          producerRepairCandidates.push(failure);
+        }
       }
     }
 
@@ -101,19 +121,29 @@ const main = async () => {
     const humanReviewRequired = producerRepairCandidates.filter(({ mapping }) => (
       repairHistory(mapping.resultSummary).length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
     ));
-    const evidenceFailures = producerRepairCandidates.map(({ approval, mapping, error }) => ({
-      approvalJobId: approval.id,
-      mappingJobId: mapping.id,
-      error,
-      disposition: repairHistory(mapping.resultSummary).length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
-        ? 'HUMAN_REVIEW_REQUIRED'
-        : 'PRODUCER_REPAIR',
-    }));
+    const evidenceFailures = [
+      ...producerRepairCandidates.map(({ approval, mapping, error }) => ({
+        approvalJobId: approval.id,
+        mappingJobId: mapping.id,
+        error,
+        disposition: repairHistory(mapping.resultSummary).length >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
+          ? 'HUMAN_REVIEW_REQUIRED'
+          : 'PRODUCER_REPAIR',
+      })),
+      ...humanReviewEvidenceFailures.map(({ approval, mapping, error }) => ({
+        approvalJobId: approval.id,
+        mappingJobId: mapping.id,
+        error,
+        disposition: 'UNCHANGED_HUMAN_REVIEW',
+      })),
+    ];
 
     const preview = {
       schemaVersion: 1,
       environment: 'live',
       apply,
+      humanReviewOnly,
+      expectedCount,
       terminalMappingApprovals: approvals.length,
       eligible: eligible.length,
       producerRepairs: producerRepairs.length,
@@ -129,6 +159,11 @@ const main = async () => {
         logoDisposition: result.logoDisposition,
       })),
     };
+    if (expectedCount !== null && eligible.length !== expectedCount) {
+      throw new Error(
+        `Eligible handoff retry count ${eligible.length} did not match expected ${expectedCount}.`,
+      );
+    }
     if (!apply) {
       console.log(JSON.stringify(preview, null, 2));
       return;
@@ -164,7 +199,12 @@ const main = async () => {
           decision: currentApproval.decision,
           retryReason: 'producer-workspace-and-disposable-review-evidence-handoff-repaired',
         };
-        const { approvalReview: _approvalReview, ...preservedEnvelope } = envelope;
+        const priorHumanReview = recordValue(envelope.humanReviewRequired);
+        const {
+          approvalReview: _approvalReview,
+          humanReviewRequired: _humanReviewRequired,
+          ...preservedEnvelope
+        } = envelope;
         await tx.affiliateSourceMappingJobs.update({
           where: { id: currentMapping.id },
           data: {
@@ -172,7 +212,10 @@ const main = async () => {
             errorMessage: null,
             resultSummary: {
               ...preservedEnvelope,
-              approvalReviewHistory: [...previousHistory, historyEntry],
+              approvalReviewHistory: [...previousHistory, {
+                ...historyEntry,
+                ...(Object.keys(priorHumanReview).length ? { humanReviewRequired: priorHumanReview } : {}),
+              }],
             },
           },
         });
