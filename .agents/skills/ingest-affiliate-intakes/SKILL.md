@@ -60,6 +60,11 @@ Inspect the manifest, source evidence, HTML, Markdown, screenshots, links, image
 
 Search existing organizations, sources, mappings, setup scripts, generated sources, and source registry entries before creating anything. Repair canonical records and avoid duplicates.
 
+A producer-repair claim is not an already-finished intake. Recover the prior
+package and commit from the producer workspace or Git history, then repair the
+reviewed defect in a new commit. Do not return `FAILED` only because the first
+package already exists, and do not create a duplicate package or training row.
+
 Create or repair everything needed for review:
 
 - an idempotent source setup script and package command that supports the normal

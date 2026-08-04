@@ -2740,6 +2740,64 @@ describe('affiliate import service', () => {
     }));
   });
 
+  it('publishes a direct club through its canonical source organization and retained coordinates', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_direct_club',
+      sourceId: 'source_direct_club',
+      listingKind: 'CLUB',
+      title: 'Arizona Youth Football League - Registration',
+      sportName: 'Football',
+      description: 'Youth football registration and verification for Arizona players.',
+      officialActionUrl: 'https://registration.example/arizona-football',
+      sourceUrl: 'https://registration.example/arizona-football',
+      publishedOrganizationId: 'source_org',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_direct_club',
+      name: 'Arizona Youth Football Registration',
+      sourceKey: 'arizona-youth-football-registration',
+      organizationId: 'source_org',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'source_org',
+      name: 'Arizona Youth Football League',
+      ownerId: 'owner_1',
+      ownershipStatus: 'CLAIMED',
+      claimedAt: null,
+      claimedByUserId: null,
+      originType: 'FIRST_PARTY',
+      location: 'Phoenix, AZ',
+      address: null,
+      coordinates: [-112.074, 33.4484],
+      description: 'Arizona youth football league.',
+      website: 'https://www.arizonayfl.com/',
+      logoId: 'ayfl_logo',
+    });
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_direct_club' });
+
+    await publishAffiliateCandidate('candidate_direct_club', { publishedByUserId: 'admin_1' });
+
+    expect(geocodeAddressToCoordinatesMock).not.toHaveBeenCalled();
+    expect(prismaMock.organizations.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'source_org' },
+      update: expect.objectContaining({
+        name: 'Arizona Youth Football League',
+        location: 'Phoenix, AZ',
+        coordinates: [-112.074, 33.4484],
+        website: 'https://www.arizonayfl.com/',
+        status: 'LISTED',
+        publicPageEnabled: true,
+      }),
+    }));
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: 'candidate_direct_club' },
+      data: {
+        status: 'PUBLISHED',
+        publishedOrganizationId: 'source_org',
+      },
+    });
+  });
+
   it('does not relist a private source organization after its separate club target is published', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_event_for_published_club',

@@ -160,4 +160,41 @@ describe('affiliate mapping full-review cohort', () => {
     }));
     expect(state.mappings[0].status).toBe('APPROVED');
   });
+
+  it('creates queued review work for approved historical mappings with no approval row', async () => {
+    const state = testClient();
+    state.mappings.push({
+      id: 'mapping_without_approval',
+      status: 'APPROVED',
+      createdAt: new Date('2026-08-01T01:00:00.000Z'),
+      resultSummary: {},
+    });
+
+    const result = await advanceAffiliateMappingFullReviewCohort({
+      cohortKey: 'description-quality-v1',
+      approvalQueue: approvalStatus(true),
+      now: new Date('2026-08-02T04:00:00.000Z'),
+    }, { client: state.client, loadMappingStatus: async () => mappingStatus() });
+
+    expect(result).toEqual(expect.objectContaining({
+      state: 'ENQUEUED',
+      enqueuedMappingCount: 2,
+    }));
+    const createdApproval = state.controls.find((row) => (
+      row.subjectType === 'MAPPING_PACKAGE'
+      && row.subjectKey === 'mapping_without_approval'
+    ));
+    expect(createdApproval).toEqual(expect.objectContaining({ status: 'QUEUED' }));
+    expect(state.mappings[1]).toEqual(expect.objectContaining({
+      status: 'REVIEW_REQUIRED',
+      resultSummary: expect.objectContaining({
+        mappingFullReviewHistory: [expect.objectContaining({
+          priorApprovalJobId: createdApproval.id,
+          priorApprovalStatus: 'MISSING',
+          priorDecision: null,
+          approvalRowCreatedForCohort: true,
+        })],
+      }),
+    }));
+  });
 });

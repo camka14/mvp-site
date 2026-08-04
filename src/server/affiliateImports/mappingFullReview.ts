@@ -159,9 +159,20 @@ export const advanceAffiliateMappingFullReviewCohort = async (input: {
       mappingApprovals.map((approval: any) => [approval.subjectKey, approval]),
     );
     for (const mapping of mappings) {
-      const approval = approvalsByMappingId.get(mapping.id) as any;
-      if (!approval || approval.status !== 'APPROVED') {
+      let approval = approvalsByMappingId.get(mapping.id) as any;
+      const priorApprovalStatus = approval?.status ?? 'MISSING';
+      if (approval && approval.status !== 'APPROVED') {
         throw new Error(`Approved mapping ${mapping.id} does not have an approved review row.`);
+      }
+      if (!approval) {
+        approval = await transaction.affiliateApprovalJobs.create({
+          data: {
+            id: createId(),
+            subjectType: 'MAPPING_PACKAGE',
+            subjectKey: mapping.id,
+            status: 'QUEUED',
+          },
+        });
       }
       const envelope = recordValue(mapping.resultSummary);
       const repairHistory = recordArray(envelope.mappingRepairHistory);
@@ -178,24 +189,27 @@ export const advanceAffiliateMappingFullReviewCohort = async (input: {
               queuedAt: now.toISOString(),
               repairHistoryStartIndex: repairHistory.length,
               priorApprovalJobId: approval.id,
-              priorApprovalStatus: approval.status,
-              priorDecision: approval.decision,
+              priorApprovalStatus,
+              priorDecision: priorApprovalStatus === 'MISSING' ? null : approval.decision,
+              approvalRowCreatedForCohort: priorApprovalStatus === 'MISSING',
             }],
           },
         },
       });
-      await transaction.affiliateApprovalJobs.update({
-        where: { id: approval.id },
-        data: {
-          status: 'QUEUED',
-          claimedAt: null,
-          leaseExpiresAt: null,
-          reviewerId: null,
-          decision: null,
-          errorMessage: null,
-          finishedAt: null,
-        },
-      });
+      if (priorApprovalStatus !== 'MISSING') {
+        await transaction.affiliateApprovalJobs.update({
+          where: { id: approval.id },
+          data: {
+            status: 'QUEUED',
+            claimedAt: null,
+            leaseExpiresAt: null,
+            reviewerId: null,
+            decision: null,
+            errorMessage: null,
+            finishedAt: null,
+          },
+        });
+      }
     }
     await transaction.affiliateApprovalJobs.update({
       where: { id: current.id },

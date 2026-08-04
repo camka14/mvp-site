@@ -1504,6 +1504,9 @@ const loadSourceOrganization = async (source: { organizationId?: string | null }
       location: true,
       address: true,
       coordinates: true,
+      description: true,
+      website: true,
+      logoId: true,
     },
   });
   if (!organization) {
@@ -1780,28 +1783,41 @@ const buildAffiliateOrganizationData = async (
   source: AffiliateScrapeSourceRow,
   organizationId: string,
   options: { status?: 'LISTED' | 'UNLISTED'; publicPageEnabled?: boolean } = {},
+  existingOrganization: any = null,
 ) => {
   const sourceOrganization = await loadSourceOrganization(source);
   const ownerId = nullableString(sourceOrganization.ownerId);
   if (!ownerId) {
     throw new Error('Affiliate source organization must have an owner before club rows can be created.');
   }
+  const isCanonicalSourceOrganization = organizationId === nullableString(source.organizationId);
   const name =
+    (isCanonicalSourceOrganization ? nullableString(sourceOrganization.name) : null) ??
     nullableString(candidate.title) ??
     nullableString(candidate.organizerName) ??
     nullableString(source.name) ??
     'Affiliate club';
   const location =
-    nullableString(candidate.venueName) ?? nullableString(candidate.city) ?? nullableString(candidate.address) ?? null;
-  const address = nullableString(candidate.address);
-  const city = nullableString(candidate.city);
+    nullableString(candidate.venueName)
+    ?? nullableString(candidate.city)
+    ?? nullableString(candidate.address)
+    ?? (isCanonicalSourceOrganization ? nullableString(sourceOrganization.location) : null)
+    ?? null;
+  const address = nullableString(candidate.address)
+    ?? (isCanonicalSourceOrganization ? nullableString(sourceOrganization.address) : null);
+  const city = nullableString(candidate.city)
+    ?? (isCanonicalSourceOrganization ? nullableString(sourceOrganization.location) : null);
   const geocodeQueries = buildAffiliatePlaceLocationQueries({
     name,
     location,
     address,
     city,
   });
-  const coordinates = await geocodeFirstAvailableAddress(geocodeQueries);
+  const coordinates = normalizeAffiliateCoordinates(existingOrganization?.coordinates)
+    ?? (isCanonicalSourceOrganization
+      ? normalizeAffiliateCoordinates(sourceOrganization.coordinates)
+      : null)
+    ?? (await geocodeFirstAvailableAddress(geocodeQueries));
   const status = options.status ?? 'UNLISTED';
   const publicPageEnabled = options.publicPageEnabled === true;
   if (status === 'LISTED' || publicPageEnabled) {
@@ -1814,14 +1830,18 @@ const buildAffiliateOrganizationData = async (
   const sportName = nullableString(candidate.sportName);
   const description =
     nullableString(candidate.description) ??
+    (isCanonicalSourceOrganization ? nullableString(sourceOrganization.description) : null) ??
     nullableString(candidate.scheduleText) ??
     nullableString(candidate.statusText) ??
     null;
   const website =
+    (isCanonicalSourceOrganization ? nullableString(sourceOrganization.website) : null) ??
     nullableString(candidate.officialActionUrl) ??
     nullableString(candidate.sourceUrl) ??
     nullableString(source.baseUrl);
-  const logoId = await upsertAffiliateOrganizationLogoForCandidate(candidate, organizationId, ownerId);
+  const logoId = await upsertAffiliateOrganizationLogoForCandidate(candidate, organizationId, ownerId)
+    ?? nullableString(existingOrganization?.logoId)
+    ?? (isCanonicalSourceOrganization ? nullableString(sourceOrganization.logoId) : null);
 
   return {
     updatedAt: new Date(),
@@ -1862,10 +1882,21 @@ const upsertAffiliateOrganizationForCandidate = async (
     existingOrganization?.id === organizationId
     && existingOrganization.ownershipStatus
     && existingOrganization.ownershipStatus !== 'UNCLAIMED'
+    && (
+      organizationId !== nullableString(source.organizationId)
+      || existingOrganization.claimedAt
+      || nullableString(existingOrganization.claimedByUserId)
+    )
   ) {
     return existingOrganization;
   }
-  const data = await buildAffiliateOrganizationData(candidate, source, organizationId, options);
+  const data = await buildAffiliateOrganizationData(
+    candidate,
+    source,
+    organizationId,
+    options,
+    existingOrganization,
+  );
 
   return organizations.upsert({
     where: { id: organizationId },
@@ -1879,7 +1910,9 @@ const upsertAffiliateOrganizationForCandidate = async (
     },
     update: {
       ...data,
-      originType: 'AFFILIATE_IMPORTED',
+      ...(organizationId === nullableString(source.organizationId)
+        ? {}
+        : { originType: 'AFFILIATE_IMPORTED' }),
     },
   });
 };

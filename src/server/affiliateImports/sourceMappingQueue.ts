@@ -237,7 +237,7 @@ export const finishAffiliateSourceMappingClaim = async (input: {
         },
       },
     });
-    if (approval && ['REJECTED', 'DEFERRED'].includes(approval.status)) {
+    if (approval && ['APPROVED', 'REJECTED', 'DEFERRED'].includes(approval.status)) {
       await approvals.update({
         where: { id: approval.id },
         data: {

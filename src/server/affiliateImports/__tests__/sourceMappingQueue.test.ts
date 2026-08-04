@@ -243,4 +243,44 @@ describe('affiliate source mapping queue', () => {
       },
     });
   });
+
+  it('reopens an approved review row after an operator-requested producer repair completes', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      resultSummary: {
+        mappingRepairHistory: [{
+          repairReason: 'CLUB_CANONICAL_ORGANIZATION_INVALID',
+        }],
+      },
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1', intakeId: 'intake_1', status: 'REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+    prismaMock.affiliateApprovalJobs.findUnique.mockResolvedValue({
+      id: 'approval_1', status: 'APPROVED',
+    });
+    prismaMock.affiliateApprovalJobs.update.mockResolvedValue({});
+
+    await finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    });
+
+    expect(prismaMock.affiliateApprovalJobs.update).toHaveBeenCalledWith({
+      where: { id: 'approval_1' },
+      data: {
+        status: 'QUEUED',
+        claimedAt: null,
+        leaseExpiresAt: null,
+        reviewerId: null,
+        decision: null,
+        errorMessage: null,
+        finishedAt: null,
+      },
+    });
+  });
 });
