@@ -24,6 +24,7 @@ describe('Codex affiliate approval goal', () => {
       '--ask-for-approval',
       'never',
       'exec',
+      '--ephemeral',
       '--cd',
       path.resolve('/srv/bracketiq'),
       '--model',
@@ -46,6 +47,7 @@ describe('Codex affiliate approval goal', () => {
     expect(CODEX_AFFILIATE_APPROVAL_REASONING_EFFORT).toBe('max');
     expect(CODEX_AFFILIATE_APPROVAL_SERVICE_TIER).toBe('fast');
     expect(CODEX_AFFILIATE_APPROVAL_FAST_MODE).toBe(true);
+    expect(buildCodexAffiliateApprovalArgs(options)).toContain('--ephemeral');
   });
 
   it('names the queue commands, evidence refresh, independence, and stop condition', () => {
@@ -95,6 +97,7 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('OFFICIAL_LOGO_REPAIR_REQUIRED');
     expect(goal).toContain('do not reject an otherwise-valid package');
     expect(goal).toContain('officialLogoVerified=false and logoAbsenceAccepted=true');
+    expect(goal).toContain('preview only the claimed organization, never --all, then clean it');
     expect(goal).toContain('Every non-approved mapping result needs mappingDisposition');
     expect(goal).toContain('PRODUCER_REPAIR');
     expect(goal).toContain('HUMAN_REVIEW_REQUIRED and DEFER only');

@@ -69,7 +69,7 @@ The goal agent must follow `$ingest-affiliate-intakes` and the affiliate source 
 - Configure the documented daily, weekly, or monthly cadence, but leave new recurring scraping disabled until coordinator review succeeds.
 - Add focused fixtures/tests and run the required checks from the skill and repository instructions.
 
-The goal agent must follow the skill's organization-logo workflow. It must find an official logo or official rendered brand mark, never invent one, run `npm run affiliate:logo-fit`, inspect all card/detail/icon/marker surfaces, and make the setup script reproduce the approved asset. Image tools may normalize or crop official evidence but must not generate a new brand identity. If no official logo is supportable, record `MANUAL_REVIEW` and keep the organization unpublishable.
+The goal agent must follow the skill's organization-logo workflow. It must find an official logo or official rendered brand mark and never invent one. It must run `npm run affiliate:logo-fit -- --organization-id=<exact-organization-id> --output=<unique-logo-fit-directory>` for only the current organization, inspect all card/detail/icon/marker surfaces, and make the setup script reproduce the approved asset. It must dry-run and then apply `npm run affiliate:logo-fit:cleanup -- --path=<exact-directory>` after it records the fit result. It must never use `--all` for a mapping job or retain generated preview copies. Image tools may normalize or crop official evidence but must not generate a new brand identity. If no official logo is supportable, record `MANUAL_REVIEW` and keep the organization unpublishable.
 
 When a requeued claim contains `repairContext`, the agent must repair the named
 defect rather than rebuilding the prior result unchanged. For

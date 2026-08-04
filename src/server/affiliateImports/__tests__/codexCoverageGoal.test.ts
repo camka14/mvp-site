@@ -23,6 +23,7 @@ describe('Codex affiliate coverage goal', () => {
       '--ask-for-approval',
       'never',
       'exec',
+      '--ephemeral',
       '--cd',
       path.resolve('/srv/bracketiq'),
       '--model',
@@ -45,6 +46,7 @@ describe('Codex affiliate coverage goal', () => {
     expect(CODEX_AFFILIATE_COVERAGE_REASONING_EFFORT).toBe('max');
     expect(CODEX_AFFILIATE_COVERAGE_SERVICE_TIER).toBe('fast');
     expect(CODEX_AFFILIATE_COVERAGE_FAST_MODE).toBe(true);
+    expect(buildCodexAffiliateCoverageArgs(options)).toContain('--ephemeral');
   });
 
   it('defines coverage, competition-operator, manual recovery, and stopping contracts', () => {

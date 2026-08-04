@@ -10,6 +10,10 @@ import {
   CODEX_AFFILIATE_INGESTION_REASONING_EFFORT,
   CODEX_AFFILIATE_INGESTION_SERVICE_TIER,
 } from '../src/server/affiliateImports/codexCliGoal';
+import {
+  runAffiliateAgentArtifactRetention,
+  summarizeAffiliateAgentArtifactRetention,
+} from '../src/server/affiliateImports/agentArtifactRetention';
 
 const execFileAsync = promisify(execFile);
 
@@ -106,6 +110,11 @@ const main = async () => {
   if (!preflight.authenticated) {
     throw new Error('Codex CLI login is required. Run: codex login --device-auth');
   }
+  const retention = await runAffiliateAgentArtifactRetention({ repositoryRoot });
+  console.log(JSON.stringify({
+    schemaVersion: 1,
+    artifactRetention: summarizeAffiliateAgentArtifactRetention(retention),
+  }, null, 2));
   const child = spawn(codexExecutable, args, {
     cwd: repositoryRoot,
     env: process.env,

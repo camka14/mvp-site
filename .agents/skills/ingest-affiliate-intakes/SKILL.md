@@ -118,6 +118,18 @@ mark can be verified, record which artifacts were inspected and why each is
 insufficient; finish without inventing a mark and do not recycle the same
 evidence indefinitely.
 
+Render only the current organization. Run `npm run affiliate:logo-fit --
+--organization-id=<exact-organization-id> --output=<unique-logo-fit-directory>`
+against the same disposable database used for package validation. Add `--live`
+only when the active goal authorizes a live read and the selected organization
+already exists there. Never use `--all` for a mapping job. Inspect the generated
+card, detail, icon, and marker surfaces. Record the fit result in the package,
+then run `npm run affiliate:logo-fit:cleanup -- --path=<exact-directory>` as a
+dry run. If it identifies only `generatedCopiesOnly` preview files, repeat the
+same command with `--apply`. Do not retain preview PNG copies in `/tmp` or
+`output` after the inspection. The checked-in fixture and stored application
+logo are authoritative; the preview directory is not source evidence.
+
 Treat organization validity separately from child event validity. A valid
 organization package is not failed merely because one or more extracted events
 lacks a usable location. The review scrape must exclude those events, record

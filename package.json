@@ -252,6 +252,7 @@
     "affiliate:facilities:backfill-coordinates": "tsx scripts/backfill-affiliate-facility-coordinates.ts",
     "affiliate:scrape:schedules": "tsx scripts/configure-affiliate-scrape-schedules.ts",
     "affiliate:logo-fit": "tsx scripts/preview-affiliate-org-logo-fit.ts",
+    "affiliate:logo-fit:cleanup": "tsx scripts/cleanup-affiliate-logo-fit-preview.ts",
     "affiliate:logos:repair-local": "tsx scripts/repair-scoped-affiliate-local-logo-objects.ts",
     "affiliate:normalize-pricing": "tsx scripts/normalize-affiliate-event-pricing.ts",
     "affiliate:normalize-pricing:dry-run": "tsx scripts/normalize-affiliate-event-pricing.ts --dry-run",

@@ -25,6 +25,7 @@ describe('Codex affiliate intake goal', () => {
       '--ask-for-approval',
       'never',
       'exec',
+      '--ephemeral',
       '--cd',
       path.resolve('/srv/bracketiq'),
       '--model',
@@ -48,6 +49,7 @@ describe('Codex affiliate intake goal', () => {
     expect(CODEX_AFFILIATE_INGESTION_SERVICE_TIER).toBe('fast');
     expect(CODEX_AFFILIATE_INGESTION_FAST_MODE).toBe(true);
     expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(args).toContain('--ephemeral');
   });
 
   it('defines the complete queue, organization, logo, and approval contract', () => {
@@ -96,6 +98,7 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('Do not leave organization location null merely because its address is missing');
     expect(goal).toContain('Setup scripts must support guarded --live');
     expect(goal).toContain('MANUAL_LOGO_REVIEW');
+    expect(goal).toContain('Run logo-fit only for the current organization; never --all');
     expect(goal).toContain('inspect stored branding');
     expect(goal).toContain('TEAM-only');
     expect(goal).toContain('Do not publish candidates or organizations');

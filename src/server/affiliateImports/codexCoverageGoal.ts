@@ -125,6 +125,7 @@ export const buildCodexAffiliateCoverageArgs = (
   '--ask-for-approval',
   'never',
   'exec',
+  '--ephemeral',
   '--cd',
   path.resolve(options.repositoryRoot),
   '--model',

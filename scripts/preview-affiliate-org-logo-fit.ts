@@ -1,7 +1,7 @@
 /**
  * Builds an affiliate org logo fit preview sheet.
  *
- * The script fetches all affiliate org logos from the configured DB/storage,
+ * The script fetches one selected affiliate org logo from configured DB/storage,
  * writes source and opaque candidate assets under output/affiliate-logo-fit,
  * and generates an HTML contact sheet that compares the current raw logo
  * against a generated replacement in the major BracketIQ card/detail surfaces.
@@ -13,21 +13,27 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import sharp from 'sharp';
+import {
+  assertAffiliateLogoFitSelection,
+  buildAffiliateLogoFitOrganizationWhere,
+  parseAffiliateLogoFitOptions,
+  writeAffiliateLogoFitMarker,
+} from '../src/server/affiliateImports/logoFitPreview';
+import { configureAffiliateLiveDatabaseEnvironment } from '../src/server/affiliateImports/agentRepository';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
-const useLive = process.argv.includes('--live');
-const outputRootArg = process.argv.find((arg) => arg.startsWith('--output='));
+const options = parseAffiliateLogoFitOptions(process.argv.slice(2));
+const useLive = options.useLive;
 
 if (useLive) {
   const liveUrl = process.env.DATABASE_URL_LIVE;
   if (!liveUrl) {
     throw new Error('DATABASE_URL_LIVE is missing.');
   }
-  process.env.DATABASE_URL = liveUrl;
+  configureAffiliateLiveDatabaseEnvironment(liveUrl);
   process.env.STORAGE_PROVIDER = 'spaces';
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
 }
 
 type PrismaClientInstance = typeof import('../src/lib/prisma').prisma;
@@ -66,9 +72,7 @@ type LogoReportRow = {
   warnings: string[];
 };
 
-const outputRoot = outputRootArg
-  ? path.resolve(process.cwd(), outputRootArg.slice('--output='.length))
-  : path.resolve(process.cwd(), 'output/affiliate-logo-fit');
+const outputRoot = options.outputRoot;
 const assetsDir = path.join(outputRoot, 'assets');
 const PLATFORM_LIGHT_BG = '#ffffff';
 const PLATFORM_DARK_BG = '#000000';
@@ -749,10 +753,7 @@ const main = async () => {
   await fs.mkdir(assetsDir, { recursive: true });
 
   const organizations = await (prisma as any).organizations.findMany({
-    where: {
-      id: { startsWith: 'affiliate_org_' },
-      logoId: { not: null },
-    },
+    where: buildAffiliateLogoFitOrganizationWhere(options.scope),
     select: {
       id: true,
       name: true,
@@ -763,6 +764,7 @@ const main = async () => {
     },
     orderBy: { name: 'asc' },
   });
+  assertAffiliateLogoFitSelection(options.scope, organizations as AffiliateLogoRow[]);
   const files = await (prisma as any).file.findMany({
     where: {
       id: {
@@ -856,6 +858,11 @@ const main = async () => {
 
   await fs.writeFile(path.join(outputRoot, 'index.html'), buildHtml(report));
   await fs.writeFile(path.join(outputRoot, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
+  await writeAffiliateLogoFitMarker(outputRoot, {
+    completedAt: new Date().toISOString(),
+    previewCount: report.length,
+    scope: options.scope,
+  });
 
   const warningCount = report.filter((row) => row.warnings.length > 0).length;
   console.log(`Prepared ${report.length} affiliate logo previews.`);

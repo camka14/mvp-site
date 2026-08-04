@@ -173,6 +173,13 @@ otherwise-valid package with `officialLogoVerified = false` and
 `logoAbsenceAccepted = true`. Cite the inspected evidence and official-site
 check in the rationale and evidence references. Logo absence alone is not a
 blocking issue. A reviewer never edits the package or invents a brand mark.
+If a rendered fit check is necessary, run `npm run affiliate:logo-fit --
+--organization-id=<exact-organization-id> --output=<unique-logo-fit-directory>`
+for the claimed organization only. Never use `--all`. Inspect the result and
+record the decision evidence. Run `npm run affiliate:logo-fit:cleanup --
+--path=<exact-directory>` as a dry run, then repeat it with `--apply`.
+Generated preview PNG files are not approval evidence and must not remain in
+`/tmp` or `output`.
 
 - `APPROVE` only when every required check in the result schema is true. The
   logo check requires exactly one of `officialLogoVerified` or
