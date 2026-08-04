@@ -146,7 +146,7 @@ export const buildWeeklySessionOptions = (
         ).sort((left, right) => left - right);
         const startMinutes = typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : null;
         const endMinutes = typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : null;
-        if (!normalizedDays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+        if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
             return;
         }
         const slotDivisionNames = resolveDivisionNames(
@@ -157,6 +157,30 @@ export const buildWeeklySessionOptions = (
             sportInput,
         );
         const divisionLabel = (slotDivisionNames.length ? slotDivisionNames : fallbackDivisionNames).join(', ') || 'All divisions';
+
+        if (slot.repeating === false) {
+            if (slotStartDate < now) {
+                return;
+            }
+            const sessionStart = new Date(slotStartDate.getTime());
+            sessionStart.setHours(0, startMinutes, 0, 0);
+            const sessionEnd = new Date(slotStartDate.getTime());
+            sessionEnd.setHours(0, endMinutes, 0, 0);
+            sessions.push({
+                id: `${slot.$id}-${toIsoDateString(slotStartDate)}`,
+                slotId: String(slot.$id ?? ''),
+                occurrenceDate: toIsoDateString(slotStartDate),
+                start: sessionStart,
+                end: sessionEnd,
+                label: formatWeeklySessionLabel(sessionStart, sessionEnd),
+                divisionLabel,
+            });
+            return;
+        }
+
+        if (!normalizedDays.length) {
+            return;
+        }
 
         const anchor = new Date(Math.max(now.getTime(), slotStartDate.getTime()));
         const anchorWeek = startOfWeekMonday(anchor);
@@ -240,10 +264,19 @@ export const resolveSelectedWeeklySessionOption = (
     ).sort((left, right) => left - right);
     const startMinutes = typeof matchingSlot.startTimeMinutes === 'number' ? matchingSlot.startTimeMinutes : null;
     const endMinutes = typeof matchingSlot.endTimeMinutes === 'number' ? matchingSlot.endTimeMinutes : null;
-    if (!normalizedDays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
         return null;
     }
-    if (!normalizedDays.includes(toMondayIndex(occurrenceDate))) {
+    if (
+        matchingSlot.repeating === false
+        && occurrenceDate.getTime() !== slotStartDate.getTime()
+    ) {
+        return null;
+    }
+    if (matchingSlot.repeating !== false && !normalizedDays.length) {
+        return null;
+    }
+    if (matchingSlot.repeating !== false && !normalizedDays.includes(toMondayIndex(occurrenceDate))) {
         return null;
     }
     if (occurrenceDate < slotStartDate) {

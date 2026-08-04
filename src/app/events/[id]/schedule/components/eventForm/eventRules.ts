@@ -20,8 +20,12 @@ export const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?
     && !(eventType === 'WEEKLY_EVENT' && hasParentEventRef(parentEvent))
 );
 
-export const supportsFieldCountForEvent = (eventType: EventType): boolean =>
-    eventType === 'EVENT' || eventType === 'LEAGUE' || eventType === 'TOURNAMENT' || eventType === 'TRYOUT';
+export const supportsFieldCountForEvent = (eventType: EventType, parentEvent?: string | null): boolean =>
+    eventType === 'EVENT'
+    || eventType === 'LEAGUE'
+    || eventType === 'TOURNAMENT'
+    || eventType === 'TRYOUT'
+    || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));
 
 export const supportsOrganizationFieldSelectionForEvent = (eventType: EventType, parentEvent?: string | null): boolean =>
     eventType === 'EVENT' || eventType === 'TRYOUT' || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));

@@ -119,7 +119,7 @@ export const buildDefaultFieldState = ({
         base.eventType,
         base.parentEvent,
     );
-    const supportsFieldCountForDefault = supportsFieldCountForEvent(base.eventType);
+    const supportsFieldCountForDefault = supportsFieldCountForEvent(base.eventType, base.parentEvent);
     const hasReusableOrganizationFieldsForDefaultCount = Boolean(
         hostedOrganizationId
         && (

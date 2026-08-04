@@ -218,6 +218,7 @@ export const SimpleSetupScheduleLocationPage = ({
                         usesRentalSlots={usesRentalSlots}
                         immutableTimeSlotCount={immutableTimeSlots.length}
                         isWeeklyChildEvent={isWeeklyChildEvent}
+                        requiresWeeklyRepeatingSlot={eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent}
                         isSchedulableEventType={isSchedulableEventType}
                         isOrganizationManagedEvent={isOrganizationManagedEvent}
                         organizationHostedEventId={organizationHostedEventId}

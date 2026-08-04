@@ -50,10 +50,25 @@ describe('divisionTypes age alignment', () => {
     );
   });
 
-  it('supports team tiers published by volleyball clubs', () => {
-    expect(getSkillDivisionTypeOptionsForSport('Indoor Volleyball').map((option) => option.id)).toEqual(
-      expect.arrayContaining(['competitive', 'premier', 'local', 'national', 'regional', 'gold', 'elite', 'select', 'developmental']),
-    );
+  it('keeps indoor and outdoor volleyball skill catalogs separate', () => {
+    expect(getSkillDivisionTypeOptionsForSport('Indoor Volleyball').map((option) => option.id)).toEqual([
+      'open',
+      'competitive',
+      'premier',
+      'local',
+      'national',
+      'regional',
+      'gold',
+      'elite',
+      'select',
+      'developmental',
+    ]);
+    expect(getSkillDivisionTypeOptionsForSport('Beach Volleyball').map((option) => option.id)).toEqual([
+      'open', 'aa', 'a', 'bb', 'b', 'c',
+    ]);
+    expect(getSkillDivisionTypeOptionsForSport('Grass Volleyball').map((option) => option.id)).toEqual([
+      'open', 'aa', 'a', 'bb', 'b', 'c',
+    ]);
   });
 
   it('supports a strict open fallback for general hockey programs', () => {

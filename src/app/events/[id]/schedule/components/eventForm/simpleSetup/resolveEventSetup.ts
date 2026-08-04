@@ -11,26 +11,22 @@ import {
 } from './types';
 
 const PAGE_LABELS: Record<EventSetupPageId, string> = {
-    format: 'Format',
+    format: 'Options',
     basics: 'Basics',
-    'participation-plan': 'Participation Plan',
     divisions: 'Divisions',
-    'schedule-plan': 'Schedule Plan',
     'schedule-location': 'Schedule & Location',
-    'registration-plan': 'Registration Plan',
     'pricing-registration': 'Pricing & Registration',
     'documents-questions': 'Documents & Questions',
-    'operations-plan': 'Operations Plan',
     'staff-operations': 'Staff & Operations',
     'review-publish': 'Review & Publish',
 };
 
 const PAGE_CONTROLLER: Partial<Record<EventSetupPageId, EventSetupPageId>> = {
-    divisions: 'participation-plan',
-    'schedule-location': 'schedule-plan',
-    'pricing-registration': 'registration-plan',
-    'documents-questions': 'registration-plan',
-    'staff-operations': 'operations-plan',
+    divisions: 'format',
+    'schedule-location': 'format',
+    'pricing-registration': 'format',
+    'documents-questions': 'format',
+    'staff-operations': 'format',
 };
 
 export const resolveEventSetupCapabilities = (
@@ -89,13 +85,6 @@ const resolvePageUsage = (
             : { used: false, reason: capabilities.isExternal
                 ? 'External registration handles requirements on the linked website.'
                 : 'Enable documents or questions on Registration Plan.' };
-    }
-    if (pageId === 'operations-plan') {
-        return capabilities.usesOperationsPlanning
-            ? { used: true }
-            : { used: false, reason: capabilities.isExternal
-                ? 'External listings do not use BracketIQ event operations.'
-                : 'Tryouts do not use staff operations under the current event contract.' };
     }
     if (pageId === 'staff-operations') {
         return capabilities.usesStaffAndOperations
@@ -166,14 +155,14 @@ export const describeEventSetupTransition = (
     const categories = new Set<string>();
 
     if (previous.eventType !== next.eventType) {
-        ['participation-plan', 'divisions', 'schedule-plan', 'schedule-location']
+        ['divisions', 'schedule-location']
             .forEach((pageId) => pageIds.add(pageId as EventSetupPageId));
         categories.add('participant and division settings');
         categories.add('schedule configuration');
         categories.add('competition configuration');
     }
     if (!previous.isExternalRegistration && next.isExternalRegistration) {
-        ['divisions', 'registration-plan', 'pricing-registration', 'documents-questions', 'operations-plan', 'staff-operations']
+        ['divisions', 'pricing-registration', 'documents-questions', 'staff-operations']
             .forEach((pageId) => pageIds.add(pageId as EventSetupPageId));
         categories.add('BracketIQ payments and registration requirements');
         categories.add('match, scoring, staff, and official settings');

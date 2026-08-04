@@ -6,6 +6,7 @@ jest.mock('@/lib/prisma', () => ({
 
 import { persistScheduledRosterTeams, upsertEventFromPayload } from '@/server/repositories/events';
 import { buildEventDivisionId } from '@/lib/divisionTypes';
+import { WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE } from '@/lib/eventScheduling';
 
 type MockClient = {
   $executeRaw: jest.Mock;
@@ -116,6 +117,79 @@ const baseEventPayload = () => ({
 const divisionId = (token: string) => buildEventDivisionId('event_1', token);
 
 describe('upsertEventFromPayload', () => {
+  it('rejects a Weekly Event that has only fixed timeslots', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'WEEKLY_EVENT',
+      noFixedEndDateTime: true,
+      divisions: ['OPEN'],
+      timeSlots: [{
+        id: 'slot_fixed',
+        dayOfWeek: 1,
+        daysOfWeek: [1],
+        divisions: ['OPEN'],
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 10 * 60,
+        repeating: false,
+        scheduledFieldId: 'field_1',
+        startDate: '2026-01-05T09:00:00.000Z',
+        endDate: '2026-01-05T10:00:00.000Z',
+      }],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE,
+    );
+    expect(client.events.upsert).not.toHaveBeenCalled();
+    expect(client.timeSlots.upsert).not.toHaveBeenCalled();
+  });
+
+  it('persists repeating and fixed timeslots for a mixed Weekly Event schedule', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'WEEKLY_EVENT',
+      noFixedEndDateTime: true,
+      divisions: ['OPEN'],
+      timeSlots: [
+        {
+          id: 'slot_weekly',
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          divisions: ['OPEN'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-01-05T09:00:00.000Z',
+          endDate: '2026-03-05T10:00:00.000Z',
+        },
+        {
+          id: 'slot_fixed',
+          dayOfWeek: 2,
+          daysOfWeek: [2],
+          divisions: ['OPEN'],
+          startTimeMinutes: 11 * 60,
+          endTimeMinutes: 12 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-01-06T11:00:00.000Z',
+          endDate: '2026-01-06T12:00:00.000Z',
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.timeSlots.upsert).toHaveBeenCalledTimes(2);
+    expect(client.timeSlots.upsert.mock.calls.map((call) => call[0].create.repeating)).toEqual([true, false]);
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.timeSlotIds).toEqual(['slot_weekly', 'slot_fixed']);
+    expect(eventUpsertArg.create.noFixedEndDateTime).toBe(false);
+    expect(eventUpsertArg.update.noFixedEndDateTime).toBe(false);
+  });
+
   it('rejects fixed endDateTime values that are not after startDateTime', async () => {
     const client = createMockClient();
     const payload = {
@@ -1721,7 +1795,7 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArg.create.fieldIds).toEqual(['field_1']);
   });
 
-  it.each(['EVENT', 'WEEKLY_EVENT'])(
+  it.each(['EVENT'])(
     'allows a fieldless %s event',
     async (eventType) => {
       const client = createMockClient();

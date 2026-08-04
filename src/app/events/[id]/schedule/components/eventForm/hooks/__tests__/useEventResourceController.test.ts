@@ -149,6 +149,48 @@ describe('useEventResourceController', () => {
         ]));
     });
 
+    it('creates local resources for a parent Weekly Event', async () => {
+        const eventData = buildEventData({
+            eventType: 'WEEKLY_EVENT',
+            parentEvent: null,
+            fieldCount: 2,
+        });
+        const { result } = renderHook(() => useResourceHarness({
+            activeEditingEvent: buildEvent({
+                $id: eventData.$id,
+                eventType: 'WEEKLY_EVENT',
+                fields: [],
+            }),
+            eventData,
+        }));
+
+        await waitFor(() => expect(result.current.formValues.fields).toEqual([
+            expect.objectContaining({ name: 'Field 1', location: 'Initial Gym' }),
+            expect.objectContaining({ name: 'Field 2', location: 'Initial Gym' }),
+        ]));
+        expect(result.current.showLocalFieldCreationControls).toBe(true);
+    });
+
+    it('does not offer local resource creation for a Weekly Event occurrence', async () => {
+        const eventData = buildEventData({
+            eventType: 'WEEKLY_EVENT',
+            parentEvent: 'weekly_parent_1',
+            fieldCount: 2,
+        });
+        const { result } = renderHook(() => useResourceHarness({
+            activeEditingEvent: buildEvent({
+                $id: eventData.$id,
+                eventType: 'WEEKLY_EVENT',
+                parentEvent: 'weekly_parent_1',
+                fields: [],
+            }),
+            eventData,
+        }));
+
+        await waitFor(() => expect(result.current.showLocalFieldCreationControls).toBe(false));
+        expect(result.current.formValues.fields).toEqual([]);
+    });
+
     it('hydrates organization and rental resources and derives locked selected slots', async () => {
         mockedApiRequest.mockResolvedValue(buildRentalResponse());
         const homeField = {

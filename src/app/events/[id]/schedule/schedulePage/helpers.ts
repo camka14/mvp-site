@@ -472,7 +472,7 @@ export const buildWeeklyOccurrenceOptionsInRange = (
         .map((entry) => Number(entry))
         .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry <= 6),
     )).sort((left, right) => left - right);
-    if (!weekdays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+    if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
       return;
     }
 
@@ -494,6 +494,36 @@ export const buildWeeklyOccurrenceOptionsInRange = (
     ));
 
     if (searchEnd.getTime() < searchStart.getTime()) {
+      return;
+    }
+
+    if (slot.repeating === false) {
+      if (
+        slotStartDate.getTime() < normalizedRangeStart.getTime()
+        || slotStartDate.getTime() > normalizedRangeEnd.getTime()
+      ) {
+        return;
+      }
+      const occurrenceStart = new Date(slotStartDate.getTime());
+      occurrenceStart.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+      const occurrenceEnd = new Date(slotStartDate.getTime());
+      occurrenceEnd.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+      options.push({
+        id: `${slotId}:${toLocalIsoDate(slotStartDate)}`,
+        slotId,
+        occurrenceDate: toLocalIsoDate(slotStartDate),
+        label: formatWeeklyOccurrenceLabel(slotStartDate, startMinutes, endMinutes),
+        start: formatLocalDateTime(occurrenceStart),
+        end: formatLocalDateTime(occurrenceEnd),
+        startMinutes,
+        endMinutes,
+        fieldIds,
+        divisionIds,
+      });
+      return;
+    }
+
+    if (!weekdays.length) {
       return;
     }
 

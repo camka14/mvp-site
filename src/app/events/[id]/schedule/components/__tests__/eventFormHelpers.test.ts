@@ -1,4 +1,5 @@
 import type { EventOfficialPosition, Field, TimeSlot } from '@/types';
+import { WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE } from '@/lib/eventScheduling';
 
 import {
   buildSlotDivisionLookup,
@@ -445,6 +446,87 @@ describe('event form payment helpers', () => {
       state: 'UNPUBLISHED',
     } as any);
     expect(editState.manualPaymentLinks[0]?.url).toBe('$camka14');
+  });
+});
+
+describe('Weekly Event schedule validation', () => {
+  const makeWeeklyEventValues = (leagueSlots: Record<string, unknown>[]) => makeAffiliateEventFormValues({
+    isAffiliateEvent: false,
+    affiliateUrl: '',
+    eventType: 'WEEKLY_EVENT',
+    parentEvent: null,
+    price: 0,
+    allowPaymentPlans: false,
+    installmentCount: 0,
+    installmentAmounts: [],
+    teamSignup: false,
+    singleDivision: true,
+    registrationByDivisionType: false,
+    divisions: ['open'],
+    divisionDetails: [makeDivisionDetail({ id: 'open' })],
+    splitLeaguePlayoffDivisions: false,
+    selectedFieldIds: ['field_1'],
+    leagueSlots,
+  });
+
+  it('requires at least one repeating slot even when a fixed slot is valid', () => {
+    const schema = buildEventFormSchema({
+      allowMissingEventImage: true,
+      allowMissingEventDivisions: false,
+    });
+    const fixedSlot = {
+      key: 'fixed-slot',
+      repeating: false,
+      scheduledFieldId: 'field_1',
+      scheduledFieldIds: ['field_1'],
+      daysOfWeek: [2],
+      dayOfWeek: 2,
+      divisions: ['open'],
+      startDate: '2026-07-01T10:00',
+      endDate: '2026-07-01T12:00',
+      startTimeMinutes: 10 * 60,
+      endTimeMinutes: 12 * 60,
+      conflicts: [],
+      checking: false,
+    };
+
+    const fixedOnlyResult = schema.safeParse(makeWeeklyEventValues([fixedSlot]));
+
+    expect(fixedOnlyResult.success).toBe(false);
+    expect(fixedOnlyResult.error?.issues).toContainEqual(expect.objectContaining({
+      path: ['leagueSlots'],
+      message: WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE,
+    }));
+
+    const mixedResult = schema.safeParse(makeWeeklyEventValues([
+      fixedSlot,
+      {
+        ...fixedSlot,
+        key: 'weekly-slot',
+        repeating: true,
+        daysOfWeek: [0],
+        dayOfWeek: 0,
+        startDate: '2026-07-01T10:00',
+        endDate: '2026-08-31T12:00',
+      },
+    ]));
+
+    expect(mixedResult.success).toBe(true);
+  });
+
+  it('does not restore generated-end-date mode from a stale Weekly Event', () => {
+    const editState = mapEventToFormState({
+      $id: 'weekly_event_1',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      noFixedEndDateTime: true,
+      state: 'UNPUBLISHED',
+      hostId: 'user_1',
+      start: '2026-07-01T10:00:00.000Z',
+      end: '2026-08-31T12:00:00.000Z',
+    } as any);
+
+    expect(editState.noFixedEndDateTime).toBe(false);
   });
 });
 

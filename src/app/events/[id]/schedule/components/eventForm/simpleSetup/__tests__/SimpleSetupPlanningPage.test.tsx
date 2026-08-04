@@ -48,7 +48,7 @@ const RegistrationPlanHarness = ({
     const eventData = form.watch();
     return (
         <SimpleSetupPlanningPage
-            pageId="registration-plan"
+            pageId="format"
             control={form.control}
             eventData={eventData}
             eventTypeOptions={[]}
@@ -135,7 +135,7 @@ describe('SimpleSetupPlanningPage operations plan', () => {
             });
             return (
                 <SimpleSetupPlanningPage
-                    pageId="operations-plan"
+                    pageId="format"
                     control={form.control}
                     eventData={form.getValues()}
                     eventTypeOptions={[]}
@@ -164,5 +164,69 @@ describe('SimpleSetupPlanningPage operations plan', () => {
         expect(onChoicesChange).toHaveBeenCalledWith({
             useTeamCheckInAndRosterOperations: true,
         });
+    });
+});
+
+describe('SimpleSetupPlanningPage Weekly Event schedule plan', () => {
+    it('offers only repeating and mixed schedule styles', () => {
+        const onChoicesChange = jest.fn();
+        const weeklyChoices: EventSetupChoices = {
+            ...choices,
+            scheduleStyle: 'WEEKLY_SLOTS',
+        };
+        const weeklyCapabilities = resolveEventSetupCapabilities({
+            eventType: 'WEEKLY_EVENT',
+            isExternalRegistration: false,
+            singleDivision: true,
+            teamSignup: false,
+            includePlayoffs: false,
+            includePoolPlay: false,
+            splitLeaguePlayoffDivisions: false,
+            hasImmutableRentalResources: false,
+            choices: weeklyChoices,
+        });
+        const WeeklyScheduleHarness = () => {
+            const form = useForm<EventFormValues>({
+                defaultValues: {
+                    eventType: 'WEEKLY_EVENT',
+                    teamSignup: false,
+                    singleDivision: true,
+                } as EventFormValues,
+            });
+            return (
+                <SimpleSetupPlanningPage
+                    pageId="format"
+                    control={form.control}
+                    eventData={form.getValues()}
+                    eventTypeOptions={[]}
+                    capabilities={weeklyCapabilities}
+                    choices={weeklyChoices}
+                    includePlayoffs={false}
+                    hasStripeAccount={false}
+                    connectingStripe={false}
+                    onChoicesChange={onChoicesChange}
+                    onEventTypeChange={jest.fn()}
+                    onExternalRegistrationChange={jest.fn()}
+                    onSingleDivisionChange={jest.fn()}
+                    onIncludePlayoffsChange={jest.fn()}
+                    onIncludePoolPlayChange={jest.fn()}
+                    onSplitLeaguePlayoffDivisionsChange={jest.fn()}
+                    onConnectStripe={jest.fn()}
+                    onRegistrationPaymentModeChange={jest.fn()}
+                    isImmutableField={() => false}
+                />
+            );
+        };
+
+        renderWithMantine(<WeeklyScheduleHarness />);
+
+        expect(screen.getByText('Weekly Events require at least one weekly repeating timeslot.')).toBeInTheDocument();
+        expect(screen.getByLabelText('Weekly repeating timeslots')).toBeInTheDocument();
+        expect(screen.getByLabelText('Mixed repeating and fixed timeslots')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Fixed event window')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Fixed one-time timeslots')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByLabelText('Mixed repeating and fixed timeslots'));
+        expect(onChoicesChange).toHaveBeenCalledWith({ scheduleStyle: 'MIXED_SLOTS' });
     });
 });

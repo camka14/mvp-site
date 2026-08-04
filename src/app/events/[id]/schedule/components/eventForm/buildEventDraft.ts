@@ -540,7 +540,9 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             timeZone: normalizeTimeZone(source.timeZone, getSystemTimeZone()),
             eventType: source.eventType,
             parentEvent: source.parentEvent || undefined,
-            noFixedEndDateTime: !isAffiliateEvent && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
+            noFixedEndDateTime: !isAffiliateEvent
+                && source.eventType !== 'WEEKLY_EVENT'
+                && supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
                 ? Boolean(source.noFixedEndDateTime)
                 : false,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',

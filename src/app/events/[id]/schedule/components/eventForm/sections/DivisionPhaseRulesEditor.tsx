@@ -140,27 +140,17 @@ export const DivisionPhaseConfigurationControls = ({
     };
 
     useEffect(() => {
-        if (usesSets || settings.segmentLengthMinutes !== undefined || inheritedSegmentLength == null) return;
-        const next = {
-            ...settings,
-            segmentLengthMinutes: inheritedSegmentLength,
-            segmentBreakMinutes,
-        };
-        // The sport template becomes the explicit division-phase schedule default.
-        onChange(phase, next);
-        onCalculatedDurationChange?.(calculateTimedMatchDurationMinutes({
-            segmentCount,
-            segmentLengthMinutes: inheritedSegmentLength,
-            segmentBreakMinutes,
-        }));
+        if (
+            usesSets
+            || calculatedDurationMinutes == null
+            || calculatedDurationMinutes === configuredMatchDurationMinutes
+        ) return;
+
+        onCalculatedDurationChange?.(calculatedDurationMinutes);
     }, [
-        inheritedSegmentLength,
+        calculatedDurationMinutes,
+        configuredMatchDurationMinutes,
         onCalculatedDurationChange,
-        onChange,
-        phase,
-        segmentBreakMinutes,
-        segmentCount,
-        settings,
         usesSets,
     ]);
 

@@ -204,9 +204,51 @@ const GENERIC_DIVISION_TYPES: DivisionTypeSeed[] = [
   { id: 'open', name: 'Open', ratingType: 'SKILL' },
 ];
 
+const VOLLEYBALL_AGE_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: '12u', name: 'U12', ratingType: 'AGE' },
+  { id: '13u', name: 'U13', ratingType: 'AGE' },
+  { id: '14u', name: 'U14', ratingType: 'AGE' },
+  { id: '15u', name: 'U15', ratingType: 'AGE' },
+  { id: '16u', name: 'U16', ratingType: 'AGE' },
+  { id: '17u', name: 'U17', ratingType: 'AGE' },
+  { id: '18u', name: 'U18', ratingType: 'AGE' },
+  { id: '14plus', name: '14+', ratingType: 'AGE' },
+  { id: '15plus', name: '15+', ratingType: 'AGE' },
+  { id: '16plus', name: '16+', ratingType: 'AGE' },
+  { id: '17plus', name: '17+', ratingType: 'AGE' },
+  { id: '18plus', name: '18+', ratingType: 'AGE' },
+  { id: '25plus', name: '25+', ratingType: 'AGE' },
+  { id: '30plus', name: '30+', ratingType: 'AGE' },
+  { id: '35plus', name: '35+', ratingType: 'AGE' },
+  { id: '40plus', name: '40+', ratingType: 'AGE' },
+  { id: '45plus', name: '45+', ratingType: 'AGE' },
+];
+
+const INDOOR_VOLLEYBALL_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+  { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
+  { id: 'premier', name: 'Premier', ratingType: 'SKILL' },
+  { id: 'local', name: 'Local', ratingType: 'SKILL' },
+  { id: 'national', name: 'National', ratingType: 'SKILL' },
+  { id: 'regional', name: 'Regional', ratingType: 'SKILL' },
+  { id: 'gold', name: 'Gold', ratingType: 'SKILL' },
+  { id: 'elite', name: 'Elite', ratingType: 'SKILL' },
+  { id: 'select', name: 'Select', ratingType: 'SKILL' },
+  { id: 'developmental', name: 'Developmental', ratingType: 'SKILL' },
+];
+
+const BEACH_GRASS_VOLLEYBALL_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+  { id: 'aa', name: 'AA', ratingType: 'SKILL' },
+  { id: 'a', name: 'A', ratingType: 'SKILL' },
+  { id: 'bb', name: 'BB', ratingType: 'SKILL' },
+  { id: 'b', name: 'B', ratingType: 'SKILL' },
+  { id: 'c', name: 'C', ratingType: 'SKILL' },
+];
+
 // Sources used when assembling the defaults:
 // - US Youth Soccer (U6-U19 age group format)
-// - USA Volleyball (Open/AA/A/BB/B + youth age groups)
+// - USA Volleyball (indoor club tiers and beach/grass letter tiers + youth age groups)
 // - USA Hockey (8U-19U/13O/15O classifications)
 // - Little League Baseball (Tee Ball through Senior League)
 // - USA Pickleball sanctioned formats (age+skill brackets)
@@ -249,41 +291,35 @@ const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
     ],
   },
   {
+    sportKey: 'indoor_volleyball',
+    aliases: ['indoor volleyball'],
+    options: [
+      ...VOLLEYBALL_AGE_DIVISION_TYPES,
+      ...INDOOR_VOLLEYBALL_SKILL_DIVISION_TYPES,
+    ],
+  },
+  {
+    sportKey: 'beach_volleyball',
+    aliases: ['beach volleyball'],
+    options: [
+      ...VOLLEYBALL_AGE_DIVISION_TYPES,
+      ...BEACH_GRASS_VOLLEYBALL_SKILL_DIVISION_TYPES,
+    ],
+  },
+  {
+    sportKey: 'grass_volleyball',
+    aliases: ['grass volleyball'],
+    options: [
+      ...VOLLEYBALL_AGE_DIVISION_TYPES,
+      ...BEACH_GRASS_VOLLEYBALL_SKILL_DIVISION_TYPES,
+    ],
+  },
+  {
     sportKey: 'volleyball',
     aliases: ['volleyball', 'vb'],
     options: [
-      { id: '12u', name: 'U12', ratingType: 'AGE' },
-      { id: '13u', name: 'U13', ratingType: 'AGE' },
-      { id: '14u', name: 'U14', ratingType: 'AGE' },
-      { id: '15u', name: 'U15', ratingType: 'AGE' },
-      { id: '16u', name: 'U16', ratingType: 'AGE' },
-      { id: '17u', name: 'U17', ratingType: 'AGE' },
-      { id: '18u', name: 'U18', ratingType: 'AGE' },
-      { id: '14plus', name: '14+', ratingType: 'AGE' },
-      { id: '15plus', name: '15+', ratingType: 'AGE' },
-      { id: '16plus', name: '16+', ratingType: 'AGE' },
-      { id: '17plus', name: '17+', ratingType: 'AGE' },
-      { id: '18plus', name: '18+', ratingType: 'AGE' },
-      { id: '25plus', name: '25+', ratingType: 'AGE' },
-      { id: '30plus', name: '30+', ratingType: 'AGE' },
-      { id: '35plus', name: '35+', ratingType: 'AGE' },
-      { id: '40plus', name: '40+', ratingType: 'AGE' },
-      { id: '45plus', name: '45+', ratingType: 'AGE' },
-      { id: 'open', name: 'Open', ratingType: 'SKILL' },
-      { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
-      { id: 'premier', name: 'Premier', ratingType: 'SKILL' },
-      { id: 'local', name: 'Local', ratingType: 'SKILL' },
-      { id: 'national', name: 'National', ratingType: 'SKILL' },
-      { id: 'regional', name: 'Regional', ratingType: 'SKILL' },
-      { id: 'gold', name: 'Gold', ratingType: 'SKILL' },
-      { id: 'elite', name: 'Elite', ratingType: 'SKILL' },
-      { id: 'select', name: 'Select', ratingType: 'SKILL' },
-      { id: 'developmental', name: 'Developmental', ratingType: 'SKILL' },
-      { id: 'aa', name: 'AA', ratingType: 'SKILL' },
-      { id: 'a', name: 'A', ratingType: 'SKILL' },
-      { id: 'bb', name: 'BB', ratingType: 'SKILL' },
-      { id: 'b', name: 'B', ratingType: 'SKILL' },
-      { id: 'c', name: 'C', ratingType: 'SKILL' },
+      ...VOLLEYBALL_AGE_DIVISION_TYPES,
+      ...BEACH_GRASS_VOLLEYBALL_SKILL_DIVISION_TYPES,
     ],
   },
   {
@@ -555,6 +591,12 @@ const findCatalogForSport = (sportInput?: string | null): SportDivisionTypeCatal
   const normalizedSport = normalizeSportValue(sportInput);
   if (!normalizedSport) {
     return null;
+  }
+  const exactCatalog = SPORT_DIVISION_TYPES.find((entry) => (
+    entry.aliases.some((alias) => normalizedSport === alias)
+  ));
+  if (exactCatalog) {
+    return exactCatalog;
   }
   return SPORT_DIVISION_TYPES.find((entry) =>
     entry.aliases.some((alias) =>

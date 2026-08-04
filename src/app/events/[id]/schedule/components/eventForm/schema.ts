@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { parseLocalDateTime } from '@/lib/dateUtils';
+import {
+    hasWeeklyRepeatingTimeSlot,
+    WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE,
+} from '@/lib/eventScheduling';
 import { getManualPaymentLinkError } from '@/lib/manualRegistrationPayments';
 import type { Field } from '@/types';
 
@@ -687,7 +691,14 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 });
             }
 
-            if (!values.leagueSlots.length) {
+            const requiresWeeklyRepeatingSlot = values.eventType === 'WEEKLY_EVENT';
+            if (requiresWeeklyRepeatingSlot && !hasWeeklyRepeatingTimeSlot(values.leagueSlots)) {
+                ctx.addIssue({
+                    code: "custom",
+                    message: WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE,
+                    path: ['leagueSlots'],
+                });
+            } else if (!values.leagueSlots.length) {
                 ctx.addIssue({
                     code: "custom",
                     message: 'Add at least one timeslot',

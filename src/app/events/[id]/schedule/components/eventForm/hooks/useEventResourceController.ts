@@ -176,7 +176,7 @@ export const useEventResourceController = ({
         && (supportsOrganizationFieldSelection || eventSupportsScheduleSlots);
     const shouldManageLocalFields = !isAffiliateEvent
         && !hasRestrictedImmutableFields
-        && supportsFieldCountForEvent(eventData.eventType);
+        && supportsFieldCountForEvent(eventData.eventType, eventData.parentEvent);
     const shouldProvisionFields = shouldManageLocalFields;
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
     const resolvedOrganizationFields = Array.isArray(resolvedOrganization?.fields)
@@ -278,12 +278,16 @@ export const useEventResourceController = ({
         if (!isCreateMode || !isOrganizationHostedEvent || hasRestrictedImmutableFields) {
             return;
         }
-        if (!supportsFieldCountForEvent(eventData.eventType) || supportsFieldCountForEvent(previousEventType)) {
+        if (
+            !supportsFieldCountForEvent(eventData.eventType, eventData.parentEvent)
+            || supportsFieldCountForEvent(previousEventType, eventData.parentEvent)
+        ) {
             return;
         }
         setFieldCount(0);
     }, [
         eventData.eventType,
+        eventData.parentEvent,
         hasRestrictedImmutableFields,
         isCreateMode,
         isOrganizationHostedEvent,

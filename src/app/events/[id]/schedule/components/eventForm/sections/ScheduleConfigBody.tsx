@@ -6,6 +6,10 @@ import LeagueFields, {
     type LeagueSlotForm,
     type LeagueTimeslotMode,
 } from '@/app/discover/components/LeagueFields';
+import {
+    hasWeeklyRepeatingTimeSlot,
+    WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE,
+} from '@/lib/eventScheduling';
 import type { Event, Field, LeagueConfig, Sport } from '@/types';
 
 import type { EventFormValues } from '../formTypes';
@@ -22,6 +26,7 @@ type ScheduleConfigBodyProps = {
     usesRentalSlots: boolean;
     immutableTimeSlotCount: number;
     isWeeklyChildEvent: boolean;
+    requiresWeeklyRepeatingSlot: boolean;
     isSchedulableEventType: boolean;
     isOrganizationManagedEvent: boolean;
     organizationHostedEventId?: string | null;
@@ -54,6 +59,7 @@ export const ScheduleConfigBody = ({
     usesRentalSlots,
     immutableTimeSlotCount,
     isWeeklyChildEvent,
+    requiresWeeklyRepeatingSlot,
     isSchedulableEventType,
     isOrganizationManagedEvent,
     organizationHostedEventId,
@@ -159,6 +165,11 @@ export const ScheduleConfigBody = ({
                         ? 'No resources found. Create a resource on the Organizations page first, then return here to attach weekly availability.'
                         : undefined}
                 />
+                {requiresWeeklyRepeatingSlot && !hasWeeklyRepeatingTimeSlot(leagueSlots) ? (
+                    <Text c="red" role="alert" size="sm">
+                        {WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE}
+                    </Text>
+                ) : null}
             </div>
         ) : null}
     </div>

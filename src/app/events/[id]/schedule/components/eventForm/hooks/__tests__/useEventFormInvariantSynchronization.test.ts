@@ -59,7 +59,7 @@ const useInvariantSynchronizationHarness = ({
 };
 
 describe('useEventFormInvariantSynchronization', () => {
-    it('normalizes rental weekly events without overriding the chosen end-date mode', async () => {
+    it('normalizes rental weekly events to a standard event with a fixed end', async () => {
         const { result } = renderHook(() => useInvariantSynchronizationHarness({
             eventData: buildEventData({ eventType: 'WEEKLY_EVENT' }),
             isRentalCreateFlow: true,
@@ -69,6 +69,17 @@ describe('useEventFormInvariantSynchronization', () => {
             expect(result.current.eventType).toBe('EVENT');
             expect(result.current.noFixedEndDateTime).toBe(false);
         });
+    });
+
+    it('clears generated-end-date mode for Weekly Events', async () => {
+        const { result } = renderHook(() => useInvariantSynchronizationHarness({
+            eventData: buildEventData({
+                eventType: 'WEEKLY_EVENT',
+                noFixedEndDateTime: true,
+            }),
+        }));
+
+        await waitFor(() => expect(result.current.noFixedEndDateTime).toBe(false));
     });
 
     it('enforces team registration and removes duplicate creator participation', async () => {

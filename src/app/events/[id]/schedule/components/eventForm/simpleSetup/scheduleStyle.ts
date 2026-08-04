@@ -54,6 +54,24 @@ export const scheduleSlotHasUserConfiguration = (slot: LeagueSlotForm): boolean 
     || Boolean(parseLocalDateTime(slot.endDate ?? null))
 );
 
+export const isScheduleStyleAllowedForEventType = (
+    eventType: Event['eventType'] | undefined,
+    style: EventSetupScheduleStyle,
+): boolean => (
+    eventType !== 'WEEKLY_EVENT'
+    || style === 'WEEKLY_SLOTS'
+    || style === 'MIXED_SLOTS'
+);
+
+export const normalizeScheduleStyleForEventType = (
+    eventType: Event['eventType'] | undefined,
+    style: EventSetupScheduleStyle,
+): EventSetupScheduleStyle => (
+    isScheduleStyleAllowedForEventType(eventType, style)
+        ? style
+        : 'MIXED_SLOTS'
+);
+
 export const inferEventSetupScheduleStyle = ({
     eventType,
     slots = [],

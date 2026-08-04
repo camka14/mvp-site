@@ -24,7 +24,7 @@ describe('SimpleSetupNavigation', () => {
 
     it('renders named progress states and allows page selection', () => {
         const pages: EventSetupPage[] = [
-            { id: 'format', label: 'Format', status: 'complete', used: true },
+            { id: 'format', label: 'Options', status: 'complete', used: true },
             {
                 id: 'basics',
                 label: 'Basics',
@@ -32,8 +32,8 @@ describe('SimpleSetupNavigation', () => {
                 used: true,
             },
             {
-                id: 'operations-plan',
-                label: 'Operations Plan',
+                id: 'staff-operations',
+                label: 'Staff & Operations',
                 status: 'not-used',
                 used: false,
                 unavailableReason: 'Not needed.',
@@ -42,16 +42,16 @@ describe('SimpleSetupNavigation', () => {
         const onSelectPage = jest.fn();
         renderWithProvider(<SimpleSetupProgressRail pages={pages} onSelectPage={onSelectPage} />);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Operations Plan: Not used' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Staff & Operations: Not used' }));
 
-        expect(onSelectPage).toHaveBeenCalledWith('operations-plan');
+        expect(onSelectPage).toHaveBeenCalledWith('staff-operations');
         expect(screen.getByRole('button', { name: 'Basics: Current' })).toHaveAttribute('aria-current', 'step');
     });
 
     it('leaves border, radius, and shadow ownership to the outer event form shell', () => {
         renderWithProvider(
             <SimpleSetupPageFrame
-                page={{ id: 'format', label: 'Format', status: 'current', used: true }}
+                page={{ id: 'format', label: 'Options', status: 'current', used: true }}
                 isFirstUsedPage
                 isLastUsedPage={false}
                 canSubmit={false}
@@ -59,11 +59,11 @@ describe('SimpleSetupNavigation', () => {
                 onNext={jest.fn()}
                 onOpenControllerPage={jest.fn()}
             >
-                <p>Format content</p>
+                <p>Options content</p>
             </SimpleSetupPageFrame>,
         );
 
-        const pageFrame = screen.getByRole('region', { name: 'Format' });
+        const pageFrame = screen.getByRole('region', { name: 'Options' });
 
         expect(pageFrame).not.toHaveClass('rounded-lg');
         expect(pageFrame).not.toHaveClass('border');

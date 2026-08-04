@@ -2,7 +2,9 @@ import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 
 import {
     inferEventSetupScheduleStyle,
+    isScheduleStyleAllowedForEventType,
     normalizeScheduleSlotsForStyle,
+    normalizeScheduleStyleForEventType,
     scheduleStyleChangeDiscardsConfiguredSlots,
 } from '../scheduleStyle';
 
@@ -15,6 +17,15 @@ const buildSlot = (overrides: Partial<LeagueSlotForm> = {}): LeagueSlotForm => (
 });
 
 describe('Simple Setup schedule styles', () => {
+    it('allows only repeating and mixed schedules for Weekly Events', () => {
+        expect(isScheduleStyleAllowedForEventType('WEEKLY_EVENT', 'WEEKLY_SLOTS')).toBe(true);
+        expect(isScheduleStyleAllowedForEventType('WEEKLY_EVENT', 'MIXED_SLOTS')).toBe(true);
+        expect(isScheduleStyleAllowedForEventType('WEEKLY_EVENT', 'FIXED_WINDOW')).toBe(false);
+        expect(isScheduleStyleAllowedForEventType('WEEKLY_EVENT', 'FIXED_SLOTS')).toBe(false);
+        expect(isScheduleStyleAllowedForEventType('EVENT', 'FIXED_WINDOW')).toBe(true);
+        expect(normalizeScheduleStyleForEventType('WEEKLY_EVENT', 'FIXED_SLOTS')).toBe('MIXED_SLOTS');
+    });
+
     it('infers fixed, weekly, one-time, and mixed styles from saved slots', () => {
         const start = '2026-08-10T09:00:00';
         const end = '2026-08-10T17:00:00';

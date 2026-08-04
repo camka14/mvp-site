@@ -22,6 +22,7 @@ import type {
     EventSetupChoices,
     EventSetupPageId,
 } from './types';
+import { isScheduleStyleAllowedForEventType } from './scheduleStyle';
 
 type SimpleSetupPlanningPageProps = {
     pageId: EventSetupPageId;
@@ -45,7 +46,6 @@ type SimpleSetupPlanningPageProps = {
     isImmutableField: (key: keyof Event) => boolean;
 };
 
-const choiceCardClassName = 'rounded-md border border-gray-200 bg-gray-50 p-4';
 const scheduleStyleOptions: Array<{
     value: EventSetupChoices['scheduleStyle'];
     label: string;
@@ -94,14 +94,27 @@ export const SimpleSetupPlanningPage = ({
     onRegistrationPaymentModeChange,
     isImmutableField,
 }: SimpleSetupPlanningPageProps) => {
-    if (pageId === 'format') {
-        return (
-            <Stack gap="lg">
+    if (pageId !== 'format') return null;
+
+    const teamChoiceDisabled = !capabilities.canChooseTeamRegistration;
+    const divisionChoiceDisabled = !capabilities.canChooseDivisionMode;
+    const availableScheduleStyleOptions = scheduleStyleOptions.filter((option) => (
+        isScheduleStyleAllowedForEventType(eventData.eventType, option.value)
+    ));
+
+    return (
+        <Stack gap={32}>
+            <div>
+                <Title order={4}>Choose how the event works</Title>
+                <Text size="sm" c="dimmed">
+                    These answers organize the remaining setup steps and show only the tools this event needs.
+                </Text>
+            </div>
+
+            <Stack gap="md">
                 <div>
-                    <Title order={4}>What are you creating?</Title>
-                    <Text size="sm" c="dimmed">
-                        These choices determine which setup pages and BracketIQ tools apply to this event.
-                    </Text>
+                    <Text fw={700}>Event</Text>
+                    <Text size="sm" c="dimmed">Choose the event format and where participants register.</Text>
                 </div>
                 <div
                     data-testid="simple-setup-format-layout"
@@ -152,27 +165,19 @@ export const SimpleSetupPlanningPage = ({
                 </div>
                 {capabilities.isExternal ? (
                     <Alert color="blue" variant="light">
-                        BracketIQ will publish and filter this listing, but checkout, questions, documents,
-                        match generation, and staff operations remain on the linked website.
+                        BracketIQ will publish and filter this listing. The linked website handles checkout,
+                        registration requirements, match generation, and event operations.
                     </Alert>
                 ) : null}
             </Stack>
-        );
-    }
 
-    if (pageId === 'participation-plan') {
-        const teamChoiceDisabled = !capabilities.canChooseTeamRegistration;
-        const divisionChoiceDisabled = !capabilities.canChooseDivisionMode;
-        return (
-            <Stack gap="lg">
+            <Stack gap="md">
                 <div>
-                    <Title order={4}>Plan participation and divisions</Title>
-                    <Text size="sm" c="dimmed">
-                        Decide who registers and where capacity, pricing, schedules, and competition settings belong.
-                    </Text>
+                    <Text fw={700}>Participation and competition</Text>
+                    <Text size="sm" c="dimmed">Choose who registers and how divisions and competition phases are organized.</Text>
                 </div>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                    <div className={choiceCardClassName}>
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl" verticalSpacing="lg">
+                    <div className="min-w-0">
                         <Controller
                             name="teamSignup"
                             control={control}
@@ -202,30 +207,29 @@ export const SimpleSetupPlanningPage = ({
                             </Text>
                         ) : null}
                     </div>
-                    <div className={choiceCardClassName}>
-                        <Controller
-                            name="teamSizeLimit"
-                            control={control}
-                            render={({ field, fieldState }) => (
-                                <NumberInput
-                                    label="Team size"
-                                    description="Used for team registrations and team capacity calculations."
-                                    min={1}
-                                    max={999}
-                                    value={field.value ?? ''}
-                                    disabled={!eventData.teamSignup || isImmutableField('teamSizeLimit')}
-                                    error={fieldState.error?.message as string | undefined}
-                                    onChange={(value) => {
-                                        const numeric = typeof value === 'number' && Number.isFinite(value)
-                                            ? Math.max(1, Math.trunc(value))
-                                            : null;
-                                        field.onChange(numeric);
-                                    }}
-                                />
-                            )}
-                        />
-                    </div>
-                    <div className={choiceCardClassName}>
+                    <Controller
+                        name="teamSizeLimit"
+                        control={control}
+                        render={({ field, fieldState }) => (
+                            <NumberInput
+                                className="w-full max-w-[14rem]"
+                                label="Team size"
+                                description="Used for team capacity."
+                                min={1}
+                                max={999}
+                                value={field.value ?? ''}
+                                disabled={!eventData.teamSignup || isImmutableField('teamSizeLimit')}
+                                error={fieldState.error?.message as string | undefined}
+                                onChange={(value) => {
+                                    const numeric = typeof value === 'number' && Number.isFinite(value)
+                                        ? Math.max(1, Math.trunc(value))
+                                        : null;
+                                    field.onChange(numeric);
+                                }}
+                            />
+                        )}
+                    />
+                    <div className="min-w-0">
                         <Controller
                             name="singleDivision"
                             control={control}
@@ -240,7 +244,7 @@ export const SimpleSetupPlanningPage = ({
                                 >
                                     <Stack gap="xs" mt="sm">
                                         <Radio value="SHARED" label="Shared configuration" disabled={divisionChoiceDisabled} />
-                                        <Radio value="SPLIT" label="Split divisions" disabled={divisionChoiceDisabled} />
+                                        <Radio value="SPLIT" label="Separate division configurations" disabled={divisionChoiceDisabled} />
                                     </Stack>
                                 </Radio.Group>
                             )}
@@ -248,70 +252,70 @@ export const SimpleSetupPlanningPage = ({
                         <Text size="xs" c="dimmed" mt="sm">
                             {capabilities.isTryout
                                 ? 'Tryouts use the organization divisions selected on the next page.'
-                                : 'Split divisions can own separate capacity, price, schedule, and competition settings.'}
+                                : 'Separate divisions can own different capacity, price, schedule, and competition settings.'}
                         </Text>
                     </div>
-                    <div className={choiceCardClassName}>
-                        <Controller
-                            name="registrationByDivisionType"
-                            control={control}
-                            render={({ field }) => (
-                                <Switch
-                                    label="Register by division type"
-                                    description="Participants choose a classification and are assigned to a matching division."
-                                    checked={Boolean(field.value)}
-                                    disabled={!capabilities.canUseRegistrationByDivisionType || isImmutableField('registrationByDivisionType')}
-                                    onChange={(event) => field.onChange(event.currentTarget.checked)}
-                                />
-                            )}
-                        />
-                    </div>
-                    <div className={choiceCardClassName}>
+                    <Controller
+                        name="registrationByDivisionType"
+                        control={control}
+                        render={({ field }) => (
+                            <Switch
+                                label="Register by division type"
+                                description="Assign participants to a matching division from their selected classification."
+                                checked={Boolean(field.value)}
+                                disabled={!capabilities.canUseRegistrationByDivisionType || isImmutableField('registrationByDivisionType')}
+                                onChange={(event) => field.onChange(event.currentTarget.checked)}
+                            />
+                        )}
+                    />
+                    {capabilities.isLeague ? (
+                        <div className="min-w-0">
+                            <Switch
+                                label="Include playoffs"
+                                description="Add a playoff phase after league play."
+                                checked={includePlayoffs}
+                                disabled={!capabilities.canUseLeaguePlayoffs || isImmutableField('includePlayoffs')}
+                                onChange={(event) => onIncludePlayoffsChange(event.currentTarget.checked)}
+                            />
+                            <Controller
+                                name="splitLeaguePlayoffDivisions"
+                                control={control}
+                                render={({ field }) => (
+                                    <Switch
+                                        mt="md"
+                                        label="Use separate playoff divisions"
+                                        checked={Boolean(field.value)}
+                                        disabled={!capabilities.canSplitLeaguePlayoffDivisions || isImmutableField('splitLeaguePlayoffDivisions')}
+                                        onChange={(event) => onSplitLeaguePlayoffDivisionsChange(
+                                            event.currentTarget.checked,
+                                            field.onChange,
+                                        )}
+                                    />
+                                )}
+                            />
+                        </div>
+                    ) : null}
+                    {capabilities.isTournament ? (
                         <Switch
-                            label="League playoffs"
-                            checked={capabilities.isLeague && includePlayoffs}
-                            disabled={!capabilities.canUseLeaguePlayoffs || isImmutableField('includePlayoffs')}
-                            onChange={(event) => onIncludePlayoffsChange(event.currentTarget.checked)}
-                        />
-                        <Controller
-                            name="splitLeaguePlayoffDivisions"
-                            control={control}
-                            render={({ field }) => (
-                                <Switch
-                                    mt="md"
-                                    label="Split league and playoff divisions"
-                                    checked={Boolean(field.value)}
-                                    disabled={!capabilities.canSplitLeaguePlayoffDivisions || isImmutableField('splitLeaguePlayoffDivisions')}
-                                    onChange={(event) => onSplitLeaguePlayoffDivisionsChange(
-                                        event.currentTarget.checked,
-                                        field.onChange,
-                                    )}
-                                />
-                            )}
-                        />
-                    </div>
-                    <div className={choiceCardClassName}>
-                        <Switch
-                            label="Tournament pool play"
-                            description="Configure pools before the tournament bracket."
-                            checked={capabilities.isTournament && includePlayoffs}
+                            label="Pool play before the bracket"
+                            description="Configure pool matches before the tournament bracket."
+                            checked={includePlayoffs}
                             disabled={!capabilities.canUsePoolPlay || isImmutableField('includePlayoffs')}
                             onChange={(event) => onIncludePoolPlayChange(event.currentTarget.checked)}
                         />
-                    </div>
+                    ) : null}
                 </SimpleGrid>
             </Stack>
-        );
-    }
 
-    if (pageId === 'schedule-plan') {
-        return (
-            <Stack gap="lg">
+            <Stack gap="md">
                 <div>
-                    <Title order={4}>Plan the schedule structure</Title>
-                    <Text size="sm" c="dimmed">
-                        Choose how dates and timeslots will work before entering the schedule and location.
-                    </Text>
+                    <Text fw={700}>Schedule</Text>
+                    <Text size="sm" c="dimmed">Choose how event dates and timeslots work.</Text>
+                    {capabilities.isWeekly ? (
+                        <Text size="sm" c="dimmed" mt={4}>
+                            Weekly Events require at least one weekly repeating timeslot.
+                        </Text>
+                    ) : null}
                 </div>
                 <Radio.Group
                     label="Schedule style"
@@ -320,12 +324,9 @@ export const SimpleSetupPlanningPage = ({
                         scheduleStyle: value as EventSetupChoices['scheduleStyle'],
                     })}
                 >
-                    <Stack gap="md" mt="sm">
-                        {scheduleStyleOptions.map((option) => (
-                            <label
-                                key={option.value}
-                                className="flex cursor-pointer items-start gap-3"
-                            >
+                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg" mt="sm">
+                        {availableScheduleStyleOptions.map((option) => (
+                            <label key={option.value} className="flex cursor-pointer items-start gap-3">
                                 <Radio
                                     value={option.value}
                                     aria-label={option.label}
@@ -338,31 +339,25 @@ export const SimpleSetupPlanningPage = ({
                                 </div>
                             </label>
                         ))}
-                    </Stack>
+                    </SimpleGrid>
                 </Radio.Group>
             </Stack>
-        );
-    }
 
-    if (pageId === 'registration-plan') {
-        return (
-            <Stack gap="lg">
+            <Stack gap="md">
                 <div>
-                    <Title order={4}>Plan registration</Title>
-                    <Text size="sm" c="dimmed">Choose which registration tools should be configured on the following pages.</Text>
+                    <Text fw={700}>Registration and payments</Text>
+                    <Text size="sm" c="dimmed">Choose which registration tools need detailed setup.</Text>
                 </div>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                    <div className={choiceCardClassName}>
-                        <Switch
-                            label="Paid registration"
-                            description={capabilities.isExternal
-                                ? 'Publish the official listing price or division price range.'
-                                : 'Collect a total event or division price.'}
-                            checked={choices.paidRegistration}
-                            onChange={(event) => onChoicesChange({ paidRegistration: event.currentTarget.checked })}
-                        />
-                    </div>
-                    <div className={choiceCardClassName}>
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl" verticalSpacing="lg">
+                    <Switch
+                        label="Paid registration"
+                        description={capabilities.isExternal
+                            ? 'Publish the official listing price or division price range.'
+                            : 'Collect a total event or division price.'}
+                        checked={choices.paidRegistration}
+                        onChange={(event) => onChoicesChange({ paidRegistration: event.currentTarget.checked })}
+                    />
+                    <div className="min-w-0">
                         <Controller
                             name="registrationPaymentMode"
                             control={control}
@@ -389,9 +384,7 @@ export const SimpleSetupPlanningPage = ({
                         />
                         {!capabilities.isExternal && !hasStripeAccount ? (
                             <Alert color="orange" variant="light" mt="md">
-                                <Text size="sm" mb="sm">
-                                    Self-managed payment is the default until Stripe is connected.
-                                </Text>
+                                <Text size="sm" mb="sm">Self-managed payment is the default until Stripe is connected.</Text>
                                 <Button
                                     type="button"
                                     size="xs"
@@ -403,58 +396,44 @@ export const SimpleSetupPlanningPage = ({
                             </Alert>
                         ) : null}
                     </div>
-                    <div className={choiceCardClassName}>
-                        <Switch
-                            label="Required documents"
-                            checked={choices.useRequiredDocuments}
-                            disabled={!capabilities.usesInternalRegistration}
-                            onChange={(event) => onChoicesChange({ useRequiredDocuments: event.currentTarget.checked })}
-                        />
-                    </div>
-                    <div className={choiceCardClassName}>
-                        <Switch
-                            label="Registration questions"
-                            checked={choices.useRegistrationQuestions}
-                            disabled={!capabilities.usesInternalRegistration}
-                            onChange={(event) => onChoicesChange({ useRegistrationQuestions: event.currentTarget.checked })}
-                        />
-                    </div>
+                    <Switch
+                        label="Required documents"
+                        checked={choices.useRequiredDocuments}
+                        disabled={!capabilities.usesInternalRegistration}
+                        onChange={(event) => onChoicesChange({ useRequiredDocuments: event.currentTarget.checked })}
+                    />
+                    <Switch
+                        label="Registration questions"
+                        checked={choices.useRegistrationQuestions}
+                        disabled={!capabilities.usesInternalRegistration}
+                        onChange={(event) => onChoicesChange({ useRegistrationQuestions: event.currentTarget.checked })}
+                    />
                 </SimpleGrid>
             </Stack>
-        );
-    }
 
-    if (pageId === 'operations-plan') {
-        return (
-            <Stack gap="lg">
-                <div>
-                    <Title order={4}>Plan event operations</Title>
-                    <Text size="sm" c="dimmed">Enable only the operational editors this event will use.</Text>
-                </div>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                    <div className={choiceCardClassName}>
+            {capabilities.usesOperationsPlanning ? (
+                <Stack gap="md">
+                    <div>
+                        <Text fw={700}>Event operations</Text>
+                        <Text size="sm" c="dimmed">Enable only the staff and team tools this event will use.</Text>
+                    </div>
+                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl" verticalSpacing="lg">
                         <Switch
                             label="Staff assignments"
                             checked={choices.useStaffAssignments}
                             onChange={(event) => onChoicesChange({ useStaffAssignments: event.currentTarget.checked })}
                         />
-                    </div>
-                    <div className={choiceCardClassName}>
                         <Switch
                             label="Dedicated officials"
                             checked={choices.useDedicatedOfficials}
                             onChange={(event) => onChoicesChange({ useDedicatedOfficials: event.currentTarget.checked })}
                         />
-                    </div>
-                    <div className={choiceCardClassName}>
                         <Switch
                             label="Custom official positions"
                             checked={choices.useCustomOfficialPositions}
                             disabled={!choices.useDedicatedOfficials}
                             onChange={(event) => onChoicesChange({ useCustomOfficialPositions: event.currentTarget.checked })}
                         />
-                    </div>
-                    <div className={choiceCardClassName}>
                         <Switch
                             label="Team check-in and roster operations"
                             checked={choices.useTeamCheckInAndRosterOperations}
@@ -463,11 +442,9 @@ export const SimpleSetupPlanningPage = ({
                                 useTeamCheckInAndRosterOperations: event.currentTarget.checked,
                             })}
                         />
-                    </div>
-                </SimpleGrid>
-            </Stack>
-        );
-    }
-
-    return null;
+                    </SimpleGrid>
+                </Stack>
+            ) : null}
+        </Stack>
+    );
 };

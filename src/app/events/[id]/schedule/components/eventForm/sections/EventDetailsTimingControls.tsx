@@ -49,8 +49,11 @@ export const EventDetailsTimingControls = ({
     onNoFixedEndDateTimeChange,
     showScheduleControls = true,
     showRegistrationControls = true,
-}: EventDetailsTimingControlsProps) => (
-    <>
+}: EventDetailsTimingControlsProps) => {
+    const generatedEndDateDisabled = eventType === 'WEEKLY_EVENT'
+        || isImmutableField('noFixedEndDateTime');
+
+    return <>
         {showScheduleControls ? <div className="md:col-span-2">
             <Controller
                 name="start"
@@ -118,10 +121,10 @@ export const EventDetailsTimingControls = ({
                                     size="xs"
                                     label="Set the end date during match generation"
                                     description="Use an open scheduling window now. The generated match schedule will determine the event end date."
-                                    checked={noFixedEndDateTime}
-                                    disabled={isImmutableField('noFixedEndDateTime')}
+                                    checked={eventType === 'WEEKLY_EVENT' ? false : noFixedEndDateTime}
+                                    disabled={generatedEndDateDisabled}
                                     onChange={(event) => {
-                                        if (isImmutableField('noFixedEndDateTime')) return;
+                                        if (generatedEndDateDisabled) return;
                                         onNoFixedEndDateTimeChange(event.currentTarget.checked);
                                     }}
                                 />
@@ -217,5 +220,5 @@ export const EventDetailsTimingControls = ({
                 }}
             />
         </div> : null}
-    </>
-);
+    </>;
+};

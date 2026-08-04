@@ -459,7 +459,7 @@ export const buildSimpleSetupReviewModel = ({
         {
             id: 'participation',
             title: 'Participation',
-            ownerPageId: 'participation-plan',
+            ownerPageId: 'format',
             rows: [
                 { label: 'Registration unit', value: eventData.teamSignup ? 'Teams' : 'Individuals' },
                 ...(eventData.teamSignup ? [{ label: 'Team size', value: eventData.teamSizeLimit ? String(eventData.teamSizeLimit) : 'Not specified' }] : []),
@@ -468,7 +468,7 @@ export const buildSimpleSetupReviewModel = ({
                 ...(eventData.eventType === 'LEAGUE' ? [{ label: 'League playoffs', value: yesNo(eventData.leagueData.includePlayoffs) }] : []),
                 ...(eventData.eventType === 'TOURNAMENT' ? [{ label: 'Pool play', value: yesNo(eventData.leagueData.includePlayoffs) }] : []),
             ],
-            warnings: warningsForPage(validationErrorIndex, 'participation-plan'),
+            warnings: warningsForPage(validationErrorIndex, 'format'),
         },
         {
             id: 'divisions',
@@ -483,12 +483,12 @@ export const buildSimpleSetupReviewModel = ({
         {
             id: 'schedule-structure',
             title: 'Schedule Structure',
-            ownerPageId: 'schedule-plan',
+            ownerPageId: 'format',
             rows: [
                 { label: 'Schedule style', value: SCHEDULE_STYLE_LABELS[choices.scheduleStyle] },
                 { label: 'Configured timeslots', value: String(configuredTimeslotCount) },
             ],
-            warnings: warningsForPage(validationErrorIndex, 'schedule-plan'),
+            warnings: warningsForPage(validationErrorIndex, 'format'),
         },
         {
             id: 'schedule-location',
@@ -581,9 +581,9 @@ export const buildSimpleSetupReviewModel = ({
         ...((enabledOperations.some(Boolean)) ? [{
             id: 'operations-plan',
             title: 'Operations Plan',
-            ownerPageId: 'operations-plan' as const,
+            ownerPageId: 'format' as const,
             rows: [{ label: 'Enabled tools', value: joinOrNone(enabledOperations) }],
-            warnings: warningsForPage(validationErrorIndex, 'operations-plan'),
+            warnings: warningsForPage(validationErrorIndex, 'format'),
         }] : []),
         ...((enabledOperations.some(Boolean)) ? [{
             id: 'staff-operations',

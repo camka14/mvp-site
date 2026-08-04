@@ -69,6 +69,50 @@ describe('weekly event session calculations', () => {
         expect(sessions[0]?.end.getMinutes()).toBe(30);
     });
 
+    it('shows a fixed supplemental slot once alongside weekly occurrences', () => {
+        const event = buildEvent({
+            eventType: 'WEEKLY_EVENT',
+            timeSlots: [
+                buildTimeSlot({
+                    $id: 'slot-weekly',
+                    repeating: true,
+                    dayOfWeek: undefined,
+                    daysOfWeek: [0],
+                    startDate: '2026-07-13',
+                    endDate: '2026-08-31',
+                }),
+                buildTimeSlot({
+                    $id: 'slot-fixed',
+                    repeating: false,
+                    dayOfWeek: undefined,
+                    daysOfWeek: [],
+                    startDate: '2026-07-15',
+                    endDate: '2026-07-15',
+                    startTimeMinutes: 11 * 60,
+                    endTimeMinutes: 12 * 60,
+                }),
+            ],
+        });
+
+        const sessions = buildWeeklySessionOptions(event, 3, new Date(2026, 6, 13));
+
+        expect(sessions.filter((session) => session.slotId === 'slot-weekly')).toHaveLength(3);
+        expect(sessions.filter((session) => session.slotId === 'slot-fixed')).toEqual([
+            expect.objectContaining({
+                id: 'slot-fixed-2026-07-15',
+                occurrenceDate: '2026-07-15',
+            }),
+        ]);
+        expect(resolveSelectedWeeklySessionOption(event, {
+            slotId: 'slot-fixed',
+            occurrenceDate: '2026-07-15',
+        })).not.toBeNull();
+        expect(resolveSelectedWeeklySessionOption(event, {
+            slotId: 'slot-fixed',
+            occurrenceDate: '2026-07-22',
+        })).toBeNull();
+    });
+
     it('resolves an explicitly selected occurrence and rejects invalid slot dates', () => {
         const event = buildEvent({
             eventType: 'WEEKLY_EVENT',

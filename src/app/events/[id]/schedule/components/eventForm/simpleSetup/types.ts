@@ -5,14 +5,10 @@ export type EventSetupMode = 'SIMPLE' | 'ADVANCED';
 export const EVENT_SETUP_PAGE_IDS = [
     'format',
     'basics',
-    'participation-plan',
     'divisions',
-    'schedule-plan',
     'schedule-location',
-    'registration-plan',
     'pricing-registration',
     'documents-questions',
-    'operations-plan',
     'staff-operations',
     'review-publish',
 ] as const;

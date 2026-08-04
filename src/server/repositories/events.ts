@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { requirePrismaSchemaContract } from '@/lib/prismaSchemaContract';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
+import {
+  hasWeeklyRepeatingTimeSlot,
+  WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE,
+} from '@/lib/eventScheduling';
 import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps, normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 import {
   normalizeManualPaymentInstructions,
@@ -5092,7 +5096,15 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;
-  const supportsNoFixedEndDateTime = !isAffiliateExternalEvent && (isSchedulableEventType(nextEventType) || isWeeklyParent);
+  if (
+    !isAffiliateExternalEvent
+    && !isTemplateState
+    && isWeeklyParent
+    && !hasWeeklyRepeatingTimeSlot(canonicalTimeSlots)
+  ) {
+    throw new Error(WEEKLY_REPEATING_TIME_SLOT_REQUIRED_MESSAGE);
+  }
+  const supportsNoFixedEndDateTime = !isAffiliateExternalEvent && isSchedulableEventType(nextEventType);
   const payloadIncludesEnd = Object.prototype.hasOwnProperty.call(payload, 'end');
   const payloadIncludesNoFixedEndDateTime = Object.prototype.hasOwnProperty.call(payload, 'noFixedEndDateTime');
   const parsedPayloadEnd = payloadIncludesEnd ? coerceDate(payload.end, eventTimeZone) : null;

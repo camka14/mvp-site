@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
 import type { Sport } from '@/types';
@@ -20,6 +21,37 @@ const timedSport = {
 } as Sport;
 
 describe('DivisionPhaseConfigurationControls', () => {
+    it('derives a new timed phase default without writing phase settings during mount', () => {
+        const onChange = jest.fn();
+
+        const NewTimedPhaseHarness = () => {
+            const [configuredDuration, setConfiguredDuration] = useState<number | null>(null);
+            const [, setRevision] = useState(0);
+
+            return (
+                <DivisionPhaseConfigurationControls
+                    phase="BRACKET"
+                    divisionName="Single division"
+                    phaseSettings={{}}
+                    sport={timedSport}
+                    usesSets={false}
+                    configuredMatchDurationMinutes={configuredDuration}
+                    onChange={(phase, settings) => {
+                        onChange(phase, settings);
+                        setRevision((current) => current + 1);
+                    }}
+                    onCalculatedDurationChange={setConfiguredDuration}
+                />
+            );
+        };
+
+        renderWithMantine(<NewTimedPhaseHarness />);
+
+        expect(screen.getByLabelText('Quarter length')).toHaveValue('10 min');
+        expect(screen.getByText('Calculated match duration: 40 minutes.')).toBeInTheDocument();
+        expect(onChange).not.toHaveBeenCalled();
+    });
+
     it('shows phase timing beside the configuration and derives the match duration', () => {
         const onChange = jest.fn();
         const onCalculatedDurationChange = jest.fn();

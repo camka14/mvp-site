@@ -95,6 +95,8 @@ import { SimpleSetupReviewPage } from './eventForm/simpleSetup/SimpleSetupReview
 import { buildSimpleSetupReviewModel } from './eventForm/simpleSetup/reviewModel';
 import {
     inferEventSetupScheduleStyle,
+    isScheduleStyleAllowedForEventType,
+    normalizeScheduleStyleForEventType,
     scheduleStyleChangeDiscardsConfiguredSlots,
 } from './eventForm/simpleSetup/scheduleStyle';
 import type {
@@ -129,10 +131,6 @@ const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
 };
 const SIMPLE_PLANNING_PAGE_IDS = new Set<EventSetupPageId>([
     'format',
-    'participation-plan',
-    'schedule-plan',
-    'registration-plan',
-    'operations-plan',
 ]);
 
 const normalizedOfficialPositionSignature = (positions: Array<{ name: string; count: number }> | undefined): string[] => (
@@ -152,15 +150,16 @@ export const buildDefaultSetupChoices = (values?: Partial<EventFormValues>): Eve
             defaultOfficialPositions.length === 0
             || configuredOfficialPositions.join('|') !== defaultOfficialPositions.join('|')
         );
+    const inferredScheduleStyle = isExternal
+        ? 'FIXED_WINDOW'
+        : inferEventSetupScheduleStyle({
+            eventType: values?.eventType,
+            slots: values?.leagueSlots,
+            eventStart: values?.start,
+            eventEnd: values?.end,
+        });
     return {
-        scheduleStyle: isExternal
-            ? 'FIXED_WINDOW'
-            : inferEventSetupScheduleStyle({
-                eventType: values?.eventType,
-                slots: values?.leagueSlots,
-                eventStart: values?.start,
-                eventEnd: values?.end,
-            }),
+        scheduleStyle: normalizeScheduleStyleForEventType(values?.eventType, inferredScheduleStyle),
         paidRegistration: Number(values?.price) > 0 || hasDivisionPrice,
         useRequiredDocuments: Boolean(values?.requiredTemplateIds?.length),
         useRegistrationQuestions: false,
@@ -912,8 +911,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const nextInput = { ...setupResolverInput, eventType: nextType };
         if (!confirmSimpleSetupTransition(nextInput)) return;
         invalidateSimpleSetupPages(describeEventSetupTransition(setupResolverInput, nextInput).pageIds);
+        if (!isScheduleStyleAllowedForEventType(nextType, simpleSetupChoices.scheduleStyle)) {
+            setSimpleSetupChoices((current) => ({ ...current, scheduleStyle: 'WEEKLY_SLOTS' }));
+        }
         configurationActions.handleEventTypeChange(nextType, applyValue);
-    }, [configurationActions, confirmSimpleSetupTransition, invalidateSimpleSetupPages, setupResolverInput]);
+    }, [
+        configurationActions,
+        confirmSimpleSetupTransition,
+        invalidateSimpleSetupPages,
+        setupResolverInput,
+        simpleSetupChoices.scheduleStyle,
+    ]);
 
     const handleSimpleExternalRegistrationChange = useCallback((
         checked: boolean,
@@ -1076,14 +1084,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     ]);
 
     const validateSimpleSetupPage = useCallback(async (pageId: EventSetupPageId): Promise<boolean> => {
-        if (pageId === 'format') return trigger(['eventType', 'isAffiliateEvent']);
+        if (pageId === 'format') {
+            return trigger([
+                'eventType',
+                'isAffiliateEvent',
+                'teamSignup',
+                'teamSizeLimit',
+                'singleDivision',
+                'registrationByDivisionType',
+                'splitLeaguePlayoffDivisions',
+                'registrationPaymentMode',
+            ]);
+        }
         if (pageId === 'basics') {
             return trigger(isAffiliateEvent
                 ? ['name', 'sportId', 'description', 'affiliateUrl']
                 : ['name', 'sportId', 'description']);
-        }
-        if (pageId === 'participation-plan') {
-            return trigger(['teamSignup', 'teamSizeLimit', 'singleDivision', 'registrationByDivisionType']);
         }
         if (pageId === 'divisions') {
             return trigger(eventData.eventType === 'TRYOUT'

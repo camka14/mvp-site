@@ -55,8 +55,8 @@ const OWNERSHIP_BY_PREFIX: Record<string, ErrorOwnership> = {
     selectedFieldIds: { simplePageId: 'schedule-location', advancedSectionId: 'section-event-details' },
     fields: { simplePageId: 'schedule-location', advancedSectionId: 'section-event-details' },
     fieldCount: { simplePageId: 'schedule-location', advancedSectionId: 'section-event-details' },
-    teamSignup: { simplePageId: 'participation-plan', advancedSectionId: 'section-event-details' },
-    teamSizeLimit: { simplePageId: 'participation-plan', advancedSectionId: 'section-event-details' },
+    teamSignup: { simplePageId: 'format', advancedSectionId: 'section-event-details' },
+    teamSizeLimit: { simplePageId: 'format', advancedSectionId: 'section-event-details' },
     manualPaymentLinks: { simplePageId: 'pricing-registration', advancedSectionId: 'section-manual-payments' },
     manualPaymentInstructions: { simplePageId: 'pricing-registration', advancedSectionId: 'section-manual-payments' },
     matchRulesOverride: { simplePageId: 'divisions', advancedSectionId: 'section-match-rules' },
@@ -75,9 +75,9 @@ const OWNERSHIP_BY_PREFIX: Record<string, ErrorOwnership> = {
     teamCheckInOpenMinutesBefore: { simplePageId: 'staff-operations', advancedSectionId: 'section-officials' },
     allowMatchRosterEdits: { simplePageId: 'staff-operations', advancedSectionId: 'section-officials' },
     allowTemporaryMatchPlayers: { simplePageId: 'staff-operations', advancedSectionId: 'section-officials' },
-    singleDivision: { simplePageId: 'participation-plan', advancedSectionId: 'section-division-settings' },
-    splitLeaguePlayoffDivisions: { simplePageId: 'participation-plan', advancedSectionId: 'section-division-settings' },
-    registrationByDivisionType: { simplePageId: 'participation-plan', advancedSectionId: 'section-division-settings' },
+    singleDivision: { simplePageId: 'format', advancedSectionId: 'section-division-settings' },
+    splitLeaguePlayoffDivisions: { simplePageId: 'format', advancedSectionId: 'section-division-settings' },
+    registrationByDivisionType: { simplePageId: 'format', advancedSectionId: 'section-division-settings' },
     divisions: { simplePageId: 'divisions', advancedSectionId: 'section-division-settings' },
     divisionDetails: { simplePageId: 'divisions', advancedSectionId: 'section-division-settings' },
     playoffDivisionDetails: { simplePageId: 'divisions', advancedSectionId: 'section-division-settings' },
@@ -102,7 +102,7 @@ const OWNERSHIP_BY_PREFIX: Record<string, ErrorOwnership> = {
     freeAgents: { simplePageId: 'review-publish', advancedSectionId: 'section-event-details' },
     players: { simplePageId: 'review-publish', advancedSectionId: 'section-event-details' },
     teams: { simplePageId: 'review-publish', advancedSectionId: 'section-event-details' },
-    joinAsParticipant: { simplePageId: 'participation-plan', advancedSectionId: 'section-event-details' },
+    joinAsParticipant: { simplePageId: 'format', advancedSectionId: 'section-event-details' },
 };
 
 const DEFAULT_OWNERSHIP: ErrorOwnership = {

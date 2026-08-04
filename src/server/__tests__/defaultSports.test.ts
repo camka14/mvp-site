@@ -15,11 +15,31 @@ describe('default sports', () => {
     await ensureDefaultSports(client as any);
 
     const seededBeachVolleyball = createMany.mock.calls[0][0].data.find((sport: any) => sport.id === 'Beach Volleyball');
+    const seededGrassVolleyball = createMany.mock.calls[0][0].data.find((sport: any) => sport.id === 'Grass Volleyball');
+    const seededIndoorVolleyball = createMany.mock.calls[0][0].data.find((sport: any) => sport.id === 'Indoor Volleyball');
     expect(seededBeachVolleyball.matchRulesTemplate).toMatchObject({
       scoringModel: 'SETS',
       segmentCount: 3,
       setPointTargets: [21, 21, 15],
     });
+    expect(seededBeachVolleyball.skillDivisionTypes.map((option: any) => option.id)).toEqual([
+      'open', 'aa', 'a', 'bb', 'b', 'c',
+    ]);
+    expect(seededGrassVolleyball.skillDivisionTypes.map((option: any) => option.id)).toEqual([
+      'open', 'aa', 'a', 'bb', 'b', 'c',
+    ]);
+    expect(seededIndoorVolleyball.skillDivisionTypes.map((option: any) => option.id)).toEqual([
+      'open',
+      'competitive',
+      'premier',
+      'local',
+      'national',
+      'regional',
+      'gold',
+      'elite',
+      'select',
+      'developmental',
+    ]);
   });
 
   it('prefers the row whose stable ID already matches the canonical name', () => {

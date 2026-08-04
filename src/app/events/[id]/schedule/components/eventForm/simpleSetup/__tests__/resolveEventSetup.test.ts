@@ -108,18 +108,15 @@ describe('resolveEventSetupPages', () => {
             completePageIds: [
                 'format',
                 'basics',
-                'participation-plan',
                 'divisions',
-                'schedule-plan',
                 'schedule-location',
-                'registration-plan',
                 'pricing-registration',
             ],
         });
         const pages = resolveEventSetupPages(setup);
 
         expect(pages.find((page) => page.id === 'documents-questions')?.status).toBe('available');
-        expect(pages.find((page) => page.id === 'operations-plan')?.status).toBe('locked');
+        expect(pages.find((page) => page.id === 'staff-operations')?.status).toBe('locked');
         expect(pages.find((page) => page.id === 'staff-operations')?.used).toBe(true);
     });
 
@@ -159,7 +156,15 @@ describe('resolveEventSetupPages', () => {
 
             expect(pages.map((page) => page.id)).not.toContain('competition-plan');
             expect(pages.map((page) => page.id)).not.toContain('competition-rules');
-            expect(pages.find((page) => page.id === 'operations-plan')?.used).toBe(operationsUsed);
+            expect(pages.map((page) => page.id)).not.toContain('participation-plan');
+            expect(pages.map((page) => page.id)).not.toContain('schedule-plan');
+            expect(pages.map((page) => page.id)).not.toContain('registration-plan');
+            expect(pages.map((page) => page.id)).not.toContain('operations-plan');
+            expect(resolveEventSetupCapabilities(input({
+                eventType,
+                isExternalRegistration,
+                organizationFeatures: eventType === 'TRYOUT' ? ['CLUB_TEAMS'] : [],
+            })).usesOperationsPlanning).toBe(operationsUsed);
         },
     );
 });

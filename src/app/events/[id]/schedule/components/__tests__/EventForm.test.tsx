@@ -39,6 +39,26 @@ describe('buildDefaultSetupChoices', () => {
     expect(choices.useDedicatedOfficials).toBe(true);
     expect(choices.useCustomOfficialPositions).toBe(true);
   });
+
+  it('normalizes a fixed-only saved Weekly Event schedule to mixed setup', () => {
+    const choices = buildDefaultSetupChoices({
+      eventType: 'WEEKLY_EVENT',
+      start: '2026-03-12T10:00:00',
+      end: '2026-03-12T12:00:00',
+      leagueSlots: [{
+        key: 'fixed-slot',
+        repeating: false,
+        startDate: '2026-03-12T10:00:00',
+        endDate: '2026-03-12T12:00:00',
+        startTimeMinutes: 600,
+        endTimeMinutes: 720,
+        conflicts: [],
+        checking: false,
+      }],
+    } as any);
+
+    expect(choices.scheduleStyle).toBe('MIXED_SLOTS');
+  });
 });
 
 let mockDateTimePickerValuesByLabel: Record<string, string> = {};
@@ -543,14 +563,14 @@ describe('EventForm dirty state', () => {
     });
   });
 
-  it('opens new events in Simple Setup and unlocks Basics after Format', async () => {
+  it('opens new events in Simple Setup and unlocks Basics after Options', async () => {
     renderForm(jest.fn(), undefined, {}, null, {
       isCreateMode: true,
       initialSetupMode: 'SIMPLE',
     });
 
-    expect(await screen.findByRole('heading', { name: 'Format' })).toBeInTheDocument();
-    const formatPageFrame = screen.getByRole('region', { name: 'Format' });
+    expect(await screen.findByRole('heading', { name: 'Options' })).toBeInTheDocument();
+    const formatPageFrame = screen.getByRole('region', { name: 'Options' });
     expect(formatPageFrame.parentElement).toHaveClass('overflow-hidden');
     expect(formatPageFrame).not.toHaveClass('rounded-lg', 'border', 'shadow-sm');
     expect(screen.getByTestId('simple-setup-format-layout')).toHaveClass('flex', 'flex-wrap');
@@ -572,7 +592,7 @@ describe('EventForm dirty state', () => {
     expect(screen.queryByRole('heading', { name: 'Divisions' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Schedule' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Collapse' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Format: Complete' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Options: Complete' })).toBeInTheDocument();
   });
 
   it('renders only the division component on the Simple Setup Divisions page', async () => {
@@ -583,9 +603,6 @@ describe('EventForm dirty state', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByRole('heading', { name: 'Participation Plan' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('heading', { name: 'Divisions' })).toBeInTheDocument();
@@ -606,11 +623,6 @@ describe('EventForm dirty state', () => {
       initialSetupMode: 'SIMPLE',
     });
 
-    for (const pageName of ['Basics', 'Participation Plan', 'Divisions', 'Schedule Plan']) {
-      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-      expect(await screen.findByRole('heading', { name: pageName })).toBeInTheDocument();
-    }
-
     expect(screen.getByRole('radiogroup', { name: 'Schedule style' })).toBeInTheDocument();
     expect(screen.getByText('Use one non-repeating timeslot that always matches the event start and end.')).toBeInTheDocument();
     expect(screen.getByText('Use the same selected weekdays and times each week during the event.')).toBeInTheDocument();
@@ -625,7 +637,7 @@ describe('EventForm dirty state', () => {
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
     const formRef = React.createRef<EventFormHandle>();
     renderForm(jest.fn(), formRef, {
-      eventType: 'WEEKLY_EVENT',
+      eventType: 'LEAGUE',
       start: '2026-03-12T10:00:00',
       end: '2026-03-12T12:00:00',
       leagueSlots: [{
@@ -646,14 +658,12 @@ describe('EventForm dirty state', () => {
       initialSetupMode: 'SIMPLE',
     });
 
-    for (const pageName of ['Basics', 'Participation Plan', 'Divisions', 'Schedule Plan']) {
+    fireEvent.click(screen.getByText('Fixed event window'));
+
+    for (const pageName of ['Basics', 'Divisions', 'Schedule & Location']) {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
       expect(await screen.findByRole('heading', { name: pageName })).toBeInTheDocument();
     }
-
-    fireEvent.click(screen.getByText('Fixed event window'));
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByRole('heading', { name: 'Schedule & Location' })).toBeInTheDocument();
     await waitFor(() => {
       const latestScheduleProps = mockLeagueFieldsProps.at(-1);
       expect(latestScheduleProps?.timeslotMode).toBe('FIXED_WINDOW');
@@ -685,14 +695,15 @@ describe('EventForm dirty state', () => {
       initialSetupMode: 'SIMPLE',
     });
 
-    for (const pageName of ['Basics', 'Participation Plan']) {
+    await waitFor(() => {
+      expect(screen.getByLabelText('Event type')).toHaveValue('LEAGUE');
+    });
+    fireEvent.click(screen.getByRole('switch', { name: /Include playoffs/ }));
+
+    for (const pageName of ['Basics', 'Divisions']) {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
       expect(await screen.findByRole('heading', { name: pageName })).toBeInTheDocument();
     }
-
-    fireEvent.click(screen.getByLabelText('League playoffs'));
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByRole('heading', { name: 'Divisions' })).toBeInTheDocument();
 
     const bracketTeams = screen.getByLabelText('Playoff Team Count') as HTMLInputElement;
     expect(bracketTeams).toHaveValue('');
@@ -713,7 +724,7 @@ describe('EventForm dirty state', () => {
     fireEvent.change(invalidBracketTeams, { target: { value: '2' } });
     fireEvent.blur(invalidBracketTeams);
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    expect(await screen.findByRole('heading', { name: 'Schedule Plan' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Schedule & Location' })).toBeInTheDocument();
   });
 
   it('keeps the external registration URL on the Simple Setup Basics page', async () => {
@@ -1921,6 +1932,43 @@ describe('EventForm dirty state', () => {
       expect(draft?.end).toBe('2026-05-03T01:20:00');
       expect(draft?.timeSlots?.[0]?.endDate).toBeUndefined();
     });
+  });
+
+  it('disables generated-end-date mode and clears stale values for Weekly Events', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(jest.fn(), formRef, {
+      state: 'UNPUBLISHED',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      start: '2026-04-20T09:00:00',
+      end: '2026-05-03T17:00:00',
+      noFixedEndDateTime: true,
+      fields: [{ $id: 'field_1', name: 'Field 1', location: 'Main Gym' }],
+      fieldIds: ['field_1'],
+      selectedFieldIds: ['field_1'],
+      timeSlots: [{
+        $id: 'slot_1',
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+        dayOfWeek: 1,
+        daysOfWeek: [1],
+        divisions: ['open'],
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 11 * 60,
+        repeating: true,
+        startDate: '2026-04-20T09:00:00',
+        endDate: null,
+      }],
+    });
+
+    const generatedEndCheckbox = screen.getByRole('checkbox', {
+      name: 'Set the end date during match generation',
+    });
+    expect(generatedEndCheckbox).toBeDisabled();
+    expect(generatedEndCheckbox).not.toBeChecked();
+
+    await waitFor(() => expect(formRef.current?.getDraft()?.noFixedEndDateTime).toBe(false));
   });
 
   it('marks the form dirty when a official is removed', async () => {
@@ -4297,7 +4345,7 @@ describe('EventForm dirty state', () => {
     });
   });
 
-  it('shows organization resources without resource-count controls for weekly events', async () => {
+  it('shows organization resources and resource-count controls for weekly events', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(
@@ -4316,7 +4364,7 @@ describe('EventForm dirty state', () => {
     });
 
     expect(screen.getByRole('group', { name: 'Resources' })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Count')).toHaveValue('1');
     expect(screen.getByLabelText('Required Documents')).toBeInTheDocument();
   });
 

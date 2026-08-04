@@ -31,8 +31,27 @@ The visible result will be a compact and responsive wizard. The event image will
 - [x] (2026-08-03 22:04Z) Milestone 12: Added segment-break duration to generated match snapshots and added the matching virtual break countdown to `mvp-app`.
 - [ ] (2026-08-03 22:04Z) Milestone 13: Applied only the division phase migration to the confirmed local database. The new column is readable. Focused web tests, route tests, repository tests, TypeScript, lint, and the focused mobile test pass. Full browser submission remains pending because the running development server is timing out during unrelated sport seeding and background requests.
 - [x] (2026-08-04 00:18Z) Milestone 14: Added confirmed Skip Break and Restart Break actions to the web match runner. Preserved blank phase timing inputs after intentional clearing. Used the sport segment term in timing labels. Removed the duplicate self-managed payment control. Replaced the final Review event action with a validity-gated Create Event action. The focused run has 5 suites and 54 passing tests. The complete EventForm suite has 107 passing tests. TypeScript and scoped lint pass; lint reports only three existing hook dependency warnings in `ScoreUpdateModal.tsx`.
+- [x] (2026-08-04 07:23Z) Milestone 15: Consolidated all Simple Setup planning questions into the first Options page and removed the four planning-only steps. Added the mobile division-phase settings contract and phase-specific league, pool, bracket, and playoff controls. Verified web navigation, validation ownership, persistence, scheduler precedence, mobile rule resolution, JSON and DTO round trips, and set-based timing fallback with focused tests.
+- [x] (2026-08-04 08:30Z) Regression fix: Reproduced the production-only Tournament Basics crash in the authenticated browser. Removed the phase-settings mount write that caused an update-depth loop before a division existed. Kept duration derivation idempotent. Added a stateful mount regression. The focused phase suite has 5 passing tests, the complete EventForm suite has 109 passing tests, and TypeScript, scoped lint, and `git diff --check` pass.
+- [x] (2026-08-04 17:11Z) Regression fix: Split Indoor Volleyball skill divisions from Beach and Grass Volleyball. Indoor now uses its club tiers. Beach and Grass now use only Open, AA, A, BB, B, and C. Added a data migration and catalog, seed, API, and division-form regression coverage. Five focused suites have 21 passing tests. TypeScript, scoped lint, Prisma validation, and `git diff --check` pass.
+- [x] (2026-08-04 17:59Z) Regression fix: Limited parent Weekly Events to weekly or mixed schedule styles, required at least one repeating timeslot, and kept fixed slots as supplemental occurrences. Added resource-count field creation and persistence on web and mobile. Disabled generated-end-date mode and normalized it to false for Weekly Events at form, draft, edit, and repository boundaries. Nine focused web suites have 237 passing tests. Five focused mobile suites and the Android compile pass. TypeScript, scoped lint, and whitespace checks pass.
 
 ## Surprises & Discoveries
+
+- Observation: Weekly Event resource controls and persistence used different eligibility rules.
+  Evidence: Web allowed organization resource selection for parent Weekly Events but excluded them from `supportsFieldCountForEvent`. Mobile displayed the slot editor but excluded Weekly Events from field-count validation and from the final field and timeslot persistence branches.
+
+- Observation: A parent Weekly Event could be saved with only one-time slots.
+  Evidence: Both form surfaces accepted any nonempty slot list. The web occurrence builders also expanded fixed slots as if they repeated. Validation now requires one repeating slot while occurrence resolution emits each fixed slot once.
+
+- Observation: Mobile selected generated-end-date mode when the organizer chose Weekly Event.
+  Evidence: `DefaultCreateEventComponent.onTypeSelected` wrote `noFixedEndDateTime = true`, even though Weekly Events use their entered event range and do not use match generation to determine the end.
+
+- Observation: The event form did not use the sport rows returned by `/api/division-types` to build its Skill Division menu.
+  Evidence: The local sport rows already contained the correct Beach and Grass letter tiers. `buildDivisionTypeOptionsForEvent` called the hard-coded `getDivisionTypeOptionsForSport` catalog, where one broad Volleyball alias combined indoor club tiers with beach and grass letter tiers.
+
+- Observation: A new timed tournament crashed after Basics because the phase editor wrote inherited timing into an empty division list during mount.
+  Evidence: The authenticated production browser reached Divisions for a basic Event but showed React error 185 for Tournament. `DivisionPhaseConfigurationControls` called `onChange` from an effect while `divisionDetails` was empty. React Hook Form produced a new empty array and rerendered the same effect until React stopped the update loop.
 
 - Observation: The visible corner defect has two border and radius owners.
   Evidence: `src/app/events/[id]/schedule/components/eventForm/EventForm.tsx` wraps the page in a rounded bordered container. `src/app/events/[id]/schedule/components/eventForm/simpleSetup/SimpleSetupNavigation.tsx` adds a second rounded bordered `section`. Neither shared owner clips all child borders.
@@ -163,7 +182,29 @@ The visible result will be a compact and responsive wizard. The event image will
 - Observation: Match snapshots do not carry the break duration.
   Evidence: Scheduled duration includes `segmentBreakMinutes`, but `ResolvedMatchTimekeepingConfig` has no segment-break field. The mobile match screen can therefore render segment timers but cannot render a break countdown from the saved match snapshot.
 
+- Observation: The mobile and web step counts differ mainly because mobile groups planning questions.
+  Evidence: Mobile has one Options page and at most eight setup pages. Web has twelve page identifiers and gives participation, schedule, registration, and operations planning separate pages. Mobile conditionally removes only Match Rules and League Scoring.
+
+- Observation: Mobile can run phase-aware saved snapshots but cannot author phase-aware division rules.
+  Evidence: `DivisionDetail` in `mvp-app` has no `phaseSettings` field. Mobile creation edits one event-wide `matchRulesOverride`. The web API preserves an omitted `phaseSettings` value for an existing division, but mobile cannot display or change the saved league, pool, bracket, or playoff overrides.
+
 ## Decision Log
+
+- Decision: A parent Weekly Event must include one weekly repeating timeslot. It can also include fixed one-time timeslots.
+  Rationale: The repeating slot defines the weekly event contract. Fixed slots are useful exceptions or added sessions, but they cannot replace the recurring schedule.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Parent Weekly Events own resource-count controls and generated local fields. Weekly Event occurrences do not.
+  Rationale: The organizer must create and assign resources before saving the parent schedule. Generated occurrences inherit that schedule and must not create separate fields.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Weekly Events always store `noFixedEndDateTime` as false.
+  Rationale: Weekly Events have an explicit event range. Their end does not come from match generation. The disabled control remains visible to explain that this mode is unavailable.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Give Indoor Volleyball, Beach Volleyball, and Grass Volleyball exact skill catalogs. Keep generic legacy Volleyball on the outdoor letter-tier fallback.
+  Rationale: Exact sport names must never leak tiers across playing surfaces. The generic fallback preserves old Volleyball records and existing letter-tier division names without mapping them to Indoor by partial alias order.
+  Date/Author: 2026-08-04 / Codex
 
 - Decision: Keep one outer border and radius owner for the Simple Setup page.
   Rationale: A single clipped shell removes the corner artifact and prevents header or footer borders from extending past the radius.
@@ -261,6 +302,18 @@ The visible result will be a compact and responsive wizard. The event image will
   Rationale: A full review can be long. Direct edit navigation lets the host correct one section without searching through the wizard.
   Date/Author: 2026-08-03 / Codex
 
+- Decision: Put all Simple Setup planning questions on the first Options page.
+  Rationale: These answers define the later form. One grouped page matches the mobile flow and removes four navigation steps without hiding required configuration.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Keep event-wide mobile match rules only as defaults and edit phase overrides inside each division configuration.
+  Rationale: A host must see which rules apply to the league, pool, bracket, or playoff that will create the match. The saved phase override must win over the event default and the sport template.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Derive untouched phase timing without writing phase settings during component mount.
+  Rationale: Sport and event defaults already provide the fallback. Phase settings must change only after a user edit. The calculated configuration duration updates only when its derived value differs from the stored value.
+  Date/Author: 2026-08-04 / Codex
+
 ## Outcomes & Retrospective
 
 All ten implementation milestones are complete. The Simple Setup page has one clipped outer border and radius owner. Format uses compact wrapping groups. Basics uses a 320-by-176-pixel desktop image preview beside a responsive details grid. `ImageUploader` now honors caller width classes and uses accessible Lucide actions instead of emoji controls. Participation Plan is now the only Simple Setup owner of division mode. Schedule Plan uses four descriptive radio cards and no longer asks for resource source, resource count, or division assignment. The selected schedule style now controls Schedule and Location. Fixed event window keeps one non-repeating slot synchronized with event timing, time zone, resources, and divisions. Weekly and one-time styles render only their owned slot type. Mixed style groups both types. The redundant weekly outer panel is removed in Simple Setup. Immutable rental slots are preserved. The unused Competition Plan and Competition Rules pages are gone. Divisions now uses fixed-width controls in wrapping rows. Simple Setup no longer renders division price or payment-plan controls, while Advanced Setup keeps them. Bracket and playoff counts remain empty until the organizer enters a value. Empty values and values below two show `At least 2 teams need to be in the bracket.` directly below the field and block the Divisions Next action. Each saved division can now keep separate league, pool, bracket, and playoff settings. Timed phases derive scheduled duration from segment count, segment length, and segment break. Generated matches receive phase-aware rule snapshots, while existing snapshots remain stable. Simple Setup now owns all shared and per-division pricing on Pricing and Registration. A no-Stripe create draft defaults to Self-managed payment and shows a Connect Stripe recovery action for online payment. The shared manual destination editor accepts provider handles, shows provider marks and row errors, saves canonical HTTPS destinations, and restores provider-friendly values on reload. Manual mode preserves the stated registration price and removes online fees, automatic refunds, and payment plans in Simple and Advanced Setup. Operations Plan now owns four explicit capabilities. Staff assignment, official staffing, custom positions, and team operations show only their selected blocks. The Staff and Operations page disappears when no capability is active. Role-specific cleanup preserves data owned by other choices. Validation now builds one current error index for both setup modes. Simple Setup opens the owning page. Advanced Setup expands the owning section. Both surfaces show error counts, announce the blocker, and focus the exact field. Invalid provider input remains editable until it passes strict submission validation. Review now uses current normalized display values in read-only cards. It covers format, basics, participation, divisions, schedule, per-phase rules and scoring, pricing, documents and questions, and operations. Every card has one exact Edit destination. The additive migration `20260803210000_add_division_phase_settings` stores the phase settings as nullable JSON. The final targeted integration run passed 59 suites and 538 tests. Repository CI passed 773 suites and 4,267 tests plus the 315-route coverage gate. Prisma validation, scoped ESLint, `git diff --check`, and `npx tsc --noEmit` pass. No process or live runtime changed. Browser-sized verification remains deferred because no local server was active.
@@ -268,6 +321,14 @@ All ten implementation milestones are complete. The Simple Setup page has one cl
 Milestones 11 and 12 are complete. Bracket Teams and wrapped rest controls share one aligned label height. Timed pool, league, bracket, and playoff configurations now own Segment length, Break between segments, calculated duration, and their phase rules action. Timed formats no longer show a separate editable Match Duration. Set formats keep Set duration and set count in the format configuration. Summary cards no longer contain rules actions. Schedule style choices no longer use bordered cards. Resource lists no longer reserve a visible scrollbar gutter. New events seed official positions from the selected sport without marking the form dirty. Generated match snapshots now include the nonnegative segment-break duration. Mobile treats the break as a countdown phase between scoring segments and prevents the next segment timer from starting before the countdown ends. The focused web runs passed 10 suites and 181 tests in total, TypeScript passed, and scoped lint has no new errors or warnings. The focused Android unit-test build passed. The local database now has the `Divisions.phaseSettings` column, while the two unrelated affiliate migrations remain pending. Browser completion is still pending because the running development server produced unrelated connection and sport-seeding transaction timeouts during verification.
 
 Milestone 14 makes the break phase operable on web. Skip and Restart both require confirmation and save segment metadata, so the result survives reload. Phase timing labels now use the sport term, such as Quarter or Half. Clearing the length keeps the control blank and shows `Enter at least 1 minute.` The duplicate timing-row self-managed payment choice is removed. The review footer now uses Create Event and shares the same validity gate as the page header. The final focused run passed 54 tests. The full EventForm regression run passed 107 tests. TypeScript passed.
+
+Milestone 15 puts all preliminary choices on one first page named Options. Simple Setup now has at most eight pages instead of twelve. The first page owns event type, participation, competition, schedule, registration, payment, and operations choices. It keeps one React Hook Form state owner and derives later pages from those answers. Mobile Simple Setup no longer presents the event-wide Match Rules page as the owner of competition behavior. Mobile divisions now serialize and edit independent `LEAGUE`, `POOL`, `BRACKET`, and `PLAYOFF` settings. Timed phase duration comes from segment count, segment length, and break length. Set-based formats keep set count in the existing format controls. The server still resolves phase override, then event default, then sport template, and generated matches keep the resolved snapshot. Eight focused web suites passed 218 tests. TypeScript and scoped lint passed with two existing warnings. Focused mobile Compose, model, and network tests passed, including JSON and DTO round trips for phase settings. Both worktrees pass `git diff --check`.
+
+The post-Milestone 15 browser pass reproduced the reported Basics failure only for timed league and tournament phase controls. The failure was an update-depth loop, not a server request error. Untouched phase controls now derive their visible sport or event defaults without writing phase state during mount. Calculated duration synchronization compares the derived and stored values before it updates. A stateful regression test reproduces the empty-division mount conditions. The focused phase suite has 5 passing tests, the full EventForm suite has 109 passing tests, and TypeScript, scoped lint, and whitespace checks pass. The already-running production server still contains the previous bundle and was not restarted.
+
+The Volleyball catalog regression is fixed in source and persisted defaults. Indoor Volleyball exposes Open plus Competitive, Premier, Local, National, Regional, Gold, Elite, Select, and Developmental. Beach and Grass Volleyball expose only Open, AA, A, BB, B, and C. Exact alias resolution prevents the generic Volleyball fallback from intercepting named variants. Migration `20260804090000_split_volleyball_skill_division_types` corrects existing sport rows when migrations are next applied. The current `npm start` process still serves the earlier bundle and was not rebuilt or restarted during this fix.
+
+The Weekly Event schedule contract now matches on web and mobile. The organizer can choose Weekly repeating or Mixed scheduling, can create fields with Resource Count, and must configure at least one repeating slot. Mixed scheduling preserves one-time supplemental slots and shows them once in schedule and registration occurrence lists. The generated-end-date control remains visible but disabled for Weekly Events, and stale true values are cleared before save. Web rejects fixed-only Weekly Event payloads at both schema and repository boundaries. Mobile now persists generated fields and configured Weekly Event slots in the create payload. Nine focused web suites passed 237 tests. Five focused Android suites passed after the main and unit-test compile. TypeScript and scoped lint passed with one existing hook dependency warning. Both worktrees pass `git diff --check`. No runtime process changed.
 
 ## Context and Orientation
 
@@ -519,6 +580,16 @@ For browser verification, use the local URL and test event selected for the impl
 
 At each stopping point, update `Progress`, `Surprises & Discoveries`, `Decision Log`, `Outcomes & Retrospective`, and the revision note at the bottom of this file.
 
+### Milestone 15: One Options page and mobile phase-rule parity
+
+Move the existing Format, Participation Plan, Schedule Plan, Registration Plan, and Operations Plan questions into the first Simple Setup page. Label the visible page Options. Group the controls as Event, Participation and competition, Schedule, Registration and payments, and Event operations. Remove the four planning-only page identifiers. Keep the existing conditional page resolver, form cleanup, and transition confirmation behavior. Map validation and every review Edit action for these planning choices to Options.
+
+Do not add bordered cards around each choice. Use responsive groups that wrap without stretching short controls. Keep schedule descriptions visible. External registration and event-type constraints must disable or hide the same controls that they do now.
+
+In `mvp-app`, add the web `phaseSettings` JSON shape to `DivisionDetail`. Add phase-specific controls beside the league, pool, bracket, and playoff configuration that owns each value. Timed phases edit segment length, break length, and segment count. Set phases keep set count in the existing format controls. Preserve blank numeric edits and show an inline minimum error. Keep the event-wide rules editor as a legacy default only. Do not present it as the owner of phase behavior in Simple Setup.
+
+Add pure mobile rule-resolution tests for sport default, event default, and phase override order. Add DTO round-trip tests for all four phase keys. Add editor mapping tests that prove a saved phase setting survives edit and that a new setting enters the update payload. Run the focused web page, review, error-ownership, and EventForm tests. Run TypeScript and scoped lint. Run the focused mobile common tests and compile checks serially.
+
 ## Validation and Acceptance
 
 The implementation is accepted only when all of these behaviors are observable:
@@ -546,6 +617,9 @@ The implementation is accepted only when all of these behaviors are observable:
 21. Review shows every applicable section in read-only form. Each Edit action returns to the correct owner page. Changed values appear after returning to Review.
 22. Create, save, reload, edit, and match-generation tests pass for timed and set-based events.
 23. `npx tsc --noEmit`, targeted Jest tests, and relevant lint checks pass. Any unrelated pre-existing repository failure is recorded with its exact output and is not hidden.
+24. Parent Weekly Events show only Weekly repeating and Mixed schedule choices. Mixed scheduling requires at least one repeating slot and can include fixed supplemental slots.
+25. Parent Weekly Events show Resource Count and persist the generated fields and assigned repeating slots. Weekly Event occurrences do not create separate resources.
+26. Weekly Events show generated-end-date mode as disabled and unchecked. Form, draft, edit, mobile, and server boundaries persist the value as false.
 
 ## Idempotence and Recovery
 
@@ -599,6 +673,8 @@ Milestone 8 added the shared error-ownership index, the shared collapsed-section
 Milestone 9 added a pure normalized review model and a dedicated read-only review page. Three focused review tests and all 107 EventForm tests pass, for 110 tests in the combined run. Tests confirm complete section coverage, current-value rebuilding, omission of raw payment destinations, no editable controls, warning display, exact Edit routing, and updated values after returning to Review. Scoped ESLint, `npx tsc --noEmit`, and `git diff --check` pass.
 
 Milestone 10 ran the event-form, scheduling, match, persistence, image, and API verification serially. The targeted integration run has 59 passing suites and 538 passing tests. The complete repository CI run has 773 passing suites and 4,267 passing tests. The route coverage check passes for 315 route files at 65.44% statements, 54.11% branches, 65.47% functions, and 66.51% lines. Prisma reports a valid schema. TypeScript, changed-file ESLint, and `git diff --check` pass. No service was running on port 3000, so no browser viewport result is claimed.
+
+The Weekly Event regression run has nine focused web suites and 237 passing tests. Coverage includes schedule-style eligibility, mixed fixed and repeating occurrences, form and repository validation, resource-count field generation, parent versus occurrence ownership, disabled generated-end-date presentation, and stale-value normalization. The focused mobile run covers create selection, generated field and slot persistence, validation, edit payload normalization, and schedule eligibility. `:composeApp:testDebugUnitTest` completed successfully after the Android main and test compilation. TypeScript and scoped ESLint pass. ESLint reports one existing `EventForm.tsx` hook dependency warning.
 
 ## Interfaces and Dependencies
 
@@ -655,3 +731,11 @@ Extend `SectionNavigationItem` with `errorCount?: number`. Define the shared Adv
 The final review page must receive normalized display models, not raw Prisma rows. Each section model must include its owner page identifier so its Edit action can navigate without duplicating routing rules.
 
 Revision note, 2026-08-03: Created the initial ExecPlan from the supplied screenshots, repository source audit, and mobile payment behavior audit. The plan now separates ten independently verifiable milestones so the user can approve and implement them one at a time. The follow-up revisions add provider-aware Cash App, Venmo, and PayPal validation; plain manual registration pricing without online fees; inline payment-row errors; and shared collapsed-section error discovery for Advanced Setup. Moving pricing out of Divisions applies only to Simple Setup. Advanced Setup retains its per-division pricing placement. Saved exact copies of all accepted screenshots with the audit artifacts and scoped the whitespace check to milestone paths because the worktree contains unrelated changes. The implementation record now marks all ten milestones complete. Milestone 4 documents the persisted phase contract, the phase-resolution edge cases, the derived-duration scheduler behavior, the generated Prisma artifacts, and the deferred runtime visual check. Milestone 5 documents consolidated Simple pricing, the no-Stripe path, provider-aware destinations, server enforcement, and shared manual-mode presentation. Milestone 6 documents schedule-style inference, style-specific controls, fixed-window synchronization, rental preservation, and the removal of the redundant Simple Setup timeslot panel. Milestone 7 documents explicit operations capabilities, conditional Staff and Operations blocks, role-specific cleanup, and team-officiating ownership. Milestone 8 documents shared error ownership, collapsed-section counts, exact focus recovery, and the separate draft versus persistence normalization boundaries for invalid manual payment input. Milestone 9 documents normalized read-only review models, complete section coverage, and exact owner-page Edit actions. Milestone 10 documents the complete CI result, schema and static verification, scoped pre-existing lint findings, and the deferred browser pass.
+
+Revision note, 2026-08-04: Added and completed Milestone 15. The revision consolidates web planning questions into one Options page and records the mobile division-phase settings contract, phase-specific editing, payload round-trip coverage, and server precedence verification.
+
+Revision note, 2026-08-04: Recorded the authenticated Tournament Basics crash reproduction, its phase-editor mount-loop cause, the idempotent duration fix, and the regression verification. The existing production process was left unchanged.
+
+Revision note, 2026-08-04: Recorded the separate Indoor, Beach, and Grass Volleyball skill catalogs, the legacy Volleyball fallback, the existing-row migration, and the focused regression verification. The active production process was left unchanged.
+
+Revision note, 2026-08-04: Recorded the shared Weekly Event schedule contract. Parent events now require a repeating slot, allow fixed supplemental slots, own Resource Count field creation, and keep generated-end-date mode disabled and false. Added web and mobile persistence and validation evidence. No runtime process changed.
