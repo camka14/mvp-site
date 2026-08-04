@@ -2,7 +2,9 @@
 
 import React from 'react';
 import Image from 'next/image';
-import type { Organization } from '@/types';
+import { Building2, CalendarDays, UsersRound } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import type { Organization, OrganizationFeature } from '@/types';
 
 interface OrganizationCardProps {
   organization: Organization;
@@ -24,6 +26,25 @@ const formatDivisionPrice = (price: number): string => new Intl.NumberFormat('en
   minimumFractionDigits: price % 100 === 0 ? 0 : 2,
   maximumFractionDigits: 2,
 }).format(price / 100);
+
+const ORGANIZATION_FEATURE_BADGES: Array<{
+  feature: OrganizationFeature;
+  label: string;
+  Icon: LucideIcon;
+}> = [
+  { feature: 'CLUB_TEAMS', label: 'Club & Teams', Icon: UsersRound },
+  { feature: 'FACILITIES_RENTALS', label: 'Rentals', Icon: Building2 },
+  { feature: 'EVENT_MANAGEMENT', label: 'Events', Icon: CalendarDays },
+];
+
+export const getOrganizationFeatureBadgeLabels = (
+  enabledFeatures?: OrganizationFeature[],
+): string[] => {
+  if (!Array.isArray(enabledFeatures)) return [];
+  return ORGANIZATION_FEATURE_BADGES
+    .filter(({ feature }) => enabledFeatures.includes(feature))
+    .map(({ label }) => label);
+};
 
 export const formatOrganizationDivisionSummary = (organization: Organization): string => {
   const summary = organization.divisionSummary;
@@ -71,6 +92,24 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
               >
                 {organization.website}
               </a>
+            )}
+            {getOrganizationFeatureBadgeLabels(organization.enabledFeatures).length > 0 && (
+              <div
+                className="mt-2 flex flex-wrap gap-1.5"
+                data-testid="organization-card-badges"
+              >
+                {ORGANIZATION_FEATURE_BADGES
+                  .filter(({ feature }) => organization.enabledFeatures?.includes(feature))
+                  .map(({ feature, label, Icon }) => (
+                    <span
+                      key={feature}
+                      className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2 py-1 text-xs font-medium text-slate-700"
+                    >
+                      <Icon aria-hidden="true" className="h-3.5 w-3.5 text-[#294c70]" strokeWidth={2} />
+                      {label}
+                    </span>
+                  ))}
+              </div>
             )}
           </div>
           {actions && <div className="flex-shrink-0">{actions}</div>}

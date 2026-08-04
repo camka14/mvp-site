@@ -32,4 +32,33 @@ describe('OrganizationCard ownership presentation', () => {
     expect(screen.queryByText('Website verified')).not.toBeInTheDocument();
     expect(screen.queryByText('Verified')).not.toBeInTheDocument();
   });
+
+  it('shows enabled organization capabilities as compact badges', () => {
+    const organization = {
+      $id: 'org-2',
+      name: 'Summit United',
+      enabledFeatures: ['CLUB_TEAMS', 'FACILITIES_RENTALS', 'EVENT_MANAGEMENT'],
+    } as Organization;
+
+    renderWithMantine(<OrganizationCard organization={organization} />);
+
+    expect(screen.getByTestId('organization-card-badges')).toBeInTheDocument();
+    expect(screen.getByText('Club & Teams')).toBeInTheDocument();
+    expect(screen.getByText('Rentals')).toBeInTheDocument();
+    expect(screen.getByText('Events')).toBeInTheDocument();
+  });
+
+  it('only shows badges for enabled capabilities', () => {
+    const organization = {
+      $id: 'org-3',
+      name: 'River City Events',
+      enabledFeatures: ['EVENT_MANAGEMENT'],
+    } as Organization;
+
+    renderWithMantine(<OrganizationCard organization={organization} />);
+
+    expect(screen.getByText('Events')).toBeInTheDocument();
+    expect(screen.queryByText('Club & Teams')).not.toBeInTheDocument();
+    expect(screen.queryByText('Rentals')).not.toBeInTheDocument();
+  });
 });
