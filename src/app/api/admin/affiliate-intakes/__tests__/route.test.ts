@@ -32,6 +32,24 @@ describe('/api/admin/affiliate-intakes', () => {
     expect(listMock).not.toHaveBeenCalled();
   });
 
+  it('passes pagination and search filters to the intake list query', async () => {
+    listMock.mockResolvedValue({
+      intakes: [{ id: 'intake_1' }],
+      pagination: { page: 2, pageSize: 25, total: 30, totalPages: 2 },
+    });
+
+    const response = await GET(new NextRequest(
+      'http://localhost/api/admin/affiliate-intakes?page=2&pageSize=25&query=Portland',
+    ));
+
+    expect(response.status).toBe(200);
+    expect(listMock).toHaveBeenCalledWith({ page: 2, pageSize: 25, query: 'Portland' });
+    await expect(response.json()).resolves.toEqual({
+      intakes: [{ id: 'intake_1' }],
+      pagination: { page: 2, pageSize: 25, total: 30, totalPages: 2 },
+    });
+  });
+
   it('creates an intake without creating an approved scrape source', async () => {
     createMock.mockResolvedValue({ id: 'intake_1', status: 'REVIEW_REQUIRED' });
     const response = await POST(new NextRequest('http://localhost/api/admin/affiliate-intakes', {

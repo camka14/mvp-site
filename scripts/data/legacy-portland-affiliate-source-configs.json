@@ -1,0 +1,789 @@
+[
+  {
+    "source": {
+      "id": "affiliate_source_rose_city_volleyball_signups",
+      "sourceKey": "rose-city-volleyball-signups",
+      "name": "Rose City Volleyball Signups",
+      "organizationId": "affiliate_org_rose_city_volleyball",
+      "baseUrl": "https://www.portlandbasketball.com/",
+      "listUrl": "https://www.portlandbasketball.com/rosecityvb.php",
+      "targetKind": "EVENT",
+      "status": "ACTIVE",
+      "activeMappingId": "affiliate_mapping_rose_city_volleyball_signups_v1",
+      "autoScrapeEnabled": true,
+      "scrapeIntervalMinutes": 1440,
+      "notes": "Public Rose City Volleyball signup cards on the Portland Basketball domain. Uses previous day sections plus card title times for event dates.",
+      "metadata": {
+        "logoSourceUrl": "https://www.portlandbasketball.com/images/volleyball/rosecitylogoclear.png",
+        "robotsTxtStatus": 404,
+        "approvedPublicScrape": true
+      }
+    },
+    "mapping": {
+      "id": "affiliate_mapping_rose_city_volleyball_signups_v1",
+      "sourceId": "affiliate_source_rose_city_volleyball_signups",
+      "version": 1,
+      "mapping": {
+        "kind": "EVENT",
+        "dedupe": {
+          "fields": [
+            "officialActionUrl",
+            "title",
+            "startsAt"
+          ]
+        },
+        "fields": {
+          "city": {
+            "mode": "literal",
+            "value": "Portland metro",
+            "selector": ":scope"
+          },
+          "title": {
+            "mode": "text",
+            "required": true,
+            "selector": "h3"
+          },
+          "address": {
+            "mode": "text",
+            "regex": "(?:Beaverton Hoop YMCA-?\\s*|Columbia Christian School-?\\s*)([0-9]{3,5}\\s+[^()]+?(?:Court|Avenue|Ave)(?:\\s+\\(Portland\\))?)",
+            "selector": "h3"
+          },
+          "startsAt": {
+            "mode": "text",
+            "required": true,
+            "selector": "h3",
+            "transform": "previousDaySectionDateTime"
+          },
+          "priceText": {
+            "mode": "text",
+            "selector": ".game-desc strong"
+          },
+          "sourceUrl": {
+            "mode": "literal",
+            "value": "https://www.portlandbasketball.com/rosecityvb.php",
+            "selector": ":scope",
+            "transform": "absoluteUrl"
+          },
+          "sportName": {
+            "mode": "literal",
+            "value": "Indoor Volleyball",
+            "selector": ":scope"
+          },
+          "venueName": {
+            "mode": "text",
+            "regex": "(Beaverton Hoop YMCA|Columbia Christian School)",
+            "selector": "h3"
+          },
+          "skillLevel": {
+            "mode": "text",
+            "regex": "(TEAM PLAY|Traditional Open Gym|Womens Only|Open Gym)",
+            "selector": "h3"
+          },
+          "statusText": {
+            "mode": "text",
+            "selector": ".spot-count"
+          },
+          "description": {
+            "mode": "text",
+            "regex": "^\\s*\\|?\\s*(.+)$",
+            "selector": ".game-desc",
+            "excludeSelectors": [
+              "strong"
+            ]
+          },
+          "formatLabel": {
+            "mode": "text",
+            "regex": "(TEAM PLAY|Open Gym|Womens Only|Traditional Open Gym)",
+            "selector": "h3"
+          },
+          "divisionText": {
+            "mode": "text",
+            "regex": "(TEAM PLAY|Womens Only|Traditional Open Gym|Open Gym)",
+            "selector": "h3"
+          },
+          "scheduleText": {
+            "mode": "text",
+            "selector": "h3"
+          },
+          "organizerName": {
+            "mode": "literal",
+            "value": "Rose City Volleyball",
+            "selector": ":scope"
+          },
+          "officialActionUrl": {
+            "mode": "literal",
+            "value": "https://www.portlandbasketball.com/rosecityvb.php",
+            "required": true,
+            "selector": ":scope",
+            "transform": "absoluteUrl"
+          },
+          "spotsRemainingText": {
+            "mode": "text",
+            "selector": ".spot-count"
+          },
+          "maxParticipantsText": {
+            "mode": "text",
+            "selector": ".game-desc"
+          },
+          "currentParticipantsText": {
+            "mode": "text",
+            "regex": "\\((\\d+)\\)",
+            "selector": ".roster-toggle"
+          }
+        },
+        "listUrl": "https://www.portlandbasketball.com/rosecityvb.php",
+        "itemSelector": ".game-card:has(form)"
+      },
+      "notes": "Maps Rose City Volleyball game cards, deriving startsAt from the nearest previous day section and the card title time."
+    }
+  },
+  {
+    "source": {
+      "id": "c3b0ea7d-5bdd-47a0-8e78-c73a70545ae5",
+      "sourceKey": "rose-city-futsal-adult-leagues",
+      "name": "Rose City Futsal Registration Events",
+      "organizationId": "org_rose_city_futsal",
+      "baseUrl": "https://rosecityfutsal.com/",
+      "listUrl": "https://rosecityfutsal.com/registration/",
+      "targetKind": "EVENT",
+      "status": "ACTIVE",
+      "activeMappingId": "826961ec-0bd5-4aaf-84a5-e6d225b6595e",
+      "autoScrapeEnabled": true,
+      "scrapeIntervalMinutes": 10080,
+      "notes": "Scrapes all registration cards from https://rosecityfutsal.com/registration/ without card text filters; cards still need a direct registration link and future source date to become candidates.",
+      "metadata": {
+        "site": "Rose City Futsal",
+        "sourceType": "adult-league-season-table"
+      }
+    },
+    "mapping": {
+      "id": "826961ec-0bd5-4aaf-84a5-e6d225b6595e",
+      "sourceId": "c3b0ea7d-5bdd-47a0-8e78-c73a70545ae5",
+      "version": 2,
+      "mapping": {
+        "kind": "EVENT",
+        "dedupe": {
+          "fields": [
+            "officialActionUrl"
+          ]
+        },
+        "fields": {
+          "city": {
+            "mode": "text",
+            "regex": "\\$\\d+(?:\\.\\d{2})?\\s+(RCF\\s+(?:EAST|WEST))\\b",
+            "selector": ":scope",
+            "valueMap": {
+              "RCF EAST": "Portland, OR",
+              "RCF WEST": "Tigard, OR"
+            }
+          },
+          "title": {
+            "mode": "text",
+            "required": true,
+            "selector": "h2"
+          },
+          "endsAt": {
+            "mode": "text",
+            "regex": "Date Range:\\s*([^:]+?)\\s+Days:",
+            "selector": ":scope",
+            "transform": "dateRangeEnd"
+          },
+          "address": {
+            "mode": "text",
+            "regex": "\\$\\d+(?:\\.\\d{2})?\\s+(RCF\\s+(?:EAST|WEST))\\b",
+            "selector": ":scope",
+            "valueMap": {
+              "RCF EAST": "5010 NE Oregon St, Portland, OR 97213",
+              "RCF WEST": "10831 SW Cascade Ave, Tigard, OR 97223"
+            }
+          },
+          "ageGroup": {
+            "mode": "text",
+            "regex": "Age:\\s*([^:]+?)\\s+Level:",
+            "selector": ":scope"
+          },
+          "startsAt": {
+            "mode": "text",
+            "regex": "Date Range:\\s*([^:]+?)\\s+Days:",
+            "required": true,
+            "selector": ":scope",
+            "transform": "dateTime"
+          },
+          "priceText": {
+            "mode": "text",
+            "selector": "h2 + div p"
+          },
+          "sourceUrl": {
+            "mode": "literal",
+            "value": "https://rosecityfutsal.com/registration/",
+            "selector": ":scope",
+            "transform": "absoluteUrl"
+          },
+          "sportName": {
+            "mode": "literal",
+            "value": "Indoor Soccer",
+            "selector": ":scope"
+          },
+          "venueName": {
+            "mode": "text",
+            "regex": "\\$\\d+(?:\\.\\d{2})?\\s+(RCF\\s+(?:EAST|WEST))\\b",
+            "selector": ":scope"
+          },
+          "skillLevel": {
+            "mode": "text",
+            "regex": "Level:\\s*([^:]+?)\\s+Date Range:",
+            "selector": ":scope"
+          },
+          "description": {
+            "mode": "text",
+            "selector": "h2 + div + p"
+          },
+          "divisionText": {
+            "mode": "text",
+            "regex": "Level:\\s*([^:]+?)\\s+Date Range:",
+            "selector": ":scope"
+          },
+          "scheduleText": {
+            "mode": "text",
+            "regex": "Days:\\s*([^:]+?Time:\\s*[^:]+?)(?:\\s+Notes|\\s+Register|$)",
+            "selector": ":scope"
+          },
+          "organizerName": {
+            "mode": "literal",
+            "value": "Rose City Futsal",
+            "selector": ":scope"
+          },
+          "officialActionUrl": {
+            "mode": "attribute",
+            "required": true,
+            "selector": "a[href*=\"OnlineRegistrations/Register.aspx\"]",
+            "attribute": "href",
+            "transform": "absoluteUrl"
+          },
+          "participantOptionsText": {
+            "mode": "text",
+            "regex": "Notes\\s+(.+?)\\s+Register Now",
+            "selector": ":scope"
+          },
+          "registrationDeadlineText": {
+            "mode": "text",
+            "regex": "Registration Deadline:\\s*(.+)$",
+            "selector": ".mt-4 p"
+          }
+        },
+        "waitMs": 3000,
+        "listUrl": "https://rosecityfutsal.com/registration/",
+        "itemSelector": "article.registration-card",
+        "renderJavascript": true
+      },
+      "notes": "Scrape all Rose City registration cards from /registration/ without text filters."
+    }
+  },
+  {
+    "source": {
+      "id": "3c4357fa-1222-447a-83da-e3852654e995",
+      "sourceKey": "rose-city-futsal-community-teams",
+      "name": "Rose City Futsal Community Teams",
+      "organizationId": "org_rose_city_futsal",
+      "baseUrl": "https://rosecityfutsal.com/",
+      "listUrl": "https://rosecityfutsal.com/registration/",
+      "targetKind": "TEAM",
+      "status": "ACTIVE",
+      "activeMappingId": "a60d9beb-751b-450b-8add-a51713ed52f2",
+      "autoScrapeEnabled": true,
+      "scrapeIntervalMinutes": 10080,
+      "notes": "Uses the rendered registration catalog and filters community team cards. Closed registration deadlines are skipped by the importer.",
+      "metadata": {
+        "sourceType": "manual-scrapingdog-mapping",
+        "scrapeTarget": "teams"
+      }
+    },
+    "mapping": {
+      "id": "a60d9beb-751b-450b-8add-a51713ed52f2",
+      "sourceId": "3c4357fa-1222-447a-83da-e3852654e995",
+      "version": 2,
+      "mapping": {
+        "kind": "TEAM",
+        "dedupe": {
+          "fields": [
+            "officialActionUrl"
+          ]
+        },
+        "fields": {
+          "city": {
+            "mode": "text",
+            "regex": "\\$\\d+(?:\\.\\d{2})?\\s+(RCF\\s+(?:EAST|WEST))\\b",
+            "selector": ":scope",
+            "valueMap": {
+              "RCF EAST": "Portland, OR",
+              "RCF WEST": "Tigard, OR"
+            }
+          },
+          "title": {
+            "mode": "text",
+            "required": true,
+            "selector": "h2"
+          },
+          "endsAt": {
+            "mode": "text",
+            "regex": "Date Range:\\s*([^:]+?)\\s+Days:",
+            "selector": ":scope",
+            "transform": "dateRangeEnd"
+          },
+          "address": {
+            "mode": "text",
+            "regex": "\\$\\d+(?:\\.\\d{2})?\\s+(RCF\\s+(?:EAST|WEST))\\b",
+            "selector": ":scope",
+            "valueMap": {
+              "RCF EAST": "5010 NE Oregon St, Portland, OR 97213",
+              "RCF WEST": "10831 SW Cascade Ave, Tigard, OR 97223"
+            }
+          },
+          "ageGroup": {
+            "mode": "text",
+            "regex": "Age:\\s*([^:]+?)\\s+Level:",
+            "selector": ":scope"
+          },
+          "startsAt": {
+            "mode": "text",
+            "regex": "Date Range:\\s*([^:]+?)\\s+Days:",
+            "required": true,
+            "selector": ":scope",
+            "transform": "dateTime"
+          },
+          "priceText": {
+            "mode": "text",
+            "selector": "h2 + div p"
+          },
+          "sourceUrl": {
+            "mode": "literal",
+            "value": "https://rosecityfutsal.com/registration/",
+            "selector": ":scope",
+            "transform": "absoluteUrl"
+          },
+          "sportName": {
+            "mode": "literal",
+            "value": "Indoor Soccer",
+            "selector": ":scope"
+          },
+          "venueName": {
+            "mode": "text",
+            "regex": "\\$\\d+(?:\\.\\d{2})?\\s+(RCF\\s+(?:EAST|WEST))\\b",
+            "selector": ":scope"
+          },
+          "skillLevel": {
+            "mode": "text",
+            "regex": "Level:\\s*([^:]+?)\\s+Date Range:",
+            "selector": ":scope"
+          },
+          "description": {
+            "mode": "text",
+            "selector": "h2 + div + p"
+          },
+          "formatLabel": {
+            "mode": "literal",
+            "value": "Community team",
+            "selector": ":scope"
+          },
+          "divisionText": {
+            "mode": "text",
+            "regex": "Level:\\s*([^:]+?)\\s+Date Range:",
+            "selector": ":scope"
+          },
+          "scheduleText": {
+            "mode": "text",
+            "regex": "Days:\\s*([^:]+?Time:\\s*[^:]+?)(?:\\s+Notes|\\s+Register|$)",
+            "selector": ":scope"
+          },
+          "organizerName": {
+            "mode": "literal",
+            "value": "Rose City Futsal",
+            "selector": ":scope"
+          },
+          "officialActionUrl": {
+            "mode": "attribute",
+            "required": true,
+            "selector": "a[href*=\"OnlineRegistrations/Register.aspx\"]",
+            "attribute": "href",
+            "transform": "absoluteUrl"
+          },
+          "participantOptionsText": {
+            "mode": "text",
+            "regex": "Notes\\s+(.+?)\\s+Register Now",
+            "selector": ":scope"
+          },
+          "registrationDeadlineText": {
+            "mode": "text",
+            "regex": "Registration Deadline:\\s*(.+)$",
+            "selector": ".mt-4 p"
+          }
+        },
+        "waitMs": 3000,
+        "listUrl": "https://rosecityfutsal.com/registration/",
+        "itemSelector": "article.registration-card",
+        "itemTextIncludes": [
+          "Community Team"
+        ],
+        "renderJavascript": true
+      },
+      "notes": "Scrape Rose City registration cards marked Community Team without season-specific filtering."
+    }
+  },
+  {
+    "source": {
+      "id": "c5358dbb-728c-402e-a8af-e8f3a8c8b9cd",
+      "sourceKey": "rose-city-futsal-court-rentals",
+      "name": "Rose City Futsal Court Rentals",
+      "organizationId": "org_rose_city_futsal",
+      "baseUrl": "https://rosecityfutsal.com/",
+      "listUrl": "https://rosecityfutsal.com/indoor-soccer-rental-in-portland/",
+      "targetKind": "RENTAL",
+      "status": "ACTIVE",
+      "activeMappingId": "4337a981-9d2a-45d2-bbef-ad93a4784087",
+      "autoScrapeEnabled": true,
+      "scrapeIntervalMinutes": 43200,
+      "notes": "Court rental facilities from the Indoor Soccer Rental page. Creates affiliate facilities for RCF East and RCF West.",
+      "metadata": {
+        "sourceType": "manual-scrapingdog-mapping",
+        "scrapeTarget": "rentals"
+      }
+    },
+    "mapping": {
+      "id": "4337a981-9d2a-45d2-bbef-ad93a4784087",
+      "sourceId": "c5358dbb-728c-402e-a8af-e8f3a8c8b9cd",
+      "version": 1,
+      "mapping": {
+        "kind": "RENTAL",
+        "dedupe": {
+          "fields": [
+            "title",
+            "officialActionUrl"
+          ]
+        },
+        "fields": {
+          "city": {
+            "mode": "text",
+            "selector": "h4",
+            "valueMap": {
+              "RCF West: Tigard": "Tigard, OR",
+              "RCF East: Portland": "Portland, OR"
+            }
+          },
+          "title": {
+            "mode": "text",
+            "required": true,
+            "selector": "h4",
+            "valueMap": {
+              "RCF West: Tigard": "RCF West: Tigard court rentals",
+              "RCF East: Portland": "RCF East: Portland court rentals"
+            }
+          },
+          "address": {
+            "mode": "text",
+            "selector": "h4",
+            "valueMap": {
+              "RCF West: Tigard": "10831 SW Cascade Ave, Tigard, OR 97223",
+              "RCF East: Portland": "5010 NE Oregon St, Portland, OR 97213"
+            }
+          },
+          "sourceUrl": {
+            "mode": "literal",
+            "value": "https://rosecityfutsal.com/indoor-soccer-rental-in-portland/",
+            "selector": ":scope",
+            "transform": "absoluteUrl"
+          },
+          "sportName": {
+            "mode": "literal",
+            "value": "Indoor Soccer",
+            "selector": ":scope"
+          },
+          "venueName": {
+            "mode": "text",
+            "selector": "h4"
+          },
+          "description": {
+            "mode": "text",
+            "selector": "p"
+          },
+          "formatLabel": {
+            "mode": "literal",
+            "value": "Court rental",
+            "selector": ":scope"
+          },
+          "organizerName": {
+            "mode": "literal",
+            "value": "Rose City Futsal",
+            "selector": ":scope"
+          },
+          "officialActionUrl": {
+            "mode": "literal",
+            "value": "https://rosecityfutsal.ezfacility.com/Sessions",
+            "required": true,
+            "selector": ":scope",
+            "transform": "absoluteUrl"
+          },
+          "participantOptionsText": {
+            "mode": "literal",
+            "value": "Court rentals are booked externally through Rose City Futsal.",
+            "selector": ":scope"
+          }
+        },
+        "listUrl": "https://rosecityfutsal.com/indoor-soccer-rental-in-portland/",
+        "itemSelector": "section.content-grid div.wysiwyg"
+      },
+      "notes": "Manual mapping from ScrapingDog snapshot."
+    }
+  },
+  {
+    "source": {
+      "id": "affiliate_source_portland_ultimate_events",
+      "sourceKey": "portland-ultimate-events",
+      "name": "Portland Ultimate Events",
+      "organizationId": "affiliate_org_portland_ultimate",
+      "baseUrl": "https://portlandultimate.org/",
+      "listUrl": "https://portlandultimate.org/e/portlandultimate.org",
+      "targetKind": "EVENT",
+      "status": "ACTIVE",
+      "activeMappingId": "affiliate_mapping_portland_ultimate_events_v1",
+      "autoScrapeEnabled": true,
+      "scrapeIntervalMinutes": 1440,
+      "notes": "Scrapes Portland Ultimate public event catalog rows with Register/Waitlist actions and enriches candidates from event detail pages. Robots.txt allows the event catalog and detail pages; detail page mapping uses a 10 second delay.",
+      "metadata": {
+        "robotsCheckedAt": "2026-07-04",
+        "crawlDelaySeconds": 10,
+        "actionableRowsOnly": true
+      }
+    },
+    "mapping": {
+      "id": "affiliate_mapping_portland_ultimate_events_v1",
+      "sourceId": "affiliate_source_portland_ultimate_events",
+      "version": 1,
+      "mapping": {
+        "kind": "EVENT",
+        "dedupe": {
+          "fields": [
+            "sourceUrl",
+            "title",
+            "startsAt"
+          ]
+        },
+        "fields": {
+          "city": {
+            "mode": "text",
+            "selector": ".event-meta-list li:nth-of-type(1)"
+          },
+          "title": {
+            "mode": "text",
+            "required": true,
+            "selector": ".event-name a"
+          },
+          "endsAt": {
+            "mode": "text",
+            "regex": "[-–]\\s*(\\d{1,2}/\\d{1,2}/\\d{2,4})",
+            "selector": ".event-meta-list li:nth-of-type(2)",
+            "transform": "dateTime"
+          },
+          "startsAt": {
+            "mode": "text",
+            "regex": "^\\s*(\\d{1,2}/\\d{1,2}/\\d{2,4})",
+            "selector": ".event-meta-list li:nth-of-type(2)",
+            "transform": "dateTime"
+          },
+          "sourceUrl": {
+            "mode": "attribute",
+            "selector": ".event-name a",
+            "attribute": "href",
+            "transform": "absoluteUrl"
+          },
+          "sportName": {
+            "mode": "literal",
+            "value": "Ultimate Frisbee",
+            "selector": ":scope"
+          },
+          "venueName": {
+            "mode": "text",
+            "selector": ".event-meta-list li:nth-of-type(1)"
+          },
+          "statusText": {
+            "mode": "text",
+            "selector": "a.pull-right.btn .btn-label"
+          },
+          "formatLabel": {
+            "mode": "text",
+            "selector": ".badge-line .badge:first-child"
+          },
+          "divisionText": {
+            "mode": "text",
+            "selector": ".event-meta-list li:nth-of-type(3)"
+          },
+          "scheduleText": {
+            "mode": "text",
+            "selector": ".event-meta-list li:nth-of-type(2)"
+          },
+          "organizerName": {
+            "mode": "literal",
+            "value": "Portland Ultimate",
+            "selector": ":scope"
+          },
+          "officialActionUrl": {
+            "mode": "attribute",
+            "required": true,
+            "selector": "a.pull-right.btn",
+            "attribute": "href",
+            "transform": "absoluteUrl"
+          }
+        },
+        "listUrl": "https://portlandultimate.org/e/portlandultimate.org",
+        "detailPage": {
+          "fields": {
+            "priceText": {
+              "mode": "text",
+              "selector": ".price-table-wrapper .price-table"
+            },
+            "venueName": {
+              "mode": "text",
+              "selector": "header .event-details li:nth-of-type(2) a"
+            },
+            "description": {
+              "mode": "text",
+              "selector": ".cms-slot-rich-text .cms-slot-content"
+            },
+            "maxParticipantsText": {
+              "mode": "text",
+              "regex": "\\b(\\d+\\s+(?:Teams|Players|Participants|Spots))\\b",
+              "selector": ":scope"
+            },
+            "registrationDeadlineText": {
+              "mode": "text",
+              "regex": "registration until (.+?) registering",
+              "selector": "header .event-details li:nth-of-type(4) .full"
+            }
+          },
+          "urlField": "sourceUrl",
+          "requestDelayMs": 10000
+        },
+        "itemSelector": ".map-flat-list .striped-block",
+        "renderJavascript": false
+      },
+      "notes": "v1 maps actionable Portland Ultimate event rows and detail-page descriptions/prices/deadlines/capacity."
+    }
+  },
+  {
+    "source": {
+      "id": "affiliate_source_portland_softball_current_programs",
+      "sourceKey": "portland-softball-current-programs",
+      "name": "Portland Metro Softball Current Programs",
+      "organizationId": "affiliate_org_portland_metro_softball_association",
+      "baseUrl": "https://www.portlandsoftball.com/",
+      "listUrl": "https://www.portlandsoftball.com/current-programs",
+      "targetKind": "EVENT",
+      "status": "ACTIVE",
+      "activeMappingId": "ecd63e1c-bdaa-4eef-ad57-57cc06106e8b",
+      "autoScrapeEnabled": true,
+      "scrapeIntervalMinutes": 10080,
+      "notes": "TeamSideline current programs source. Mapping uses More Info button postback URLs as affiliate event links.",
+      "metadata": {
+        "logoId": "48c530d5-0514-4e8c-b524-886e9a15c2c0",
+        "platform": "TeamSideline"
+      }
+    },
+    "mapping": {
+      "id": "ecd63e1c-bdaa-4eef-ad57-57cc06106e8b",
+      "sourceId": "affiliate_source_portland_softball_current_programs",
+      "version": 1,
+      "mapping": {
+        "kind": "EVENT",
+        "dedupe": {
+          "fields": [
+            "officialActionUrl"
+          ]
+        },
+        "fields": {
+          "city": {
+            "mode": "literal",
+            "value": "Portland, OR",
+            "selector": ":scope"
+          },
+          "title": {
+            "required": true,
+            "selector": "[id$=\"_ProgramNameLabel\"]"
+          },
+          "endsAt": {
+            "selector": "[id$=\"_ProgramDurationLabel\"]",
+            "transform": "dateRangeEnd"
+          },
+          "startsAt": {
+            "selector": "[id$=\"_ProgramDurationLabel\"]",
+            "transform": "dateTime"
+          },
+          "priceText": {
+            "selector": "[id$=\"_RegularRegistrationCostLabel\"]"
+          },
+          "sourceUrl": {
+            "mode": "attribute",
+            "selector": "[id$=\"_MoreButton\"]",
+            "attribute": "id",
+            "transform": "telerikPostBackUrl"
+          },
+          "sportName": {
+            "mode": "literal",
+            "value": "Softball",
+            "selector": ":scope"
+          },
+          "venueName": {
+            "mode": "literal",
+            "value": "Portland Metro Softball Association",
+            "selector": ":scope"
+          },
+          "statusText": {
+            "selector": "[id$=\"_RegistrationStatusLabel\"]"
+          },
+          "description": {
+            "selector": ".col-lg-8",
+            "excludeSelectors": [
+              "[id$=\"_ProgramNameLabel\"]",
+              ".RadButton",
+              "[id$=\"_RegistrationInfoPanel\"]",
+              "[id*=\"Registration\"]",
+              "[id$=\"_ProgramDurationLabel\"]",
+              "[id$=\"_RegularRegistrationCostLabel\"]"
+            ]
+          },
+          "scheduleText": {
+            "selector": "[id$=\"_ProgramDurationLabel\"]"
+          },
+          "organizerName": {
+            "mode": "literal",
+            "value": "Portland Metro Softball Association",
+            "selector": ":scope"
+          },
+          "officialActionUrl": {
+            "mode": "attribute",
+            "required": true,
+            "selector": "[id$=\"_MoreButton\"]",
+            "attribute": "id",
+            "transform": "telerikPostBackUrl"
+          },
+          "participantOptionsText": {
+            "selector": ".col-lg-8",
+            "excludeSelectors": [
+              "[id$=\"_ProgramNameLabel\"]",
+              ".RadButton",
+              "[id$=\"_RegistrationInfoPanel\"]",
+              "[id*=\"Registration\"]",
+              "[id$=\"_ProgramDurationLabel\"]",
+              "[id$=\"_RegularRegistrationCostLabel\"]"
+            ]
+          },
+          "registrationDeadlineText": {
+            "regex": "[-–]\\s*(.+)$",
+            "selector": "[id$=\"_RegularRegistrationLabel\"]"
+          }
+        },
+        "listUrl": "https://www.portlandsoftball.com/current-programs",
+        "itemSelector": ".row:has(img.programImage)"
+      },
+      "notes": "Extracts TeamSideline current-program rows and resolves More Info postback URLs."
+    }
+  }
+]

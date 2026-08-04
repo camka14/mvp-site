@@ -80,8 +80,11 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
       if (url.startsWith('/api/admin/affiliate-discoveries')) {
         return Promise.resolve(jsonResponse({ candidates: [] }));
       }
-      if (url === '/api/admin/affiliate-intakes') {
-        return Promise.resolve(jsonResponse({ intakes: [] }));
+      if (url.startsWith('/api/admin/affiliate-intakes?')) {
+        return Promise.resolve(jsonResponse({
+          intakes: [],
+          pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
+        }));
       }
       if (method === 'POST' && url === '/api/admin/affiliate-sources/source_1/scrape') {
         return firstScrape.promise;
@@ -166,8 +169,14 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
       if (url.startsWith('/api/admin/affiliate-discoveries')) {
         return Promise.resolve(jsonResponse({ candidates: [] }));
       }
-      if (url === '/api/admin/affiliate-intakes') {
-        return Promise.resolve(jsonResponse({ intakes: [] }));
+      if (url.startsWith('/api/admin/affiliate-intakes?')) {
+        return Promise.resolve(jsonResponse({
+          intakes: [],
+          pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
+        }));
+      }
+      if (url === '/api/admin/affiliate-source-discovery') {
+        return Promise.resolve(jsonResponse({ campaigns: [] }));
       }
       return Promise.resolve(jsonResponse({ error: `Unexpected fetch ${url}` }, false));
     });
@@ -177,7 +186,7 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Source Intake' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'Human review' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'Review queue' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Sources (2)' })).toBeInTheDocument();
       expect(screen.getByRole('tab', { name: 'Candidates (0)' })).toBeInTheDocument();
     });
@@ -188,7 +197,10 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Source Intake' }));
     expect(screen.getByText('Capture source evidence first. Mapping and publication remain separate reviewed steps.')).toBeInTheDocument();
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('/api/admin/affiliate-intakes', { credentials: 'include' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/admin/affiliate-intakes?page=1&pageSize=50',
+        { credentials: 'include' },
+      );
     });
   });
 
@@ -216,8 +228,11 @@ describe('AdminAffiliateImportsPanel scrape queue', () => {
       if (url.startsWith('/api/admin/affiliate-discoveries')) {
         return Promise.resolve(jsonResponse({ candidates: [] }));
       }
-      if (url === '/api/admin/affiliate-intakes') {
-        return Promise.resolve(jsonResponse({ intakes: [] }));
+      if (url.startsWith('/api/admin/affiliate-intakes?')) {
+        return Promise.resolve(jsonResponse({
+          intakes: [],
+          pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
+        }));
       }
       return Promise.resolve(jsonResponse({ error: `Unexpected fetch ${url}` }, false));
     });

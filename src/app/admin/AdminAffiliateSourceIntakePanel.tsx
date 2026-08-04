@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -12,6 +12,7 @@ import {
   Loader,
   Modal,
   MultiSelect,
+  Pagination,
   Paper,
   ScrollArea,
   Select,
@@ -110,6 +111,8 @@ type Message = { color: 'red' | 'teal' | 'yellow' | 'blue'; title: string; body:
 const targetKindOptions = ['EVENT', 'RENTAL', 'CLUB', 'TEAM'];
 const pageRoleOptions = ['HOME', 'LISTING', 'DETAIL', 'REGISTRATION', 'RENTAL', 'DIRECTORY', 'POLICY', 'LOGO'];
 const terminalRunStatuses = new Set(['SUCCEEDED', 'PARTIAL', 'BLOCKED', 'FAILED']);
+const INTAKE_PAGE_SIZE = 50;
+const ACTIVE_RUN_POLL_INTERVAL_MS = 15_000;
 
 const artifactUrl = (intakeId: string, artifactId: string): string => (
   `/api/admin/affiliate-intakes/${encodeURIComponent(intakeId)}/artifacts/${encodeURIComponent(artifactId)}`
@@ -135,6 +138,11 @@ export default function AdminAffiliateSourceIntakePanel({
   onRequestedIntakeHandled,
 }: Props) {
   const [intakes, setIntakes] = useState<IntakeRow[]>([]);
+  const [intakePage, setIntakePage] = useState(1);
+  const [intakeTotal, setIntakeTotal] = useState(0);
+  const [intakeTotalPages, setIntakeTotalPages] = useState(1);
+  const [intakeSearch, setIntakeSearch] = useState('');
+  const [appliedIntakeSearch, setAppliedIntakeSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [createOpened, setCreateOpened] = useState(false);
@@ -155,22 +163,36 @@ export default function AdminAffiliateSourceIntakePanel({
   const [policyStatus, setPolicyStatus] = useState('ALLOWED');
   const [policyTermsUrl, setPolicyTermsUrl] = useState('');
   const [policyNotes, setPolicyNotes] = useState('');
+  const intakeRequestInFlightRef = useRef(false);
 
   const hasActiveRuns = useMemo(() => intakes.some((intake) => (
     intake.latestRun && !terminalRunStatuses.has(intake.latestRun.status)
   )), [intakes]);
 
   const loadIntakes = useCallback(async (withLoader = true) => {
+    if (intakeRequestInFlightRef.current) return;
+    intakeRequestInFlightRef.current = true;
     if (withLoader) setLoading(true);
     try {
-      const payload = await readPayload(await fetch('/api/admin/affiliate-intakes', { credentials: 'include' }));
+      const params = new URLSearchParams({
+        page: String(intakePage),
+        pageSize: String(INTAKE_PAGE_SIZE),
+      });
+      if (appliedIntakeSearch) params.set('query', appliedIntakeSearch);
+      const payload = await readPayload(await fetch(
+        `/api/admin/affiliate-intakes?${params.toString()}`,
+        { credentials: 'include' },
+      ));
       setIntakes(Array.isArray(payload.intakes) ? payload.intakes : []);
+      setIntakeTotal(Number(payload.pagination?.total ?? payload.intakes?.length ?? 0));
+      setIntakeTotalPages(Math.max(1, Number(payload.pagination?.totalPages ?? 1)));
     } catch (error) {
       setMessage({ color: 'red', title: 'Source intake error', body: error instanceof Error ? error.message : 'Failed to load source intakes.' });
     } finally {
+      intakeRequestInFlightRef.current = false;
       if (withLoader) setLoading(false);
     }
-  }, []);
+  }, [appliedIntakeSearch, intakePage]);
 
   const loadContext = useCallback(async (intakeId: string, runId?: string | null) => {
     const query = runId ? `?runId=${encodeURIComponent(runId)}` : '';
@@ -204,7 +226,7 @@ export default function AdminAffiliateSourceIntakePanel({
     const timer = window.setInterval(() => {
       void loadIntakes(false);
       if (selectedIntakeId && reviewOpened) void loadContext(selectedIntakeId);
-    }, 3000);
+    }, ACTIVE_RUN_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [active, hasActiveRuns, loadContext, loadIntakes, reviewOpened, selectedIntakeId]);
 
@@ -367,6 +389,50 @@ export default function AdminAffiliateSourceIntakePanel({
           </Group>
         </Group>
         {message ? <Alert mb="sm" color={message.color} title={message.title} withCloseButton onClose={() => setMessage(null)}>{message.body}</Alert> : null}
+        <Group mb="sm" align="flex-end">
+          <TextInput
+            label="Find a source intake"
+            placeholder="Organization, source key, region, or URL"
+            value={intakeSearch}
+            onChange={(event) => setIntakeSearch(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return;
+              setIntakePage(1);
+              setAppliedIntakeSearch(intakeSearch.trim());
+            }}
+            flex={1}
+          />
+          <Button
+            variant="default"
+            leftSection={<Search size={14} />}
+            onClick={() => {
+              setIntakePage(1);
+              setAppliedIntakeSearch(intakeSearch.trim());
+            }}
+          >
+            Search
+          </Button>
+          {appliedIntakeSearch ? (
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setIntakeSearch('');
+                setAppliedIntakeSearch('');
+                setIntakePage(1);
+              }}
+            >
+              Clear
+            </Button>
+          ) : null}
+        </Group>
+        <Group justify="space-between" mb="xs">
+          <Text size="sm" c="dimmed">
+            {intakeTotal.toLocaleString()} source intake{intakeTotal === 1 ? '' : 's'}
+          </Text>
+          {intakeTotalPages > 1 ? (
+            <Pagination value={intakePage} onChange={setIntakePage} total={intakeTotalPages} size="sm" />
+          ) : null}
+        </Group>
         <ScrollArea type="auto">
           <Table striped highlightOnHover withTableBorder miw={1050}>
             <Table.Thead><Table.Tr>
@@ -394,6 +460,11 @@ export default function AdminAffiliateSourceIntakePanel({
             </Table.Tbody>
           </Table>
         </ScrollArea>
+        {intakeTotalPages > 1 ? (
+          <Group justify="flex-end" mt="sm">
+            <Pagination value={intakePage} onChange={setIntakePage} total={intakeTotalPages} size="sm" />
+          </Group>
+        ) : null}
       </Paper>
 
       <Modal opened={createOpened} onClose={() => setCreateOpened(false)} title="Add affiliate source" size="lg">

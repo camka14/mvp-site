@@ -481,22 +481,103 @@ export const updateAffiliateSourceIntake = async (
   });
 };
 
-export const listAffiliateSourceIntakes = async () => {
+export type AffiliateSourceIntakeListOptions = {
+  page?: number;
+  pageSize?: number;
+  query?: string | null;
+};
+
+export type AffiliateSourceIntakeListResult = {
+  intakes: any[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export const listAffiliateSourceIntakes = async (
+  options: AffiliateSourceIntakeListOptions = {},
+): Promise<AffiliateSourceIntakeListResult> => {
   const { intakes, pages, runs, artifacts } = intakePrisma();
-  const intakeRows = await intakes.findMany({ orderBy: [{ status: 'asc' }, { name: 'asc' }] });
-  if (!intakeRows.length) return [];
-  const intakeIds = intakeRows.map((row: any) => row.id);
-  const [pageRows, runRows, artifactRows] = await Promise.all([
-    pages.findMany({ where: { intakeId: { in: intakeIds } }, select: { intakeId: true } }),
-    runs.findMany({ where: { intakeId: { in: intakeIds } }, orderBy: { createdAt: 'desc' } }),
-    artifacts.findMany({ where: { intakeId: { in: intakeIds } }, select: { intakeId: true, kind: true } }),
+  const requestedPageSize = Number.isFinite(options.pageSize) ? Number(options.pageSize) : 50;
+  const requestedPage = Number.isFinite(options.page) ? Number(options.page) : 1;
+  const pageSize = Math.max(1, Math.min(100, Math.trunc(requestedPageSize)));
+  const page = Math.max(1, Math.trunc(requestedPage));
+  const query = stringValue(options.query);
+  const where = query
+    ? {
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { sourceKey: { contains: query, mode: 'insensitive' } },
+          { region: { contains: query, mode: 'insensitive' } },
+          { baseUrl: { contains: query, mode: 'insensitive' } },
+        ],
+      }
+    : {};
+  const [total, intakeRows] = await Promise.all([
+    intakes.count({ where }),
+    intakes.findMany({
+      where,
+      orderBy: [{ status: 'asc' }, { name: 'asc' }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
   ]);
-  return intakeRows.map((intake: any) => ({
-    ...intake,
-    pageCount: pageRows.filter((page: any) => page.intakeId === intake.id).length,
-    artifactCount: artifactRows.filter((artifact: any) => artifact.intakeId === intake.id).length,
-    latestRun: runRows.find((run: any) => run.intakeId === intake.id) ?? null,
-  }));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (!intakeRows.length) {
+    return {
+      intakes: [],
+      pagination: { page, pageSize, total, totalPages },
+    };
+  }
+  const intakeIds = intakeRows.map((row: any) => row.id);
+  const [pageCounts, runRows, artifactCounts] = await Promise.all([
+    pages.groupBy({
+      by: ['intakeId'],
+      where: { intakeId: { in: intakeIds } },
+      _count: { _all: true },
+    }),
+    runs.findMany({
+      where: { intakeId: { in: intakeIds } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        intakeId: true,
+        status: true,
+        createdAt: true,
+        capturedPageCount: true,
+        discoveredUrlCount: true,
+        summary: true,
+        errorMessage: true,
+      },
+    }),
+    artifacts.groupBy({
+      by: ['intakeId'],
+      where: { intakeId: { in: intakeIds } },
+      _count: { _all: true },
+    }),
+  ]);
+  const pageCountByIntakeId = new Map(
+    pageCounts.map((row: any) => [row.intakeId, Number(row._count?._all ?? 0)]),
+  );
+  const artifactCountByIntakeId = new Map(
+    artifactCounts.map((row: any) => [row.intakeId, Number(row._count?._all ?? 0)]),
+  );
+  const latestRunByIntakeId = new Map<string, any>();
+  for (const run of runRows) {
+    if (!latestRunByIntakeId.has(run.intakeId)) latestRunByIntakeId.set(run.intakeId, run);
+  }
+  return {
+    intakes: intakeRows.map((intake: any) => ({
+      ...intake,
+      pageCount: pageCountByIntakeId.get(intake.id) ?? 0,
+      artifactCount: artifactCountByIntakeId.get(intake.id) ?? 0,
+      latestRun: latestRunByIntakeId.get(intake.id) ?? null,
+    })),
+    pagination: { page, pageSize, total, totalPages },
+  };
 };
 
 export const getAffiliateSourceIntakeContext = async (intakeId: string, runId?: string | null) => {

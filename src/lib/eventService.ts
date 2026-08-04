@@ -32,6 +32,7 @@ import { LeagueScheduleResponse } from "./leagueService";
 import {
   normalizeApiEvent,
   normalizeApiMatch,
+  stripApiCompatibilityFields,
 } from "./apiMappers";
 import { resolveOrganizationVerificationStatus } from "@/lib/organizationVerification";
 import { normalizeBracketSeed } from "@/lib/bracketSeeds";
@@ -226,20 +227,6 @@ const toStableRequestValue = (value: unknown): unknown => {
       }, {});
   }
   return value;
-};
-
-const stripDollarPrefixedPayloadFields = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(stripDollarPrefixedPayloadFields);
-  }
-  if (!value || typeof value !== 'object' || Object.prototype.toString.call(value) !== '[object Object]') {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !key.startsWith('$'))
-      .map(([key, entry]) => [key, stripDollarPrefixedPayloadFields(entry)]),
-  );
 };
 
 const buildPaginatedEventsRequestKey = (
@@ -694,7 +681,7 @@ class EventService {
         ...(hasFieldsOverride ? { fields: options.fields } : {}),
         ...(hasTimeSlotsOverride ? { timeSlots: options.timeSlots } : {}),
       } as Event;
-      const payload = stripDollarPrefixedPayloadFields(
+      const payload = stripApiCompatibilityFields(
         toEventPayload(payloadSource),
       ) as Record<string, unknown>;
       [
@@ -748,7 +735,7 @@ class EventService {
         delete payload.timeSlots;
       }
       if (hasLeagueScoringConfigOverride) {
-        payload.leagueScoringConfig = stripDollarPrefixedPayloadFields(
+        payload.leagueScoringConfig = stripApiCompatibilityFields(
           normalizePayloadIdentifiers(options.leagueScoringConfig),
         );
       }

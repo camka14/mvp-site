@@ -25,7 +25,11 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     await requireRazumlyAdmin(req);
-    return NextResponse.json({ intakes: await listAffiliateSourceIntakes() });
+    const page = Number(req.nextUrl.searchParams.get('page') ?? '1');
+    const pageSize = Number(req.nextUrl.searchParams.get('pageSize') ?? '50');
+    const query = req.nextUrl.searchParams.get('query');
+    const result = await listAffiliateSourceIntakes({ page, pageSize, query });
+    return NextResponse.json(result);
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Failed to list affiliate source intakes', error);

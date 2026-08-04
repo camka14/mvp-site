@@ -139,24 +139,29 @@ export const listAffiliateSourceDiscoveryCampaigns = async () => {
   });
   if (!rows.length) return [];
   const campaignIds = rows.map((row: any) => row.id);
-  const [resultRows, latestRuns] = await Promise.all([
-    results.findMany({
+  const [resultCounts, latestRuns] = await Promise.all([
+    results.groupBy({
+      by: ['campaignId', 'status'],
       where: { campaignId: { in: campaignIds } },
-      select: { campaignId: true, status: true },
+      _count: { _all: true },
     }),
     runs.findMany({ where: { campaignId: { in: campaignIds } }, orderBy: { createdAt: 'desc' } }),
   ]);
+  const statusCountsByCampaignId = new Map<string, Record<string, number>>();
+  for (const row of resultCounts) {
+    const counts = statusCountsByCampaignId.get(row.campaignId) ?? {};
+    counts[row.status] = Number(row._count?._all ?? 0);
+    statusCountsByCampaignId.set(row.campaignId, counts);
+  }
+  const latestRunByCampaignId = new Map<string, any>();
+  for (const run of latestRuns) {
+    if (!latestRunByCampaignId.has(run.campaignId)) latestRunByCampaignId.set(run.campaignId, run);
+  }
   return rows.map((campaign: any) => {
-    const statusCounts = resultRows
-      .filter((row: any) => row.campaignId === campaign.id)
-      .reduce((counts: Record<string, number>, row: any) => ({
-        ...counts,
-        [row.status]: (counts[row.status] ?? 0) + 1,
-      }), {} as Record<string, number>);
     return {
       ...campaign,
-      statusCounts,
-      latestRun: latestRuns.find((run: any) => run.campaignId === campaign.id) ?? null,
+      statusCounts: statusCountsByCampaignId.get(campaign.id) ?? {},
+      latestRun: latestRunByCampaignId.get(campaign.id) ?? null,
     };
   });
 };

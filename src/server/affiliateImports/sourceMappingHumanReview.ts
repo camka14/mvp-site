@@ -42,7 +42,17 @@ export type AffiliateMappingHumanReviewRow = {
   rationale: string | null;
   blockingIssues: string[];
   hasSelectedLogo: boolean;
+  reviewOwner: AffiliateMappingReviewOwner;
+  reviewQuestion: string;
+  recommendedAction: string;
 };
+
+export type AffiliateMappingReviewOwner = 'USER' | 'MAPPING_AGENT' | 'SYSTEM';
+
+type ReviewGuidance = Pick<
+  AffiliateMappingHumanReviewRow,
+  'reviewOwner' | 'reviewQuestion' | 'recommendedAction'
+>;
 
 const reviewDb = () => ({
   jobs: (prisma as any).affiliateSourceMappingJobs,
@@ -68,10 +78,103 @@ const isoValue = (value: Date | string | null | undefined): string => {
   return Number.isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString();
 };
 
+const producerRepairReasonCodes = new Set([
+  'LIVE_SETUP_UNSUPPORTED',
+  'EVENT_LOCATION_INVALID',
+  'ORGANIZATION_LOCATION_INVALID',
+  'EVENT_DIVISION_GROUPING_INVALID',
+  'EVENT_DIVISION_CLASSIFICATION_INVALID',
+  'EVENT_PRICING_INVALID',
+  'EVENT_CAPACITY_INVALID',
+  'EVENT_DESCRIPTION_INVALID',
+  'ORGANIZATION_DESCRIPTION_INVALID',
+  'OFFICIAL_LOGO_REPAIR_REQUIRED',
+  'PACKAGE_VALIDATION_FAILED',
+  'DUPLICATE_SAFETY_INVALID',
+  'OTHER_PRODUCER_DEFECT',
+]);
+
+const producerHandoffPattern = /(?:(?:producer|package[- ]evidence|exact[- ]commit|producer-workspace|repository|commit).{0,160}(?:unavailable|inaccessible|missing|cannot|could not|not resolve|not reachable)|(?:unavailable|inaccessible|missing|cannot|could not|not resolve|not reachable).{0,160}(?:producer|package[- ]evidence|exact[- ]commit|producer-workspace|repository|commit))/i;
+
+export const affiliateMappingReviewGuidance = (input: {
+  requestedNextAction?: string | null;
+  reasonCodes?: string[];
+  rationale?: string | null;
+  blockingIssues?: string[];
+  errorMessage?: string | null;
+}): ReviewGuidance => {
+  const reasonCodes = input.reasonCodes ?? [];
+  const evidence = [
+    input.rationale,
+    ...(input.blockingIssues ?? []),
+    input.errorMessage,
+  ].filter((value): value is string => Boolean(value)).join(' ');
+
+  if (producerHandoffPattern.test(evidence)) {
+    return {
+      reviewOwner: 'SYSTEM',
+      reviewQuestion: 'Can the producer package and exact-commit evidence handoff be restored?',
+      recommendedAction: 'Repair the producer workspace or commit handoff, then return this job to review. Do not judge the source content yet.',
+    };
+  }
+
+  const substantiveReasonCodes = reasonCodes.filter((reasonCode) => reasonCode !== 'RETRY_LIMIT_EXCEEDED');
+  const logoAbsenceOnly = substantiveReasonCodes.length > 0
+    && substantiveReasonCodes.every((reasonCode) => reasonCode === 'NO_VERIFIABLE_OFFICIAL_LOGO');
+  if (logoAbsenceOnly) {
+    return {
+      reviewOwner: 'MAPPING_AGENT',
+      reviewQuestion: 'Can this mapping proceed with no official logo?',
+      recommendedAction: 'Accept the missing logo and return the package to automated review. A missing logo alone must not block the mapping.',
+    };
+  }
+
+  const hasProducerRepair = input.requestedNextAction === 'PRODUCER_REPAIR'
+    || reasonCodes.some((reasonCode) => producerRepairReasonCodes.has(reasonCode));
+  if (hasProducerRepair) {
+    return {
+      reviewOwner: 'MAPPING_AGENT',
+      reviewQuestion: 'What must the mapping agent repair before this package can pass review?',
+      recommendedAction: 'Use the reason codes and blocking issues as repair instructions, then return the corrected package to review.',
+    };
+  }
+
+  if (reasonCodes.includes('CONFLICTING_LIVE_RECORD')) {
+    return {
+      reviewOwner: 'USER',
+      reviewQuestion: 'Is this source the same as the conflicting live record, or should both records remain separate?',
+      recommendedAction: 'Compare the source identity with the live record. Choose whether to merge, replace, keep separate, or stop this source.',
+    };
+  }
+
+  if (reasonCodes.includes('RETRY_LIMIT_EXCEEDED')) {
+    return {
+      reviewOwner: 'USER',
+      reviewQuestion: 'Should this source receive another repair attempt, or should automatic retries stop?',
+      recommendedAction: 'Review the last failure below. Requeue only when the failure is repairable; otherwise leave it stopped for a later manual check.',
+    };
+  }
+
+  if (reasonCodes.includes('INSUFFICIENT_STORED_EVIDENCE')) {
+    return {
+      reviewOwner: 'USER',
+      reviewQuestion: 'Is there another official public page or stored capture that proves this source identity?',
+      recommendedAction: 'Provide or capture the missing first-party evidence. Stop the source if no reliable evidence is available.',
+    };
+  }
+
+  return {
+    reviewOwner: 'USER',
+    reviewQuestion: 'Should this source be repaired and retried, or should it remain stopped for manual review?',
+    recommendedAction: 'Use the recorded concern below to choose whether to retry, supply evidence, or stop this source.',
+  };
+};
+
 export const listAffiliateMappingHumanReviewJobs = async (
   options: { limit?: number } = {},
 ): Promise<AffiliateMappingHumanReviewRow[]> => {
-  const limit = Math.max(1, Math.min(250, options.limit ?? 100));
+  const requestedLimit = Number.isFinite(options.limit) ? Number(options.limit) : 250;
+  const limit = Math.max(1, Math.min(250, Math.trunc(requestedLimit)));
   const { jobs, intakes } = reviewDb();
   const jobRows: HumanReviewJobRow[] = await jobs.findMany({
     where: { status: 'HUMAN_REVIEW_REQUIRED' },
@@ -108,6 +211,18 @@ export const listAffiliateMappingHumanReviewJobs = async (
   return jobRows.map((job) => {
     const intake = intakeById.get(job.intakeId);
     const humanReview = recordValue(recordValue(job.resultSummary).humanReviewRequired);
+    const reasonCodes = stringValues(humanReview.reasonCodes);
+    const rationale = stringValue(humanReview.rationale);
+    const blockingIssues = stringValues(humanReview.blockingIssues);
+    const errorMessage = stringValue(job.errorMessage);
+    const requestedNextAction = stringValue(humanReview.requestedNextAction);
+    const guidance = affiliateMappingReviewGuidance({
+      requestedNextAction,
+      reasonCodes,
+      rationale,
+      blockingIssues,
+      errorMessage,
+    });
     return {
       jobId: job.id,
       intakeId: job.intakeId,
@@ -119,13 +234,14 @@ export const listAffiliateMappingHumanReviewJobs = async (
       complianceStatus: intake?.complianceStatus ?? 'UNKNOWN',
       attemptCount: typeof job.attemptCount === 'number' ? job.attemptCount : 0,
       markedAt: isoValue(stringValue(humanReview.markedAt) ?? job.finishedAt ?? job.updatedAt),
-      errorMessage: stringValue(job.errorMessage),
+      errorMessage,
       source: stringValue(humanReview.source),
-      requestedNextAction: stringValue(humanReview.requestedNextAction),
-      reasonCodes: stringValues(humanReview.reasonCodes),
-      rationale: stringValue(humanReview.rationale),
-      blockingIssues: stringValues(humanReview.blockingIssues),
+      requestedNextAction,
+      reasonCodes,
+      rationale,
+      blockingIssues,
       hasSelectedLogo: Boolean(intake?.selectedLogoArtifactId),
+      ...guidance,
     };
   });
 };

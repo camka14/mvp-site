@@ -33,6 +33,7 @@ const prismaMock = {
     update: jest.fn(async ({ data }) => ({ ...campaign, ...data })),
   },
   affiliateSourceDiscoveryRuns: {
+    findMany: jest.fn(async () => []),
     findFirst: jest.fn(async ({ where }) => queuedRuns.find((run) => (
       run.status === 'QUEUED' && (!where.id || run.id === where.id)
     )) ?? null),
@@ -55,6 +56,7 @@ const prismaMock = {
     }),
   },
   affiliateSourceDiscoveryResults: {
+    groupBy: jest.fn(async () => []),
     findUnique: jest.fn(async ({ where }) => {
       if (where.id) return currentResult?.id === where.id ? currentResult : null;
       return currentResult?.campaignId === where.campaignId_urlKey.campaignId
@@ -154,6 +156,7 @@ jest.mock('@/server/affiliateImports/sourceIntake', () => ({
 
 import {
   applyAffiliateSourceDomainPolicy,
+  listAffiliateSourceDiscoveryCampaigns,
   processNextAffiliateSourceDiscoveryRun,
   queueDueAffiliateSourceDiscoveryRuns,
   runAffiliateIntakeAutomation,
@@ -172,6 +175,8 @@ describe('affiliate source discovery orchestration', () => {
     campaign.queryCursor = 0;
     campaign.sourceTypeHints = ['CLUB'];
     prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceDiscoveryRuns.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceDiscoveryResults.groupBy.mockResolvedValue([]);
     prismaMock.affiliateSourceIntakes.findMany.mockResolvedValue([]);
     prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([]);
     isEmailEnabledMock.mockReturnValue(true);
@@ -181,6 +186,41 @@ describe('affiliate source discovery orchestration', () => {
       { id: 'run_1', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
       { id: 'run_2', campaignId: campaign.id, requestedByUserId: 'admin_1', status: 'QUEUED', queuedAt: new Date(), attemptCount: 0 },
     );
+  });
+
+  it('aggregates campaign result counts in the database', async () => {
+    prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([
+      { ...campaign, id: 'campaign_1' },
+      { ...campaign, id: 'campaign_2', name: 'Portland rental sources' },
+    ]);
+    prismaMock.affiliateSourceDiscoveryResults.groupBy.mockResolvedValue([
+      { campaignId: 'campaign_1', status: 'NEW', _count: { _all: 7 } },
+      { campaignId: 'campaign_1', status: 'REVIEW_REQUIRED', _count: { _all: 2 } },
+      { campaignId: 'campaign_2', status: 'INTAKE_CREATED', _count: { _all: 5 } },
+    ]);
+    prismaMock.affiliateSourceDiscoveryRuns.findMany.mockResolvedValue([
+      { id: 'run_latest', campaignId: 'campaign_1', createdAt: new Date('2026-08-02') },
+      { id: 'run_old', campaignId: 'campaign_1', createdAt: new Date('2026-08-01') },
+    ]);
+
+    const rows = await listAffiliateSourceDiscoveryCampaigns();
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'campaign_2',
+        statusCounts: { INTAKE_CREATED: 5 },
+        latestRun: null,
+      }),
+      expect.objectContaining({
+        id: 'campaign_1',
+        statusCounts: { NEW: 7, REVIEW_REQUIRED: 2 },
+        latestRun: expect.objectContaining({ id: 'run_latest' }),
+      }),
+    ]);
+    expect(prismaMock.affiliateSourceDiscoveryResults.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      by: ['campaignId', 'status'],
+      _count: { _all: true },
+    }));
   });
 
   it('reuses one discovery result and one intake while unknown policy prevents capture', async () => {

@@ -673,7 +673,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
       >
         <Tabs.List>
           <Tabs.Tab value="intake">Source Intake</Tabs.Tab>
-          <Tabs.Tab value="humanReview">Human review</Tabs.Tab>
+          <Tabs.Tab value="humanReview">Review queue</Tabs.Tab>
           <Tabs.Tab value="sources">Sources ({sources.length})</Tabs.Tab>
           <Tabs.Tab value="candidates">Candidates ({candidates.length})</Tabs.Tab>
         </Tabs.List>

@@ -4,6 +4,7 @@ import {
   normalizeApiField,
   normalizeApiMatch,
   normalizeApiTeam,
+  stripApiCompatibilityFields,
 } from '@/lib/apiMappers';
 import type { Event, Field, Match, Team } from '@/types';
 
@@ -59,5 +60,25 @@ describe('canonical API response adapters', () => {
     expect(normalizeApiField({ id: 'field_1' } as unknown as Field).$id).toBe('field_1');
     expect(normalizeApiTeam({ id: 'team_1' } as unknown as Team).$id).toBe('team_1');
     expect(normalizeApiMatch({ id: 'match_1' } as unknown as Match).$id).toBe('match_1');
+  });
+
+  it('removes compatibility fields recursively before API writes', () => {
+    expect(stripApiCompatibilityFields({
+      id: 'match_1',
+      $id: 'match_1',
+      segments: [{
+        id: 'segment_1',
+        $id: 'segment_1',
+        $createdAt: '2026-08-04T12:00:00.000Z',
+        $updatedAt: '2026-08-04T12:05:00.000Z',
+        scores: { team_1: 21 },
+      }],
+    })).toEqual({
+      id: 'match_1',
+      segments: [{
+        id: 'segment_1',
+        scores: { team_1: 21 },
+      }],
+    });
   });
 });

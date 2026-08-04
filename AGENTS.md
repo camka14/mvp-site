@@ -203,3 +203,14 @@ We persist raw string IDs for associations (for example `teamIds`, `friendIds`, 
 
 - Legacy references are read-only.
 - Use `mvpDatabase` and `mvp-build-bracket` **as reference**, not as active dependencies.
+
+### ASD-STE100 Simplified Technical English
+
+- Adhere to ASD-STE100 Simplified Technical English for agent-authored plans,
+  documentation, reports, instructions, code comments, and completion notes.
+- Use short sentences, active voice, and one action per instruction.
+- Use one consistent term for each concept. Avoid idioms, vague pronouns,
+  unnecessary jargon, and long noun groups.
+- Do not rewrite exact user-provided copy, quotations, legal text, standardized
+  text, product names, API names, or code identifiers only to conform to this
+  writing standard.

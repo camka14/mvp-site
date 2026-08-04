@@ -19,10 +19,10 @@ describe('AdminAffiliateSourceIntakePanel', () => {
   it('shows policy state and queues selected pages only after review', async () => {
     const fetchMock = jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === '/api/admin/affiliate-intakes') return Promise.resolve(response({ intakes: [{
+      if (url.startsWith('/api/admin/affiliate-intakes?')) return Promise.resolve(response({ intakes: [{
         id: 'intake_1', name: 'SF Glens', sourceKey: 'sf-glens', status: 'READY',
         complianceStatus: 'ALLOWED', pageCount: 1, artifactCount: 0, latestRun: null,
-      }] }));
+      }], pagination: { page: 1, pageSize: 50, total: 1, totalPages: 1 } }));
       if (url === '/api/admin/affiliate-intakes/intake_1') return Promise.resolve(response({
         intake: { id: 'intake_1', name: 'SF Glens', status: 'READY', complianceStatus: 'ALLOWED' },
         pages: [{ id: 'page_1', url: 'https://example.com', role: 'HOME', status: 'ACTIVE', discoverySource: 'MANUAL', robotsStatus: 'UNCHECKED' }],
@@ -35,6 +35,7 @@ describe('AdminAffiliateSourceIntakePanel', () => {
 
     render(<MantineProvider><AdminAffiliateSourceIntakePanel active refreshKey={0} /></MantineProvider>);
     await screen.findByText('SF Glens');
+    expect(screen.getByText('1 source intake')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Review' }));
     await screen.findByText('https://example.com');
     fireEvent.click(screen.getByRole('button', { name: 'Inspect Selected' }));

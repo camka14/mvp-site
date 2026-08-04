@@ -32,6 +32,20 @@ const normalizeId = (value: unknown): string | undefined => {
   return undefined;
 };
 
+export const stripApiCompatibilityFields = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stripApiCompatibilityFields);
+  }
+  if (!value || typeof value !== 'object' || Object.prototype.toString.call(value) !== '[object Object]') {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !key.startsWith('$'))
+      .map(([key, entry]) => [key, stripApiCompatibilityFields(entry)]),
+  );
+};
+
 export const normalizeApiEntity = <T extends ApiEntity | null | undefined>(input: T): T => {
   if (!input || typeof input !== 'object') {
     return input;

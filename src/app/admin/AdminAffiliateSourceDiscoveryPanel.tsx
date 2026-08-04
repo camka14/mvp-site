@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -74,6 +74,7 @@ const resultStatusOptions = [
   ...['NEW', 'REVIEW_REQUIRED', 'INTAKE_CREATED', 'DUPLICATE', 'REJECTED', 'BLOCKED'].map((value) => ({ value, label: value.replace(/_/g, ' ') })),
 ];
 const terminalRunStatuses = new Set(['SUCCEEDED', 'PARTIAL', 'FAILED']);
+const ACTIVE_RUN_POLL_INTERVAL_MS = 15_000;
 
 const readPayload = async (response: Response): Promise<any> => {
   const payload = await response.json().catch(() => ({}));
@@ -115,6 +116,8 @@ export default function AdminAffiliateSourceDiscoveryPanel({ active, refreshKey,
   const [editorOpened, setEditorOpened] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const campaignsRequestInFlightRef = useRef(false);
+  const resultsRequestInFlightRef = useRef(false);
 
   const hasActiveRuns = useMemo(() => campaigns.some((campaign) => (
     campaign.latestRun && !terminalRunStatuses.has(campaign.latestRun.status)
@@ -122,6 +125,8 @@ export default function AdminAffiliateSourceDiscoveryPanel({ active, refreshKey,
   const sportNameById = useMemo(() => new Map(sports.map((sport) => [sport.id, sport.name])), [sports]);
 
   const loadCampaigns = useCallback(async (withLoader = true) => {
+    if (campaignsRequestInFlightRef.current) return;
+    campaignsRequestInFlightRef.current = true;
     if (withLoader) setLoading(true);
     try {
       const payload = await readPayload(await fetch('/api/admin/affiliate-source-discovery', { credentials: 'include' }));
@@ -130,11 +135,14 @@ export default function AdminAffiliateSourceDiscoveryPanel({ active, refreshKey,
     } catch (error) {
       setNotice({ color: 'red', title: 'Discovery unavailable', body: error instanceof Error ? error.message : 'Failed to load campaigns.' });
     } finally {
+      campaignsRequestInFlightRef.current = false;
       if (withLoader) setLoading(false);
     }
   }, []);
 
   const loadResults = useCallback(async () => {
+    if (resultsRequestInFlightRef.current) return;
+    resultsRequestInFlightRef.current = true;
     const params = new URLSearchParams({ page: String(page), pageSize: '25' });
     if (campaignFilter) params.set('campaignId', campaignFilter);
     if (statusFilter) params.set('status', statusFilter);
@@ -150,6 +158,8 @@ export default function AdminAffiliateSourceDiscoveryPanel({ active, refreshKey,
       setSelectedResultIds((current) => current.filter((id) => payload.rows?.some((row: DiscoveryResult) => row.id === id)));
     } catch (error) {
       setNotice({ color: 'red', title: 'Results unavailable', body: error instanceof Error ? error.message : 'Failed to load results.' });
+    } finally {
+      resultsRequestInFlightRef.current = false;
     }
   }, [appliedSearch, campaignFilter, domainFilter, minScoreFilter, page, sourceTypeFilter, sportFilter, statusFilter]);
 
@@ -161,7 +171,7 @@ export default function AdminAffiliateSourceDiscoveryPanel({ active, refreshKey,
   }, [active, loadResults, refreshKey]);
   useEffect(() => {
     if (!active || !hasActiveRuns) return undefined;
-    const timer = window.setInterval(() => void Promise.all([loadCampaigns(false), loadResults()]), 3000);
+    const timer = window.setInterval(() => void Promise.all([loadCampaigns(false), loadResults()]), ACTIVE_RUN_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [active, hasActiveRuns, loadCampaigns, loadResults]);
 

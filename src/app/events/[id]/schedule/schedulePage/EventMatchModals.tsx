@@ -9,6 +9,33 @@ import { isClientMatchId, type MatchCreateContext } from './helpers';
 type ScoreUpdateModalProps = ComponentProps<typeof ScoreUpdateModal>;
 type MatchEditModalProps = ComponentProps<typeof MatchEditModal>;
 
+export const getMatchEditorDivisions = (event: Event | null): Division[] => {
+  const sources: unknown[] = [
+    ...(Array.isArray(event?.divisionDetails) ? event.divisionDetails : []),
+    ...(Array.isArray(event?.playoffDivisionDetails) ? event.playoffDivisionDetails : []),
+    ...(Array.isArray(event?.divisions) ? event.divisions : []),
+  ];
+  const divisionsById = new Map<string, Division>();
+
+  sources.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+
+    const division = entry as Division & { $id?: unknown };
+    const id = typeof division.id === 'string' && division.id.trim().length > 0
+      ? division.id.trim()
+      : typeof division.$id === 'string' && division.$id.trim().length > 0
+        ? division.$id.trim()
+        : null;
+    if (id && !divisionsById.has(id)) {
+      divisionsById.set(id, division);
+    }
+  });
+
+  return Array.from(divisionsById.values());
+};
+
 type EventMatchModalsProps = {
   activeEvent: Event | null;
   activeMatches: Match[];
@@ -86,11 +113,7 @@ export default function EventMatchModals({
         tournament={activeEvent}
         allMatches={activeMatches}
         fields={Array.isArray(activeEvent?.fields) ? activeEvent.fields : []}
-        divisions={
-          Array.isArray(activeEvent?.divisions)
-            ? activeEvent.divisions.filter((division): division is Division => Boolean(division) && typeof division === 'object')
-            : []
-        }
+        divisions={getMatchEditorDivisions(activeEvent)}
         teams={matchEditorTeams}
         officials={matchEditorOfficials}
         officialPositions={Array.isArray(activeEvent?.officialPositions) ? activeEvent.officialPositions : []}

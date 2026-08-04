@@ -39,7 +39,12 @@ import { userService } from '@/lib/userService';
 import { familyService } from '@/lib/familyService';
 import { apiRequest } from '@/lib/apiClient';
 import { hasStaffMemberType } from '@/lib/staff';
-import { normalizeApiEvent, normalizeApiField, normalizeApiMatch } from '@/lib/apiMappers';
+import {
+  normalizeApiEvent,
+  normalizeApiField,
+  normalizeApiMatch,
+  stripApiCompatibilityFields,
+} from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 import { createClientId } from '@/lib/clientId';
@@ -4374,7 +4379,7 @@ function EventScheduleContent() {
     if (match.matchRulesSnapshot) {
       payload.matchRulesSnapshot = match.matchRulesSnapshot;
     }
-    return payload;
+    return stripApiCompatibilityFields(payload) as Record<string, unknown>;
   }, []);
 
   const schedulePreview = useCallback(
@@ -4578,7 +4583,11 @@ function EventScheduleContent() {
         const shouldPersistDraftMatches = !isBuildBracketAction
           && !isRebuildWithoutPlaceholdersAction
           && !skipDraftMatchPersistenceForRemovedFields;
-        if (updatedEvent.$id && shouldPersistDraftMatches && nextMatches.length > 0) {
+        if (
+          updatedEvent.$id
+          && shouldPersistDraftMatches
+          && (nextMatches.length > 0 || stagedMatchDeletes.length > 0)
+        ) {
           const validation = validateDraftMatchGraph(nextMatches);
           if (!validation.ok) {
             throw new Error(validation.message);

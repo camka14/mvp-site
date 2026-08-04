@@ -2,10 +2,13 @@
 
 const prismaMock = {
   affiliateSourceIntakes: {
+    count: jest.fn(),
+    findMany: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
   },
   affiliateSourceIntakePages: {
+    groupBy: jest.fn(),
     findFirst: jest.fn(),
     findMany: jest.fn(),
     findUnique: jest.fn(),
@@ -20,7 +23,9 @@ const prismaMock = {
     updateMany: jest.fn(),
     update: jest.fn(),
   },
-  affiliateSourceIntakeArtifacts: {},
+  affiliateSourceIntakeArtifacts: {
+    groupBy: jest.fn(),
+  },
   affiliateSourceDomainPolicies: {
     findUnique: jest.fn(),
     upsert: jest.fn(),
@@ -47,6 +52,7 @@ jest.mock('@/server/affiliateImports/sourceIntakeArtifacts', () => ({
 import {
   classifyAffiliateSourceEvidence,
   findStaleAffiliateSourceIntakeRuns,
+  listAffiliateSourceIntakes,
   processNextAffiliateSourceIntakeRun,
   queueAffiliateSourceIntakeRun,
   recoverStaleAffiliateSourceIntakeRuns,
@@ -56,6 +62,11 @@ import {
 describe('affiliate source intake service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.affiliateSourceIntakes.count.mockResolvedValue(0);
+    prismaMock.affiliateSourceIntakes.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceIntakePages.groupBy.mockResolvedValue([]);
+    prismaMock.affiliateSourceIntakeRuns.findMany.mockResolvedValue([]);
+    prismaMock.affiliateSourceIntakeArtifacts.groupBy.mockResolvedValue([]);
     persistArtifactMock.mockResolvedValue({ id: 'artifact_1' });
     prismaMock.affiliateSourceIntakes.update.mockImplementation(async ({ data }) => data);
     prismaMock.affiliateSourceIntakePages.update.mockImplementation(async ({ data }) => data);
@@ -69,6 +80,40 @@ describe('affiliate source intake service', () => {
     prismaMock.affiliateSourceDomainPolicies.findUnique.mockResolvedValue(null);
     prismaMock.affiliateSourceDomainPolicies.upsert.mockResolvedValue({});
     prismaMock.affiliateSourceDiscoveryResults.updateMany.mockResolvedValue({ count: 0 });
+  });
+
+  it('paginates intake rows and aggregates child counts in the database', async () => {
+    prismaMock.affiliateSourceIntakes.count.mockResolvedValue(2);
+    prismaMock.affiliateSourceIntakes.findMany.mockResolvedValue([
+      { id: 'intake_1', name: 'Alpha Club' },
+      { id: 'intake_2', name: 'Beta Club' },
+    ]);
+    prismaMock.affiliateSourceIntakePages.groupBy.mockResolvedValue([
+      { intakeId: 'intake_1', _count: { _all: 4 } },
+    ]);
+    prismaMock.affiliateSourceIntakeArtifacts.groupBy.mockResolvedValue([
+      { intakeId: 'intake_1', _count: { _all: 3 } },
+      { intakeId: 'intake_2', _count: { _all: 1 } },
+    ]);
+    prismaMock.affiliateSourceIntakeRuns.findMany.mockResolvedValue([
+      { id: 'run_2', intakeId: 'intake_1', status: 'SUCCEEDED', createdAt: new Date('2026-08-02') },
+      { id: 'run_1', intakeId: 'intake_1', status: 'FAILED', createdAt: new Date('2026-08-01') },
+    ]);
+
+    await expect(listAffiliateSourceIntakes({ page: 1, pageSize: 25, query: 'club' })).resolves.toEqual({
+      intakes: [
+        expect.objectContaining({ id: 'intake_1', pageCount: 4, artifactCount: 3, latestRun: expect.objectContaining({ id: 'run_2' }) }),
+        expect.objectContaining({ id: 'intake_2', pageCount: 0, artifactCount: 1, latestRun: null }),
+      ],
+      pagination: { page: 1, pageSize: 25, total: 2, totalPages: 1 },
+    });
+    expect(prismaMock.affiliateSourceIntakes.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      skip: 0,
+      take: 25,
+      where: { OR: expect.any(Array) },
+    }));
+    expect(prismaMock.affiliateSourceIntakePages.groupBy).toHaveBeenCalled();
+    expect(prismaMock.affiliateSourceIntakeArtifacts.groupBy).toHaveBeenCalled();
   });
 
   it('can record an allowed policy review without auto-queueing unrelated intake pages', async () => {

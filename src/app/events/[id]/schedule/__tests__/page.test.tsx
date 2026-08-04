@@ -1368,6 +1368,101 @@ describe('League schedule page', () => {
     expect(screen.queryByText(/Failed to save tournament changes/i)).not.toBeInTheDocument();
   });
 
+  it('removes hydrated segment compatibility fields when deleting a match', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'tab') return 'schedule';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit',
+    });
+
+    const fixtureMatch = buildApiEvent().matches?.[0] ?? {};
+    const buildMatch = (id: string, matchId: number) => ({
+      ...fixtureMatch,
+      id,
+      $id: id,
+      eventId: 'event_1',
+      matchId,
+      segments: [{
+        id: `${id}_segment_1`,
+        $id: `${id}_segment_1`,
+        eventId: 'event_1',
+        matchId: id,
+        sequence: 1,
+        status: 'NOT_STARTED',
+        scores: { team_a: 0, team_b: 0 },
+        winnerEventTeamId: null,
+        createdAt: '2026-08-04T12:00:00.000Z',
+        updatedAt: '2026-08-04T12:05:00.000Z',
+        $createdAt: '2026-08-04T12:00:00.000Z',
+        $updatedAt: '2026-08-04T12:05:00.000Z',
+      }],
+    });
+    const deletedMatch = buildMatch('match_1', 1);
+    const remainingMatch = buildMatch('match_2', 2);
+    const eventBeforeSave = buildApiEvent({
+      id: 'event_1',
+      $id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      matches: [deletedMatch, remainingMatch],
+    });
+    const eventWithoutMatches = { ...eventBeforeSave };
+    delete (eventWithoutMatches as any).matches;
+    let savedMatchPayload: Record<string, any> | null = null;
+
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({ accepted: true, acceptedAt: '2026-04-14T12:00:00.000Z' });
+      }
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event: eventWithoutMatches });
+      }
+      if (path === '/api/events/event_1/matches' && options?.method === 'PATCH') {
+        savedMatchPayload = options.body;
+        return Promise.resolve({ matches: [remainingMatch], deleted: ['match_1'] });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [deletedMatch, remainingMatch] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue(eventWithoutMatches);
+    (eventService.getEventById as jest.Mock).mockResolvedValue(eventWithoutMatches);
+    (eventService.updateEvent as jest.Mock).mockResolvedValue(eventWithoutMatches);
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit First Match' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete match' }));
+
+    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    await waitFor(() => expect(saveButton).toBeEnabled());
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(savedMatchPayload).not.toBeNull());
+
+    expect(savedMatchPayload?.deletes).toEqual(['match_1']);
+    expect(savedMatchPayload?.matches).toEqual([
+      expect.objectContaining({
+        id: 'match_2',
+        segments: [expect.objectContaining({
+          id: 'match_2_segment_1',
+          scores: { team_a: 0, team_b: 0 },
+        })],
+      }),
+    ]);
+    expect(JSON.stringify(savedMatchPayload)).not.toContain('"$');
+    expect(screen.queryByText(/Failed to save tournament changes/i)).not.toBeInTheDocument();
+
+    confirmSpy.mockRestore();
+  });
+
   it('updates tracked changes when a form value changes', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

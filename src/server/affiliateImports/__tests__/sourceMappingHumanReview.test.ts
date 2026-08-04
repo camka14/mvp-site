@@ -7,7 +7,10 @@ const prismaMock = {
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 
-import { listAffiliateMappingHumanReviewJobs } from '@/server/affiliateImports/sourceMappingHumanReview';
+import {
+  affiliateMappingReviewGuidance,
+  listAffiliateMappingHumanReviewJobs,
+} from '@/server/affiliateImports/sourceMappingHumanReview';
 
 describe('affiliate mapping human-review queue', () => {
   beforeEach(() => {
@@ -28,7 +31,7 @@ describe('affiliate mapping human-review queue', () => {
           markedAt: '2026-08-02T11:56:00.000Z',
           source: 'HISTORICAL_TERMINAL_CLASSIFICATION',
           requestedNextAction: 'HUMAN_REVIEW_REQUIRED',
-          reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO', 'NO_VERIFIABLE_OFFICIAL_LOGO'],
+          reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO', 'RETRY_LIMIT_EXCEEDED', 'NO_VERIFIABLE_OFFICIAL_LOGO'],
           rationale: 'Stored first-party evidence contains no reusable mark.',
           blockingIssues: ['Logo evidence is exhausted.'],
         },
@@ -59,14 +62,36 @@ describe('affiliate mapping human-review queue', () => {
       errorMessage: 'No supported logo could be verified.',
       source: 'HISTORICAL_TERMINAL_CLASSIFICATION',
       requestedNextAction: 'HUMAN_REVIEW_REQUIRED',
-      reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO'],
+      reasonCodes: ['NO_VERIFIABLE_OFFICIAL_LOGO', 'RETRY_LIMIT_EXCEEDED'],
       rationale: 'Stored first-party evidence contains no reusable mark.',
       blockingIssues: ['Logo evidence is exhausted.'],
       hasSelectedLogo: false,
+      reviewOwner: 'MAPPING_AGENT',
+      reviewQuestion: 'Can this mapping proceed with no official logo?',
+      recommendedAction: 'Accept the missing logo and return the package to automated review. A missing logo alone must not block the mapping.',
     }]);
     expect(prismaMock.affiliateSourceMappingJobs.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { status: 'HUMAN_REVIEW_REQUIRED' },
-      take: 100,
+      take: 250,
+    }));
+  });
+
+  it('identifies producer commit handoff failures as system repairs', () => {
+    expect(affiliateMappingReviewGuidance({
+      reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'],
+      rationale: 'The package-evidence command cannot resolve the exact producer commit in /producer-workspace.',
+    })).toEqual(expect.objectContaining({
+      reviewOwner: 'SYSTEM',
+      reviewQuestion: expect.stringContaining('exact-commit evidence handoff'),
+    }));
+  });
+
+  it('identifies conflicting live records as user decisions', () => {
+    expect(affiliateMappingReviewGuidance({
+      reasonCodes: ['CONFLICTING_LIVE_RECORD'],
+    })).toEqual(expect.objectContaining({
+      reviewOwner: 'USER',
+      reviewQuestion: expect.stringContaining('conflicting live record'),
     }));
   });
 
