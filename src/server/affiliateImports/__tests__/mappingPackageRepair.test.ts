@@ -65,6 +65,25 @@ describe('affiliate mapping producer repair eligibility', () => {
     }));
   });
 
+  it('requeues a repair claim that incorrectly skipped its existing producer package', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      ...base,
+      mappingErrorMessage: 'Skipped already-finished intake: the stored evidence is already represented by the existing source package; do not create a second package.',
+      approvalDecision: {
+        blockingIssues: ['The prior setup script refused --live.'],
+      },
+    })).toEqual(expect.objectContaining({
+      eligible: true,
+      reason: 'producer-repair-required',
+      repairReason: 'PACKAGE_VALIDATION_FAILED',
+      disposition: 'PRODUCER_REPAIR',
+      reasonCodes: [
+        'PACKAGE_VALIDATION_FAILED',
+        'PRODUCER_REPAIR_SKIPPED_EXISTING_PACKAGE',
+      ],
+    }));
+  });
+
   it('requeues packages rejected because event location failures were treated as package failures', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,

@@ -182,6 +182,14 @@ export const affiliateMappingProducerRepairEligibility = (input: {
     return humanReview('rejection-reason-missing', ['INSUFFICIENT_STORED_EVIDENCE']);
   }
 
+  const skippedExistingProducerRepair = /skipped\s+already-finished\s+intake.{0,240}(?:already\s+represented|existing).{0,160}package/i.test(evidence);
+  if (skippedExistingProducerRepair) {
+    return producerRepair('PACKAGE_VALIDATION_FAILED', [
+      'PACKAGE_VALIDATION_FAILED',
+      'PRODUCER_REPAIR_SKIPPED_EXISTING_PACKAGE',
+    ]);
+  }
+
   const liveSetupUnsupported = /(?:--live.{0,160}(?:refus|unsupported|not support|cannot|does not|prevent)|(?:refus|unsupported|not support|cannot|does not|prevent).{0,160}--live)/i.test(evidence);
   if (liveSetupUnsupported) return producerRepair('LIVE_SETUP_UNSUPPORTED');
 
