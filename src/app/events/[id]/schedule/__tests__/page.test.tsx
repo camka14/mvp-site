@@ -105,6 +105,7 @@ jest.mock('@/lib/eventStaffService', () => {
 let capturedEventFormProps: any = null;
 let mockEventFormDraft: any = null;
 let mockEventFormValidateResult = true;
+let mockEventFormReportedValidity: boolean | null = null;
 let mockEventFormDirtyState = false;
 let mockEventFormValidationErrors: Array<{ path: string; message: string }> = [];
 let mockCommitDirtyBaseline = jest.fn();
@@ -123,6 +124,10 @@ jest.mock('../components/EventForm', () => {
     useEffect(() => {
       props.onDirtyStateChange?.(isDirty);
     }, [isDirty, props]);
+
+    useEffect(() => {
+      props.onValidityChange?.(mockEventFormReportedValidity ?? mockEventFormValidateResult);
+    }, [props]);
 
     useEffect(() => () => {
       props.onDirtyStateChange?.(false);
@@ -405,6 +410,7 @@ describe('League schedule page', () => {
     capturedEventFormProps = null;
     mockEventFormDraft = null;
     mockEventFormValidateResult = true;
+    mockEventFormReportedValidity = null;
     mockEventFormDirtyState = false;
     mockEventFormValidationErrors = [];
     mockCommitDirtyBaseline = jest.fn();
@@ -4893,6 +4899,7 @@ describe('League schedule page', () => {
       },
     });
     mockEventFormValidateResult = false;
+    mockEventFormReportedValidity = true;
     mockEventFormDirtyState = true;
 
     renderWithMantine(<LeagueSchedulePage />);
@@ -4913,6 +4920,7 @@ describe('League schedule page', () => {
       },
     });
     mockEventFormValidateResult = false;
+    mockEventFormReportedValidity = true;
     mockEventFormDirtyState = true;
     mockEventFormValidationErrors = [
       {

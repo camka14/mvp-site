@@ -233,7 +233,7 @@ describe('LeagueFields', () => {
     expect(screen.queryByRole('button', { name: /Add .*Timeslot/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Repeats weekly')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Start Date')).not.toBeInTheDocument();
-    expect(container.querySelectorAll('.mantine-Paper-root')).toHaveLength(1);
+    expect(container.querySelectorAll('.mantine-Paper-root')).toHaveLength(0);
   });
 
   it('renders conflict warning when conflicts are present', () => {
