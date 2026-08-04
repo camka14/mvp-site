@@ -221,6 +221,66 @@ const parseListParam = (params: URLSearchParams, key: string): string[] => Array
     .filter(Boolean),
 ));
 
+type OrganizationAreaFilter = {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+};
+
+const coordinatesFromValue = (value: unknown): { lat: number; lng: number } | null => {
+  if (Array.isArray(value) && value.length >= 2) {
+    const lng = Number(value[0]);
+    const lat = Number(value[1]);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+  }
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const lat = Number(record.lat ?? record.latitude);
+  const lng = Number(record.lng ?? record.long ?? record.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+};
+
+const distanceKm = (
+  left: { lat: number; lng: number },
+  right: { lat: number; lng: number },
+): number => {
+  const toRadians = (degrees: number) => degrees * (Math.PI / 180);
+  const latitudeDelta = toRadians(right.lat - left.lat);
+  const longitudeDelta = toRadians(right.lng - left.lng);
+  const leftLatitude = toRadians(left.lat);
+  const rightLatitude = toRadians(right.lat);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(leftLatitude) * Math.cos(rightLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
+
+const parseAreaFilter = (params: URLSearchParams): OrganizationAreaFilter | null | 'INVALID' => {
+  const rawLat = params.get('lat');
+  const rawLng = params.get('lng');
+  const rawRadiusKm = params.get('radiusKm');
+  if (rawLat === null && rawLng === null && rawRadiusKm === null) return null;
+  const lat = Number(rawLat);
+  const lng = Number(rawLng);
+  const radiusKm = Number(rawRadiusKm);
+  if (
+    rawLat === null
+    || rawLng === null
+    || rawRadiusKm === null
+    || !Number.isFinite(lat)
+    || !Number.isFinite(lng)
+    || !Number.isFinite(radiusKm)
+    || lat < -90
+    || lat > 90
+    || lng < -180
+    || lng > 180
+    || radiusKm <= 0
+    || radiusKm > 20_050
+  ) {
+    return 'INVALID';
+  }
+  return { lat, lng, radiusKm };
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const baseUrl = req.nextUrl.origin;
@@ -242,6 +302,13 @@ export async function GET(req: NextRequest) {
   const divisionPriceMin = divisionPriceMinRaw === null ? null : Number(divisionPriceMinRaw);
   const divisionPriceMax = divisionPriceMaxRaw === null ? null : Number(divisionPriceMaxRaw);
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
+  const areaFilter = parseAreaFilter(params);
+  if (areaFilter === 'INVALID') {
+    return NextResponse.json(
+      { error: 'lat, lng, and radiusKm must define a valid geographic search area.' },
+      { status: 400 },
+    );
+  }
   const hasPrivateSelector = Boolean(ownerId || userId);
   const shouldResolveSession = Boolean(ids?.length || hasPrivateSelector);
   let session: Awaited<ReturnType<typeof requireSession>> | null = null;
@@ -303,20 +370,34 @@ export async function GET(req: NextRequest) {
 
   const applyListedOnlyFilter = shouldApplyListedOnlyFilter({ ids, ownerId, userId })
     || Boolean(ids?.length && !session);
-  const affiliateRentalOrganizationIds = includeAffiliateRentals && applyListedOnlyFilter
-    ? Array.from(
-      new Set(
-        (await prisma.facilities.findMany({
+  const affiliateRentalFacilities = includeAffiliateRentals && applyListedOnlyFilter
+    ? await prisma.facilities.findMany({
           where: {
             affiliateUrl: { not: null },
             status: 'ACTIVE',
           },
-          select: { organizationId: true },
-        }))
-          .map((row) => row.organizationId)
+          select: {
+            organizationId: true,
+            name: true,
+            location: true,
+            address: true,
+            coordinates: true,
+          },
+        })
+    : [];
+  const affiliateRentalOrganizationIds = Array.from(new Set(
+    affiliateRentalFacilities
+      .map((row) => row.organizationId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+  ));
+  const matchingAffiliateRentalOrganizationIds = normalizedQuery && affiliateRentalFacilities.length > 0
+    ? Array.from(new Set(
+        affiliateRentalFacilities
+          .filter((facility) => [facility.name, facility.location, facility.address]
+            .some((value) => String(value ?? '').toLowerCase().includes(normalizedQuery)))
+          .map((facility) => facility.organizationId)
           .filter((id): id is string => typeof id === 'string' && id.length > 0),
-      ),
-    )
+      ))
     : [];
 
   const whereConditions: Array<Record<string, unknown>> = [];
@@ -374,21 +455,44 @@ export async function GET(req: NextRequest) {
       { location: { contains: query, mode: 'insensitive' } },
       { address: { contains: query, mode: 'insensitive' } },
       { description: { contains: query, mode: 'insensitive' } },
+      ...(matchingAffiliateRentalOrganizationIds.length > 0
+        ? [{ id: { in: matchingAffiliateRentalOrganizationIds } }]
+        : []),
     ] });
   }
   const where = buildWhereFromConditions(whereConditions);
 
   const requestedTake = normalizedLimit + 1;
-  const candidateTake = query.length > 0
-    ? Math.max((normalizedOffset + requestedTake) * 5, 40)
-    : requestedTake;
+  const requiresInMemoryPagination = query.length > 0 || areaFilter !== null;
 
   let organizations = await prisma.organizations.findMany({
     where,
-    take: candidateTake,
-    ...(query.length > 0 ? {} : { skip: normalizedOffset }),
+    ...(requiresInMemoryPagination ? {} : { take: requestedTake, skip: normalizedOffset }),
     orderBy: { name: 'asc' },
   });
+
+  const areaDistanceByOrganizationId = new Map<string, number>();
+  if (areaFilter) {
+    const affiliateFacilityCoordinatesByOrganizationId = new Map<string, Array<{ lat: number; lng: number }>>();
+    affiliateRentalFacilities.forEach((facility) => {
+      const coordinates = coordinatesFromValue(facility.coordinates);
+      if (!coordinates) return;
+      const current = affiliateFacilityCoordinatesByOrganizationId.get(facility.organizationId) ?? [];
+      current.push(coordinates);
+      affiliateFacilityCoordinatesByOrganizationId.set(facility.organizationId, current);
+    });
+    organizations = organizations.filter((organization) => {
+      const coordinateCandidates = [
+        coordinatesFromValue(organization.coordinates),
+        ...(affiliateFacilityCoordinatesByOrganizationId.get(organization.id) ?? []),
+      ].filter((coordinates): coordinates is { lat: number; lng: number } => Boolean(coordinates));
+      if (coordinateCandidates.length === 0) return false;
+      const nearestDistance = Math.min(...coordinateCandidates.map((coordinates) => distanceKm(areaFilter, coordinates)));
+      if (nearestDistance > areaFilter.radiusKm) return false;
+      areaDistanceByOrganizationId.set(organization.id, nearestDistance);
+      return true;
+    });
+  }
 
   if (query.length > 0) {
     organizations = organizations
@@ -399,9 +503,23 @@ export async function GET(req: NextRequest) {
         if (leftScore[1] !== rightScore[1]) return leftScore[1] - rightScore[1];
         if (leftScore[2] !== rightScore[2]) return leftScore[2] - rightScore[2];
         if (leftScore[3] !== rightScore[3]) return leftScore[3] - rightScore[3];
+        const leftDistance = areaDistanceByOrganizationId.get(left.id);
+        const rightDistance = areaDistanceByOrganizationId.get(right.id);
+        if (typeof leftDistance === 'number' && typeof rightDistance === 'number' && leftDistance !== rightDistance) {
+          return leftDistance - rightDistance;
+        }
         return (left.name ?? '').localeCompare(right.name ?? '');
       })
-      .slice(normalizedOffset, normalizedOffset + requestedTake);
+  } else if (areaFilter) {
+    organizations = organizations.sort((left, right) => {
+      const leftDistance = areaDistanceByOrganizationId.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+      const rightDistance = areaDistanceByOrganizationId.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+      return leftDistance - rightDistance || (left.name ?? '').localeCompare(right.name ?? '');
+    });
+  }
+
+  if (requiresInMemoryPagination) {
+    organizations = organizations.slice(normalizedOffset, normalizedOffset + requestedTake);
   }
 
   const pageRows = organizations.slice(0, normalizedLimit);

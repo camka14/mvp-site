@@ -85,20 +85,20 @@ type MarkerSelection =
   | { type: 'event'; id: string }
   | { type: 'eventGroup'; ids: string[]; position: MapCenter }
   | { type: 'organization'; id: string }
-  | { type: 'rental'; id: string };
+  | { type: 'organizationGroup'; ids: string[]; position: MapCenter }
+  | { type: 'rental'; id: string }
+  | { type: 'rentalGroup'; ids: string[]; position: MapCenter };
 
 type SearchResult =
   | { type: 'event'; id: string; label: string; description: string; coordinates: MapCenter; event: Event }
   | { type: 'organization'; id: string; label: string; description: string; coordinates: MapCenter; organization: Organization }
   | { type: 'rental'; id: string; label: string; description: string; coordinates: MapCenter; rental: RentalMapListing };
 
-type EventMarkerGroup = {
+type MapMarkerGroup<T> = {
   id: string;
   position: MapCenter;
-  events: Event[];
+  items: T[];
 };
-
-const DISCOVERY_PAGE_SIZE = 100;
 
 type DiscoverMapModalProps = {
   opened: boolean;
@@ -146,7 +146,7 @@ const DISTANCE_SLIDER_MARKS = [
 const MARKER_SIZE_PX = 44;
 const MARKER_IMAGE_REQUEST_SIZE_PX = 96;
 const MARKER_CLICK_TARGET_SIZE_PX = 52;
-const EVENT_MARKER_GROUP_DISTANCE_PX = MARKER_SIZE_PX;
+const MARKER_GROUP_DISTANCE_PX = MARKER_SIZE_PX;
 const MAP_TILE_SIZE_PX = 256;
 const MAX_MERCATOR_SIN_LAT = 0.9999;
 const TRANSPARENT_MARKER_ICON_URL = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
@@ -282,21 +282,26 @@ const getEventCoordinates = (event: Event): MapCenter | null => {
   return { lat, lng };
 };
 
-const buildEventMarkerGroups = (events: Event[], zoom: number): EventMarkerGroup[] => {
-  const markers = events
-    .map((event) => {
-      const coordinates = getEventCoordinates(event);
+const buildMapMarkerGroups = <T,>(
+  items: T[],
+  zoom: number,
+  getId: (item: T) => string,
+  getCoordinates: (item: T) => MapCenter | null,
+): MapMarkerGroup<T>[] => {
+  const markers = items
+    .map((item) => {
+      const coordinates = getCoordinates(item);
       if (!coordinates) {
         return null;
       }
       return {
-        event,
+        item,
         coordinates,
         point: projectMapPosition(coordinates, zoom),
       };
     })
     .filter((entry): entry is {
-      event: Event;
+      item: T;
       coordinates: MapCenter;
       point: { x: number; y: number };
     } => Boolean(entry));
@@ -318,7 +323,7 @@ const buildEventMarkerGroups = (events: Event[], zoom: number): EventMarkerGroup
 
   markers.forEach((marker, markerIndex) => {
     for (let comparisonIndex = markerIndex + 1; comparisonIndex < markers.length; comparisonIndex += 1) {
-      if (distanceBetweenPoints(marker.point, markers[comparisonIndex].point) <= EVENT_MARKER_GROUP_DISTANCE_PX) {
+      if (distanceBetweenPoints(marker.point, markers[comparisonIndex].point) <= MARKER_GROUP_DISTANCE_PX) {
         union(markerIndex, comparisonIndex);
       }
     }
@@ -337,7 +342,7 @@ const buildEventMarkerGroups = (events: Event[], zoom: number): EventMarkerGroup
 
   return Array.from(groupsByRoot.values())
     .map((group) => {
-      const sortedGroup = [...group].sort((left, right) => left.event.$id.localeCompare(right.event.$id));
+      const sortedGroup = [...group].sort((left, right) => getId(left.item).localeCompare(getId(right.item)));
       const position = sortedGroup.length === 1
         ? sortedGroup[0].coordinates
         : {
@@ -345,9 +350,9 @@ const buildEventMarkerGroups = (events: Event[], zoom: number): EventMarkerGroup
             lng: sortedGroup.reduce((sum, marker) => sum + marker.coordinates.lng, 0) / sortedGroup.length,
           };
       return {
-        id: sortedGroup.map((marker) => marker.event.$id).join(':'),
+        id: sortedGroup.map((marker) => getId(marker.item)).join(':'),
         position,
-        events: sortedGroup.map((marker) => marker.event),
+        items: sortedGroup.map((marker) => marker.item),
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -743,7 +748,12 @@ export default function DiscoverMapModal({
           : Promise.resolve([]),
         target === 'events'
           ? Promise.resolve([])
-          : organizationService.listOrganizationsWithFields(DISCOVERY_PAGE_SIZE, {
+          : organizationService.listOrganizationsInArea({
+              area: {
+                lat: nextCenter.lat,
+                lng: nextCenter.lng,
+                radiusKm: mapSearchRadiusKm,
+              },
               includeAffiliateRentals: target === 'rentals',
               hydrateRelations: target === 'rentals',
             }),
@@ -997,8 +1007,26 @@ export default function DiscoverMapModal({
   );
   const visibleRentals = useMemo(() => (searchTarget === 'rentals' ? rentals : []), [rentals, searchTarget]);
   const eventMarkerGroups = useMemo(
-    () => buildEventMarkerGroups(visibleEvents, mapZoom),
+    () => buildMapMarkerGroups(visibleEvents, mapZoom, (event) => event.$id, getEventCoordinates),
     [mapZoom, visibleEvents],
+  );
+  const organizationMarkerGroups = useMemo(
+    () => buildMapMarkerGroups(
+      visibleOrganizations,
+      mapZoom,
+      (organization) => organization.$id,
+      getOrgCoordinates,
+    ),
+    [mapZoom, visibleOrganizations],
+  );
+  const rentalMarkerGroups = useMemo(
+    () => buildMapMarkerGroups(
+      visibleRentals,
+      mapZoom,
+      getRentalListingId,
+      (rental) => rental.coordinates,
+    ),
+    [mapZoom, visibleRentals],
   );
 
   const activeResultCount = searchTarget === 'events'
@@ -1192,8 +1220,24 @@ export default function DiscoverMapModal({
           .filter((event): event is Event => Boolean(event)),
       }
     : null;
+  const selectedOrganizationGroup = selected?.type === 'organizationGroup'
+    ? {
+        position: selected.position,
+        organizations: selected.ids
+          .map((id) => visibleOrganizations.find((organization) => organization.$id === id) ?? null)
+          .filter((organization): organization is Organization => Boolean(organization)),
+      }
+    : null;
   const selectedOrganization = selected?.type === 'organization'
     ? organizations.find((organization) => organization.$id === selected.id) ?? null
+    : null;
+  const selectedRentalGroup = selected?.type === 'rentalGroup'
+    ? {
+        position: selected.position,
+        rentals: selected.ids
+          .map((id) => visibleRentals.find((rental) => getRentalListingId(rental) === id) ?? null)
+          .filter((rental): rental is RentalMapListing => Boolean(rental)),
+      }
     : null;
   const selectedRental = selected?.type === 'rental'
     ? rentals.find((rental) => getRentalListingId(rental) === selected.id) ?? null
@@ -1600,8 +1644,8 @@ export default function DiscoverMapModal({
               />
             )}
             {eventMarkerGroups.map((eventGroup) => {
-              if (eventGroup.events.length === 1) {
-                const event = eventGroup.events[0];
+              if (eventGroup.items.length === 1) {
+                const event = eventGroup.items[0];
                 const markerId = event.$id;
                 return (
                   <MapEntityMarker
@@ -1618,51 +1662,91 @@ export default function DiscoverMapModal({
                 );
               }
 
-              const eventIds = eventGroup.events.map((event) => event.$id);
+              const eventIds = eventGroup.items.map((event) => event.$id);
               return (
                 <MapClusterMarker
                   key={`event-group-${eventGroup.id}`}
                   position={eventGroup.position}
-                  title={`${eventGroup.events.length} events`}
+                  title={`${eventGroup.items.length} events`}
                   markerStyle={MARKER_STYLES.events}
-                  count={eventGroup.events.length}
+                  count={eventGroup.items.length}
                   zIndex={40}
                   clickTargetIcon={markerClickTargetIcon}
                   onClick={() => setSelected({ type: 'eventGroup', ids: eventIds, position: eventGroup.position })}
                 />
               );
             })}
-            {visibleOrganizations.map((organization) => {
-              const coordinates = getOrgCoordinates(organization);
-              if (!coordinates) return null;
+            {organizationMarkerGroups.map((organizationGroup) => {
+              if (organizationGroup.items.length === 1) {
+                const organization = organizationGroup.items[0];
+                return (
+                  <MapEntityMarker
+                    key={`org-${organization.$id}`}
+                    position={organizationGroup.position}
+                    title={organization.name}
+                    markerStyle={MARKER_STYLES.organizations}
+                    initials={getInitials(organization.name, MARKER_STYLES.organizations.shortLabel)}
+                    imageUrl={getOrganizationAvatarUrl(organization, 64)}
+                    zIndex={20}
+                    clickTargetIcon={markerClickTargetIcon}
+                    onClick={() => setSelected({ type: 'organization', id: organization.$id })}
+                  />
+                );
+              }
+
+              const organizationIds = organizationGroup.items.map((organization) => organization.$id);
               return (
-                <MapEntityMarker
-                  key={`org-${organization.$id}`}
-                  position={coordinates}
-                  title={organization.name}
+                <MapClusterMarker
+                  key={`organization-group-${organizationGroup.id}`}
+                  position={organizationGroup.position}
+                  title={`${organizationGroup.items.length} organizations`}
                   markerStyle={MARKER_STYLES.organizations}
-                  initials={getInitials(organization.name, MARKER_STYLES.organizations.shortLabel)}
-                  imageUrl={getOrganizationAvatarUrl(organization, 64)}
-                  zIndex={20}
+                  count={organizationGroup.items.length}
+                  zIndex={30}
                   clickTargetIcon={markerClickTargetIcon}
-                  onClick={() => setSelected({ type: 'organization', id: organization.$id })}
+                  onClick={() => setSelected({
+                    type: 'organizationGroup',
+                    ids: organizationIds,
+                    position: organizationGroup.position,
+                  })}
                 />
               );
             })}
-            {visibleRentals.map((rental) => {
-              const id = getRentalListingId(rental);
-              const rentalName = getRentalListingName(rental);
+            {rentalMarkerGroups.map((rentalGroup) => {
+              if (rentalGroup.items.length === 1) {
+                const rental = rentalGroup.items[0];
+                const id = getRentalListingId(rental);
+                const rentalName = getRentalListingName(rental);
+                return (
+                  <MapEntityMarker
+                    key={`rental-${id}`}
+                    position={rentalGroup.position}
+                    title={rentalName}
+                    markerStyle={MARKER_STYLES.rentals}
+                    initials={getInitials(rentalName, MARKER_STYLES.rentals.shortLabel)}
+                    imageUrl={getOrganizationAvatarUrl(rental.organization, 64)}
+                    zIndex={10}
+                    clickTargetIcon={markerClickTargetIcon}
+                    onClick={() => setSelected({ type: 'rental', id })}
+                  />
+                );
+              }
+
+              const rentalIds = rentalGroup.items.map(getRentalListingId);
               return (
-                <MapEntityMarker
-                  key={`rental-${id}`}
-                  position={rental.coordinates}
-                  title={rentalName}
+                <MapClusterMarker
+                  key={`rental-group-${rentalGroup.id}`}
+                  position={rentalGroup.position}
+                  title={`${rentalGroup.items.length} rentals`}
                   markerStyle={MARKER_STYLES.rentals}
-                  initials={getInitials(rentalName, MARKER_STYLES.rentals.shortLabel)}
-                  imageUrl={getOrganizationAvatarUrl(rental.organization, 64)}
-                  zIndex={10}
+                  count={rentalGroup.items.length}
+                  zIndex={20}
                   clickTargetIcon={markerClickTargetIcon}
-                  onClick={() => setSelected({ type: 'rental', id })}
+                  onClick={() => setSelected({
+                    type: 'rentalGroup',
+                    ids: rentalIds,
+                    position: rentalGroup.position,
+                  })}
                 />
               );
             })}
@@ -1722,6 +1806,29 @@ export default function DiscoverMapModal({
                 </div>
               </InfoWindowF>
             )}
+            {selectedOrganizationGroup && selectedOrganizationGroup.organizations.length > 1 && (
+              <InfoWindowF
+                position={selectedOrganizationGroup.position}
+                onCloseClick={() => setSelected(null)}
+              >
+                <div className="discover-map-info">
+                  <strong>{selectedOrganizationGroup.organizations.length} organizations</strong>
+                  <div className="discover-map-group-list">
+                    {selectedOrganizationGroup.organizations.map((organization) => (
+                      <button
+                        key={organization.$id}
+                        type="button"
+                        className="discover-map-group-item"
+                        onClick={() => setSelected({ type: 'organization', id: organization.$id })}
+                      >
+                        <span>{organization.name}</span>
+                        <small>{organization.location ?? 'Organization'}</small>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </InfoWindowF>
+            )}
             {selectedOrganization && getOrgCoordinates(selectedOrganization) && (
               <InfoWindowF
                 position={getOrgCoordinates(selectedOrganization)!}
@@ -1752,6 +1859,32 @@ export default function DiscoverMapModal({
                   >
                     View organization
                   </button>
+                </div>
+              </InfoWindowF>
+            )}
+            {selectedRentalGroup && selectedRentalGroup.rentals.length > 1 && (
+              <InfoWindowF
+                position={selectedRentalGroup.position}
+                onCloseClick={() => setSelected(null)}
+              >
+                <div className="discover-map-info">
+                  <strong>{selectedRentalGroup.rentals.length} rentals</strong>
+                  <div className="discover-map-group-list">
+                    {selectedRentalGroup.rentals.map((rental) => {
+                      const rentalId = getRentalListingId(rental);
+                      return (
+                        <button
+                          key={rentalId}
+                          type="button"
+                          className="discover-map-group-item"
+                          onClick={() => setSelected({ type: 'rental', id: rentalId })}
+                        >
+                          <span>{getRentalListingName(rental)}</span>
+                          <small>{rental.organization.name}</small>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </InfoWindowF>
             )}

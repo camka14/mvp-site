@@ -45,6 +45,28 @@ type CachedOrganizationEntry = {
   expiresAt: number;
   value: Organization;
 };
+type OrganizationArea = {
+  lat: number;
+  lng: number;
+  radiusKm: number;
+};
+type OrganizationListOptions = {
+  includeAffiliateRentals?: boolean;
+  hydrateRelations?: boolean;
+  query?: string;
+  area?: OrganizationArea;
+  tagSlugs?: string[];
+  sports?: string[];
+  divisionGenders?: string[];
+  skillDivisionTypeIds?: string[];
+  ageDivisionTypeIds?: string[];
+  divisionPriceMin?: number;
+  divisionPriceMax?: number;
+};
+type CachedOrganizationListEntry = {
+  expiresAt: number;
+  value: Organization[];
+};
 export type PublicSlugCheckResult = {
   slug: string | null;
   available: boolean;
@@ -105,6 +127,12 @@ class OrganizationService {
 
   private readonly organizationValueCache = new Map<string, CachedOrganizationEntry>();
 
+  private readonly organizationAreaCacheTtlMs = 60_000;
+
+  private readonly organizationAreaRequestCache = new Map<string, Promise<Organization[]>>();
+
+  private readonly organizationAreaValueCache = new Map<string, CachedOrganizationListEntry>();
+
   private cloneValue<T>(value: T): T {
     const structuredCloneFn = (globalThis as { structuredClone?: <U>(input: U) => U }).structuredClone;
     if (structuredCloneFn) {
@@ -118,6 +146,8 @@ class OrganizationService {
   }
 
   private invalidateOrganizationCache(id?: string): void {
+    this.organizationAreaRequestCache.clear();
+    this.organizationAreaValueCache.clear();
     if (!id) {
       return;
     }
@@ -693,17 +723,7 @@ class OrganizationService {
   async listOrganizationsWithFieldsPage(
     limit: number = 100,
     offset: number = 0,
-    options: {
-      includeAffiliateRentals?: boolean;
-      hydrateRelations?: boolean;
-      tagSlugs?: string[];
-      sports?: string[];
-      divisionGenders?: string[];
-      skillDivisionTypeIds?: string[];
-      ageDivisionTypeIds?: string[];
-      divisionPriceMin?: number;
-      divisionPriceMax?: number;
-    } = {},
+    options: OrganizationListOptions = {},
   ): Promise<{
     organizations: Organization[];
     pagination: { limit: number; offset: number; nextOffset: number; hasMore: boolean };
@@ -714,6 +734,15 @@ class OrganizationService {
       params.set('offset', String(Math.max(0, Math.trunc(offset))));
       if (options.includeAffiliateRentals) {
         params.set('includeAffiliateRentals', 'true');
+      }
+      const query = options.query?.trim();
+      if (query) {
+        params.set('query', query);
+      }
+      if (options.area) {
+        params.set('lat', String(options.area.lat));
+        params.set('lng', String(options.area.lng));
+        params.set('radiusKm', String(options.area.radiusKm));
       }
       (options.tagSlugs ?? [])
         .map((slug) => slug.trim())
@@ -761,14 +790,58 @@ class OrganizationService {
 
   async listOrganizationsWithFields(
     limit: number = 100,
-    options: {
-      includeAffiliateRentals?: boolean;
-      hydrateRelations?: boolean;
-      tagSlugs?: string[];
-    } = {},
+    options: OrganizationListOptions = {},
   ): Promise<Organization[]> {
     const page = await this.listOrganizationsWithFieldsPage(limit, 0, options);
     return page.organizations;
+  }
+
+  async listOrganizationsInArea(
+    options: OrganizationListOptions & { area: OrganizationArea },
+  ): Promise<Organization[]> {
+    const cacheKey = JSON.stringify({
+      ...options,
+      query: options.query?.trim() || undefined,
+      tagSlugs: [...(options.tagSlugs ?? [])].sort(),
+      sports: [...(options.sports ?? [])].sort(),
+      divisionGenders: [...(options.divisionGenders ?? [])].sort(),
+      skillDivisionTypeIds: [...(options.skillDivisionTypeIds ?? [])].sort(),
+      ageDivisionTypeIds: [...(options.ageDivisionTypeIds ?? [])].sort(),
+    });
+    const cached = this.organizationAreaValueCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return this.cloneValue(cached.value);
+    }
+    if (cached) {
+      this.organizationAreaValueCache.delete(cacheKey);
+    }
+
+    let request = this.organizationAreaRequestCache.get(cacheKey);
+    if (!request) {
+      request = (async () => {
+        const organizationsById = new Map<string, Organization>();
+        const pageSize = 200;
+        let offset = 0;
+        let hasMore = true;
+        while (hasMore) {
+          const page = await this.listOrganizationsWithFieldsPage(pageSize, offset, options);
+          page.organizations.forEach((organization) => organizationsById.set(organization.$id, organization));
+          hasMore = page.pagination.hasMore && page.pagination.nextOffset > offset;
+          offset = page.pagination.nextOffset;
+        }
+        const organizations = Array.from(organizationsById.values());
+        this.organizationAreaValueCache.set(cacheKey, {
+          value: this.cloneValue(organizations),
+          expiresAt: Date.now() + this.organizationAreaCacheTtlMs,
+        });
+        return organizations;
+      })().finally(() => {
+        this.organizationAreaRequestCache.delete(cacheKey);
+      });
+      this.organizationAreaRequestCache.set(cacheKey, request);
+    }
+
+    return this.cloneValue(await request);
   }
 
   private async withEventFormRelations(organization: Organization): Promise<Organization> {

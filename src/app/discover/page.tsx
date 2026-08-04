@@ -290,12 +290,14 @@ function DiscoverPageContent() {
    * Rentals tab state
    */
   const [rentalOrganizations, setRentalOrganizations] = useState<Organization[]>([]);
-  const [rentalsLoaded, setRentalsLoaded] = useState(false);
   const [rentalsLoading, setRentalsLoading] = useState(false);
   const [rentalsLoadingMore, setRentalsLoadingMore] = useState(false);
   const [hasMoreRentals, setHasMoreRentals] = useState(true);
-  const [rentalOffset, setRentalOffset] = useState(0);
   const [rentalsError, setRentalsError] = useState<string | null>(null);
+  const rentalOffsetRef = useRef(0);
+  const hasMoreRentalsRef = useRef(true);
+  const rentalRequestInFlightRef = useRef(false);
+  const latestRentalRequestRef = useRef(0);
   const [timeRange, setTimeRange] = useState<[number, number]>(() => (
     urlPreset.tab === 'rentals'
     && urlPreset.startHour !== null
@@ -678,39 +680,52 @@ function DiscoverPageContent() {
     return Array.from(merged.values());
   }, []);
 
-  const loadRentals = useCallback(async (reset = false) => {
-    if (rentalsLoading || rentalsLoadingMore) return;
-    if (rentalsLoaded && !reset) return;
-    const nextOffset = reset ? 0 : rentalOffset;
-    if (!reset && !hasMoreRentals) return;
-    if (reset || !rentalsLoaded) {
+  const loadRentals = useCallback(async (reset = false, queryOverride?: string) => {
+    if (!reset && rentalRequestInFlightRef.current) return;
+    const nextOffset = reset ? 0 : rentalOffsetRef.current;
+    if (!reset && !hasMoreRentalsRef.current) return;
+
+    const requestId = latestRentalRequestRef.current + 1;
+    latestRentalRequestRef.current = requestId;
+    rentalRequestInFlightRef.current = true;
+
+    if (reset || nextOffset === 0) {
       setRentalsLoading(true);
+      setRentalsLoadingMore(false);
     } else {
       setRentalsLoadingMore(true);
     }
     setRentalsError(null);
     try {
+      const normalizedQuery = (queryOverride ?? debouncedSearch).trim();
       const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
         includeAffiliateRentals: true,
+        ...(normalizedQuery ? { query: normalizedQuery } : {}),
+        ...(location && typeof rentalsMaxDistance === 'number'
+          ? { area: { lat: location.lat, lng: location.lng, radiusKm: rentalsMaxDistance } }
+          : {}),
       });
+      if (requestId !== latestRentalRequestRef.current) return;
       setRentalOrganizations((previous) => reset ? page.organizations : mergeOrganizationsById(previous, page.organizations));
-      setRentalOffset(page.pagination.nextOffset);
+      rentalOffsetRef.current = page.pagination.nextOffset;
+      hasMoreRentalsRef.current = page.pagination.hasMore;
       setHasMoreRentals(page.pagination.hasMore);
-      setRentalsLoaded(true);
     } catch (error) {
+      if (requestId !== latestRentalRequestRef.current) return;
       console.error('Failed to load rentals:', error);
       setRentalsError('Failed to load rentals. Please try again.');
     } finally {
-      setRentalsLoading(false);
-      setRentalsLoadingMore(false);
+      if (requestId === latestRentalRequestRef.current) {
+        rentalRequestInFlightRef.current = false;
+        setRentalsLoading(false);
+        setRentalsLoadingMore(false);
+      }
     }
   }, [
-    hasMoreRentals,
+    debouncedSearch,
+    location,
     mergeOrganizationsById,
-    rentalOffset,
-    rentalsLoaded,
-    rentalsLoading,
-    rentalsLoadingMore,
+    rentalsMaxDistance,
   ]);
 
   const loadMoreRentals = useCallback(() => {
@@ -720,7 +735,7 @@ function DiscoverPageContent() {
   /**
    * Organizations fetching
    */
-  const loadOrganizations = useCallback(async (reset = false) => {
+  const loadOrganizations = useCallback(async (reset = false, queryOverride?: string) => {
     if (!reset && organizationRequestInFlightRef.current) return;
     const nextOffset = reset ? 0 : organizationOffsetRef.current;
     if (!reset && !hasMoreOrganizationsRef.current) return;
@@ -737,8 +752,13 @@ function DiscoverPageContent() {
     }
     setOrganizationsError(null);
     try {
+      const normalizedQuery = (queryOverride ?? debouncedSearch).trim();
       const page = await organizationService.listOrganizationsWithFieldsPage(DISCOVERY_PAGE_SIZE, nextOffset, {
         hydrateRelations: false,
+        ...(normalizedQuery ? { query: normalizedQuery } : {}),
+        ...(location && typeof organizationsMaxDistance === 'number'
+          ? { area: { lat: location.lat, lng: location.lng, radiusKm: organizationsMaxDistance } }
+          : {}),
         tagSlugs: selectedOrganizationTags,
         sports: selectedSports,
         divisionGenders: organizationDivisionFilters.genders,
@@ -764,10 +784,13 @@ function DiscoverPageContent() {
       }
     }
   }, [
+    debouncedSearch,
+    location,
     mergeOrganizationsById,
     selectedOrganizationTags,
     selectedSports,
     organizationDivisionFilters,
+    organizationsMaxDistance,
   ]);
 
   const loadMoreOrganizations = useCallback(() => {
@@ -815,10 +838,10 @@ function DiscoverPageContent() {
       void loadFirstPage(searchTerm);
     }
     if (activeTab === 'organizations') {
-      void loadOrganizations(true);
+      void loadOrganizations(true, searchTerm);
     }
     if (activeTab === 'rentals') {
-      void loadRentals(true);
+      void loadRentals(true, searchTerm);
     }
     if (activeTab === 'teams') {
       void loadTeams(true);
@@ -912,7 +935,7 @@ function DiscoverPageContent() {
 
   useEffect(() => {
     if (activeTab === 'rentals') {
-      loadRentals();
+      void loadRentals(true);
     }
     if (activeTab === 'teams') {
       loadTeams();

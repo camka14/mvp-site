@@ -235,4 +235,37 @@ describe('organizationService', () => {
     expect(listProductsMock).not.toHaveBeenCalled();
     expect(getTeamsByOrganizationIdMock).not.toHaveBeenCalled();
   });
+
+  it('loads every server-filtered organization page for an area and caches the complete local result', async () => {
+    apiRequestMock.mockResolvedValue({
+      organizations: [{
+        id: 'org_salmon_creek',
+        name: 'Salmon Creek Indoor',
+        coordinates: [-122.6615, 45.6387],
+      }],
+      pagination: {
+        limit: 200,
+        offset: 0,
+        nextOffset: 1,
+        hasMore: false,
+      },
+    });
+
+    const options = {
+      area: { lat: 45.52, lng: -122.68, radiusKm: 50 },
+      hydrateRelations: false,
+    } as const;
+    const first = await organizationService.listOrganizationsInArea(options);
+    const second = await organizationService.listOrganizationsInArea(options);
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/organizations?limit=200&offset=0&lat=45.52&lng=-122.68&radiusKm=50',
+    );
+    expect(first).toEqual([
+      expect.objectContaining({ $id: 'org_salmon_creek', name: 'Salmon Creek Indoor' }),
+    ]);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+  });
 });

@@ -1,4 +1,7 @@
 import { act, screen, waitFor } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import { ModalsProvider } from '@mantine/modals';
+import { Notifications } from '@mantine/notifications';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 import DiscoverPage from '../page';
 
@@ -191,6 +194,7 @@ describe('Discover organization loading', () => {
 
     await waitFor(() => {
       expect(listOrganizationsMock).toHaveBeenCalledWith(100, 0, expect.objectContaining({
+        query: 'rose',
         tagSlugs: ['club'],
         sports: ['Soccer'],
         divisionGenders: ['C'],
@@ -204,6 +208,59 @@ describe('Discover organization loading', () => {
       expect(window.location.search).toContain('tags=club');
       expect(window.location.search).toContain('skillDivisionTypeIds=competitive');
       expect(window.location.search).toContain('priceMax=75.5');
+    });
+  });
+
+  it('sends organization text and area filters to the server before pagination', async () => {
+    navigationSearchParams = [
+      'tab=organizations',
+      'q=Salmon+Creek',
+      'lat=45.5231',
+      'lng=-122.6765',
+      'location=Portland%2C+OR',
+      'distanceMiles=50',
+    ].join('&');
+    mockLocation = { lat: 45.5231, lng: -122.6765 };
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+
+    renderWithMantine(<DiscoverPage />);
+
+    await waitFor(() => {
+      expect(listOrganizationsMock).toHaveBeenCalledWith(100, 0, expect.objectContaining({
+        query: 'Salmon Creek',
+        area: {
+          lat: 45.5231,
+          lng: -122.6765,
+          radiusKm: expect.closeTo(80.467, 3),
+        },
+      }));
+    });
+  });
+
+  it('sends rental text and area filters to the server before pagination', async () => {
+    navigationSearchParams = [
+      'tab=rentals',
+      'q=Salmon+Creek',
+      'lat=45.5231',
+      'lng=-122.6765',
+      'location=Portland%2C+OR',
+      'distanceMiles=50',
+    ].join('&');
+    mockLocation = { lat: 45.5231, lng: -122.6765 };
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+
+    renderWithMantine(<DiscoverPage />);
+
+    await waitFor(() => {
+      expect(listOrganizationsMock).toHaveBeenCalledWith(100, 0, expect.objectContaining({
+        includeAffiliateRentals: true,
+        query: 'Salmon Creek',
+        area: {
+          lat: 45.5231,
+          lng: -122.6765,
+          radiusKm: expect.closeTo(80.467, 3),
+        },
+      }));
     });
   });
 
@@ -244,6 +301,118 @@ describe('Discover organization loading', () => {
     expect(await screen.findByText('Cascade Athletics')).toBeInTheDocument();
     expect(listOrganizationsMock).toHaveBeenCalledTimes(2);
     expect(listOrganizationsMock.mock.calls[1]?.slice(0, 2)).toEqual([100, 1]);
+  });
+
+  it('loads the next rental page when the rental sentinel intersects', async () => {
+    navigationSearchParams = 'tab=rentals';
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+    listOrganizationsMock
+      .mockReset()
+      .mockResolvedValueOnce({
+        organizations: [{
+          $id: 'org_1',
+          name: 'Rose City Sports',
+          sports: [],
+          tags: [],
+          facilities: [{
+            $id: 'facility_1',
+            name: 'Rose City Field Rentals',
+            status: 'ACTIVE',
+            affiliateUrl: 'https://example.test/rose-city',
+          }],
+        }],
+        pagination: { limit: 100, offset: 0, nextOffset: 1, hasMore: true },
+      })
+      .mockResolvedValueOnce({
+        organizations: [{
+          $id: 'org_2',
+          name: 'Salmon Creek Indoor',
+          sports: [],
+          tags: [],
+          facilities: [{
+            $id: 'facility_2',
+            name: 'Salmon Creek Indoor Field Rentals',
+            status: 'ACTIVE',
+            affiliateUrl: 'https://example.test/salmon-creek',
+          }],
+        }],
+        pagination: { limit: 100, offset: 1, nextOffset: 2, hasMore: false },
+      });
+
+    renderWithMantine(<DiscoverPage />);
+
+    expect(await screen.findByText('Rose City Field Rentals')).toBeInTheDocument();
+    expect(intersectionCallbacks.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      const callback = intersectionCallbacks[intersectionCallbacks.length - 1];
+      callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+
+    expect(await screen.findByText('Salmon Creek Indoor Field Rentals')).toBeInTheDocument();
+    expect(listOrganizationsMock).toHaveBeenCalledTimes(2);
+    expect(listOrganizationsMock.mock.calls[1]?.slice(0, 2)).toEqual([100, 1]);
+  });
+
+  it('keeps the current area rental response when an older request finishes later', async () => {
+    navigationSearchParams = [
+      'tab=rentals',
+      'q=Salmon+Creek',
+      'lat=45.5231',
+      'lng=-122.6765',
+      'location=Portland%2C+OR',
+      'distanceMiles=50',
+    ].join('&');
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+
+    let resolveFirstRequest!: (value: unknown) => void;
+    listOrganizationsMock
+      .mockReset()
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirstRequest = resolve;
+      }))
+      .mockResolvedValueOnce({
+        organizations: [{
+          $id: 'org_salmon_creek',
+          name: 'Salmon Creek Indoor',
+          sports: [],
+          tags: [],
+          facilities: [{
+            $id: 'facility_salmon_creek',
+            name: 'Salmon Creek Indoor Field Rentals',
+            status: 'ACTIVE',
+            affiliateUrl: 'https://example.test/salmon-creek',
+            coordinates: [-122.6714042, 45.7224249],
+          }],
+        }],
+        pagination: { limit: 100, offset: 0, nextOffset: 1, hasMore: false },
+      });
+
+    const { rerender } = renderWithMantine(<DiscoverPage />);
+    await waitFor(() => expect(listOrganizationsMock).toHaveBeenCalledTimes(1));
+
+    mockLocation = { lat: 45.5231, lng: -122.6765 };
+    rerender(
+      <MantineProvider>
+        <ModalsProvider>
+          <Notifications />
+          <DiscoverPage />
+        </ModalsProvider>
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByText('Salmon Creek Indoor Field Rentals')).toBeInTheDocument();
+    expect(listOrganizationsMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveFirstRequest({
+        organizations: [],
+        pagination: { limit: 100, offset: 0, nextOffset: 0, hasMore: false },
+      });
+    });
+
+    expect(screen.getByText('Salmon Creek Indoor Field Rentals')).toBeInTheDocument();
+    expect(screen.queryByText('No rentals available')).not.toBeInTheDocument();
   });
 
   it('defaults a location-based event search to a 50 mile radius', async () => {

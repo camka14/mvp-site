@@ -110,7 +110,7 @@ jest.mock('@/lib/eventService', () => ({
 
 jest.mock('@/lib/organizationService', () => ({
   organizationService: {
-    listOrganizationsWithFields: jest.fn(),
+    listOrganizationsInArea: jest.fn(),
   },
 }));
 
@@ -236,6 +236,22 @@ const buildAffiliateRentalOrganization = (): Organization => ({
   products: [],
 } as unknown as Organization);
 
+const buildMapOrganization = (
+  id: string,
+  name: string,
+  coordinateOffset: number,
+): Organization => ({
+  ...buildAffiliateRentalOrganization(),
+  $id: id,
+  name,
+  status: 'LISTED',
+  coordinates: [
+    VANCOUVER_WA_CENTER.lng + coordinateOffset,
+    VANCOUVER_WA_CENTER.lat + coordinateOffset,
+  ],
+  facilities: [],
+});
+
 function CurrentLocationHarness() {
   const [location, setLocation] = useState(VANCOUVER_WA_CENTER);
 
@@ -283,7 +299,7 @@ describe('DiscoverMapModal', () => {
     mockMapCenter = { ...VANCOUVER_WA_CENTER };
     mockMapZoom = 11;
     mockedEventService.getEventsPaginated.mockResolvedValue([]);
-    mockedOrganizationService.listOrganizationsWithFields.mockResolvedValue([]);
+    mockedOrganizationService.listOrganizationsInArea.mockResolvedValue([]);
   });
 
   it('loads the Vancouver area on open, then waits for Search this area before refreshing after map movement', async () => {
@@ -292,7 +308,7 @@ describe('DiscoverMapModal', () => {
     await waitFor(() => {
       expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
     });
-    expect(mockedOrganizationService.listOrganizationsWithFields).not.toHaveBeenCalled();
+    expect(mockedOrganizationService.listOrganizationsInArea).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Simulate map idle' }));
 
@@ -320,6 +336,52 @@ describe('DiscoverMapModal', () => {
     });
 
     expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads all organizations for the selected map area and searches those cached results locally', async () => {
+    mockedOrganizationService.listOrganizationsInArea.mockResolvedValue([{
+      ...buildAffiliateRentalOrganization(),
+      $id: 'org-salmon-creek',
+      name: 'Salmon Creek Indoor',
+    }]);
+    renderModal();
+
+    fireEvent.change(screen.getAllByLabelText('Map search category')[0], {
+      target: { value: 'Organizations' },
+    });
+    fireEvent.click(await screen.findByText('Organizations'));
+
+    await waitFor(() => {
+      expect(mockedOrganizationService.listOrganizationsInArea).toHaveBeenCalledWith(
+        expect.objectContaining({
+          area: expect.objectContaining({
+            lat: VANCOUVER_WA_CENTER.lat,
+            lng: VANCOUVER_WA_CENTER.lng,
+          }),
+          includeAffiliateRentals: false,
+          hydrateRelations: false,
+        }),
+      );
+    });
+
+    fireEvent.change(screen.getAllByLabelText('Map search')[0], {
+      target: { value: 'Salmon Creek' },
+    });
+    expect((await screen.findAllByText('Salmon Creek Indoor')).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Simulate map idle' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Search this area' }));
+
+    await waitFor(() => {
+      expect(mockedOrganizationService.listOrganizationsInArea).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          area: expect.objectContaining({
+            lat: VANCOUVER_WA_CENTER.lat + 0.05,
+            lng: VANCOUVER_WA_CENTER.lng,
+          }),
+        }),
+      );
+    });
   });
 
   it('uses event tags instead of event types in the map event filter', async () => {
@@ -467,9 +529,65 @@ describe('DiscoverMapModal', () => {
     expect(screen.getByText('Cascade Crew Clinic')).toBeInTheDocument();
   });
 
+  it('groups touching organization markers into a count marker', async () => {
+    mockedOrganizationService.listOrganizationsInArea.mockResolvedValue([
+      buildMapOrganization('org-river-city', 'River City Sports Club', 0),
+      buildMapOrganization('org-cascade', 'Cascade Athletic Club', 0.0001),
+      buildMapOrganization('org-harbor', 'Harbor Sports Center', 0.2),
+    ]);
+
+    renderModal();
+
+    fireEvent.change(screen.getAllByLabelText('Map search category')[0], {
+      target: { value: 'Organizations' },
+    });
+    fireEvent.click(await screen.findByText('Organizations'));
+
+    const clusterMarker = await screen.findByRole('button', { name: '2 organizations' });
+    expect(clusterMarker).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'River City Sports Club' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Harbor Sports Center' })).toBeInTheDocument();
+
+    fireEvent.click(clusterMarker);
+
+    expect(await screen.findByText('River City Sports Club')).toBeInTheDocument();
+    expect(screen.getByText('Cascade Athletic Club')).toBeInTheDocument();
+  });
+
+  it('groups touching rental markers into a count marker', async () => {
+    const rentalOrganization = buildAffiliateRentalOrganization();
+    rentalOrganization.facilities = [
+      ...(rentalOrganization.facilities ?? []),
+      {
+        ...(rentalOrganization.facilities?.[0] ?? {}),
+        $id: 'facility-affiliate-birthday',
+        name: 'Affiliate Birthday Parties',
+        affiliateUrl: 'https://example.com/parties',
+        coordinates: [VANCOUVER_WA_CENTER.lng + 0.0001, VANCOUVER_WA_CENTER.lat + 0.0001],
+      },
+    ] as Organization['facilities'];
+    mockedOrganizationService.listOrganizationsInArea.mockResolvedValue([rentalOrganization]);
+
+    renderModal();
+
+    fireEvent.change(screen.getAllByLabelText('Map search category')[0], {
+      target: { value: 'Rentals' },
+    });
+    fireEvent.click(await screen.findByText('Rentals'));
+
+    const clusterMarker = await screen.findByRole('button', { name: '2 rentals' });
+    expect(clusterMarker).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Affiliate Indoor Court' })).not.toBeInTheDocument();
+
+    fireEvent.click(clusterMarker);
+
+    expect(await screen.findByText('Affiliate Indoor Court')).toBeInTheDocument();
+    expect(screen.getByText('Affiliate Birthday Parties')).toBeInTheDocument();
+  });
+
   it('shows affiliate rental facilities on the rentals map and opens their affiliate URL', async () => {
     const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
-    mockedOrganizationService.listOrganizationsWithFields.mockResolvedValue([
+    mockedOrganizationService.listOrganizationsInArea.mockResolvedValue([
       buildAffiliateRentalOrganization(),
     ]);
 
@@ -481,9 +599,16 @@ describe('DiscoverMapModal', () => {
     fireEvent.click(await screen.findByText('Rentals'));
 
     await waitFor(() => {
-      expect(mockedOrganizationService.listOrganizationsWithFields).toHaveBeenCalledWith(
-        100,
-        { includeAffiliateRentals: true, hydrateRelations: true },
+      expect(mockedOrganizationService.listOrganizationsInArea).toHaveBeenCalledWith(
+        expect.objectContaining({
+          area: expect.objectContaining({
+            lat: VANCOUVER_WA_CENTER.lat,
+            lng: VANCOUVER_WA_CENTER.lng,
+            radiusKm: expect.any(Number),
+          }),
+          includeAffiliateRentals: true,
+          hydrateRelations: true,
+        }),
       );
     });
 

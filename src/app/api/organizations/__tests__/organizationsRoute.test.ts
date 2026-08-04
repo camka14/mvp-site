@@ -141,8 +141,9 @@ describe('/api/organizations', () => {
           { OR: expect.any(Array) },
         ],
       },
-      take: 40,
     }));
+    expect(findManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+    expect(findManyMock.mock.calls[0]?.[0]).not.toHaveProperty('skip');
     expect(json.organizations.map((organization: any) => organization.name)).toEqual([
       'Indoor',
       'Indoor Soccer Arena',
@@ -291,7 +292,13 @@ describe('/api/organizations', () => {
         affiliateUrl: { not: null },
         status: 'ACTIVE',
       },
-      select: { organizationId: true },
+      select: {
+        organizationId: true,
+        name: true,
+        location: true,
+        address: true,
+        coordinates: true,
+      },
     });
     expect(findManyMock).toHaveBeenCalledWith({
       where: {
@@ -329,6 +336,88 @@ describe('/api/organizations', () => {
       }),
     ]);
     expect(JSON.stringify(json)).not.toContain('example.com/book');
+  });
+
+  it('applies geographic filtering before pagination so late alphabetical organizations are discoverable', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'org_alpha_far',
+        name: 'Alpha Sports',
+        status: 'LISTED',
+        coordinates: [-74.006, 40.7128],
+      },
+      {
+        id: 'org_salmon_creek',
+        name: 'Salmon Creek Indoor',
+        status: 'LISTED',
+        coordinates: [-122.6615, 45.6387],
+      },
+    ]);
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?lat=45.5231&lng=-122.6765&radiusKm=50&limit=1',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(findManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+    expect(findManyMock.mock.calls[0]?.[0]).not.toHaveProperty('skip');
+    expect(payload.organizations).toEqual([
+      expect.objectContaining({ id: 'org_salmon_creek', name: 'Salmon Creek Indoor' }),
+    ]);
+    expect(payload.pagination).toEqual({
+      limit: 1,
+      offset: 0,
+      nextOffset: 1,
+      hasMore: false,
+    });
+  });
+
+  it('matches rental searches and areas using active affiliate facility details', async () => {
+    facilitiesFindManyMock
+      .mockResolvedValueOnce([{
+        organizationId: 'org_salmon_creek',
+        name: 'Salmon Creek Indoor Field Rentals',
+        location: 'Vancouver, WA',
+        address: '1101 NE 117th St, Vancouver, WA',
+        coordinates: [-122.6615, 45.6387],
+      }])
+      .mockResolvedValueOnce([{
+        id: 'facility_salmon_creek',
+        organizationId: 'org_salmon_creek',
+        name: 'Salmon Creek Indoor Field Rentals',
+        status: 'ACTIVE',
+        affiliateUrl: 'https://example.com/book',
+        coordinates: [-122.6615, 45.6387],
+      }]);
+    findManyMock.mockResolvedValue([{
+      id: 'org_salmon_creek',
+      name: 'Community Athletics',
+      status: 'UNLISTED',
+      coordinates: [-100, 40],
+    }]);
+
+    const response = await organizationsGet(new NextRequest(
+      'http://localhost/api/organizations?includeAffiliateRentals=true&query=Salmon%20Creek&lat=45.5231&lng=-122.6765&radiusKm=50',
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: expect.arrayContaining([{ id: { in: ['org_salmon_creek'] } }]),
+          }),
+        ]),
+      }),
+    }));
+    expect(payload.organizations).toEqual([
+      expect.objectContaining({
+        id: 'org_salmon_creek',
+        facilities: [expect.objectContaining({ id: 'facility_salmon_creek' })],
+      }),
+    ]);
   });
 
   it('keeps unlisted organizations available for the authenticated owner management list', async () => {
