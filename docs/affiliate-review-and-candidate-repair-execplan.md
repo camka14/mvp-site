@@ -41,7 +41,10 @@ that do not have enough source evidence.
   with exact canonical-organization and location repair context. Kept the
   terminal Albion package out of the queue until its reviewed producer commit
   was recovered and repaired.
-- [ ] Verify queue counts, repaired candidate fields, and publication dry runs.
+- [x] (2026-08-04 18:30 PDT) Verified the ten live candidate records. All ten
+  use the canonical source organization and have a city, valid organization
+  coordinates, natural organization description, website, logo, and repair
+  provenance. The canonical CLUB publication regression test passes.
 
 ## Surprises & Discoveries
 
@@ -107,8 +110,28 @@ that do not have enough source evidence.
 
 ## Outcomes & Retrospective
 
-Work is in progress. Record the final live counts, repaired candidate IDs,
-remaining evidence blockers, tests, and recovery commands here.
+The guarded live candidate repair updated ten rows and was idempotent. A second
+dry run reported zero eligible rows and ten already-repaired rows. Four
+organizations received official source-backed locality corrections: NCS
+Cafarelli in Peoria, Nickel City Hockey in Buffalo, NCS Texas Baseball in
+Arlington, and New York Pickleball Club in New City. The other six retained
+their existing valid city or coordinate evidence.
+
+Nine approved producer packages were returned to mapping repair. The terminal
+Albion Hurricanes FC package was recovered from producer commit
+`f7a7b2a9c657979ddcaed2964c6d90ec38fe961c`, made live-safe, added to the
+shared branch, and returned through the standard bounded retry classifier. At
+the final snapshot, six target packages were claimed, three were queued, and
+one was `REVIEW_REQUIRED` with its approval actively claimed. These are active
+queue tasks, not unresolved data defects.
+
+The focused validation passed 62 tests across the service, full-review,
+source-queue, and Albion packages. The repair-classifier suite passed 18 tests.
+TypeScript and `git diff --check` passed. Commits `3c687e1f7`, `cb52ff1c6`, and
+`8e7701f05` are on `origin/main`. Production deployment remains a separate
+operator action. The live data repair is already applied, but the canonical
+CLUB publication and missing-handoff code paths require the new image before
+the live application uses them.
 
 ## Context and Orientation
 
