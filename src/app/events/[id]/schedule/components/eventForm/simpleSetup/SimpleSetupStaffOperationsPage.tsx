@@ -5,6 +5,7 @@ import { Stack, Text, Title } from '@mantine/core';
 import { normalizeOfficialSchedulingMode } from '../officials';
 import type { EventFormSectionsProps } from '../sections/EventFormSections';
 import { StaffManagementPanel } from '../sections/StaffManagementPanel';
+import type { EventSetupChoices } from './types';
 
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
@@ -13,10 +14,12 @@ const MAX_MEDIUM_TEXT_LENGTH = 160;
 
 type SimpleSetupStaffOperationsPageProps = {
     model: EventFormSectionsProps;
+    choices: EventSetupChoices;
 };
 
 export const SimpleSetupStaffOperationsPage = ({
     model,
+    choices,
 }: SimpleSetupStaffOperationsPageProps) => {
     const {
         assignedHostCards,
@@ -103,6 +106,10 @@ export const SimpleSetupStaffOperationsPage = ({
                 eventOfficialsDisabled={isImmutableField('eventOfficials')}
                 assistantHostsDisabled={isImmutableField('assistantHostIds')}
                 hostDisabled={isImmutableField('hostId')}
+                showStaffAssignments={choices.useStaffAssignments}
+                showDedicatedOfficials={choices.useDedicatedOfficials}
+                showCustomOfficialPositions={choices.useCustomOfficialPositions}
+                showTeamOperations={choices.useTeamCheckInAndRosterOperations}
                 onRosterEditsChange={(checked) => {
                     if (!checked) {
                         setValue('allowTemporaryMatchPlayers', false, {

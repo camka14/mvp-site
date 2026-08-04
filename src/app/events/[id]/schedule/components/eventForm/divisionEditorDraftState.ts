@@ -1,6 +1,7 @@
 import { buildDivisionName } from '@/lib/divisionTypes';
 import { normalizePriceCents } from '@/lib/priceUtils';
 import type { LeagueConfig, TournamentConfig } from '@/types';
+import { normalizeDivisionPhaseSettingsMap } from '@/lib/divisionPhaseSettings';
 
 import {
     buildDivisionLeagueConfig,
@@ -46,7 +47,6 @@ type BuildResetDivisionEditorStateOptions = {
     currentSportRequiresSets: boolean;
     defaultDivisionTypeSelections: DivisionTypeSelections;
     eventData: DivisionEditorEventValues;
-    firstDivisionDetailForDefaults?: DivisionDetailForm;
     leagueData: LeagueConfig;
     playoffData: TournamentConfig;
 };
@@ -70,15 +70,9 @@ export const buildInitialDivisionEditorState = ({
     name: '',
     price: Math.max(0, eventPrice || 0),
     maxParticipants: Math.max(2, Math.trunc(eventMaxParticipants || 2)),
-    playoffTeamCount: Math.max(
-        2,
-        Math.trunc(
-            typeof leagueData.playoffTeamCount === 'number'
-                ? leagueData.playoffTeamCount
-                : eventMaxParticipants || 2,
-        ),
-    ),
+    playoffTeamCount: null,
     poolCount: null,
+    phaseSettings: {},
     playoffPlacementDivisionIds: [],
     leagueConfig: normalizeLeagueConfigForSetMode(leagueData, sportUsesPointsPerSetWin),
     playoffConfig: buildTournamentConfig(),
@@ -95,7 +89,6 @@ export const buildResetDivisionEditorState = ({
     currentSportRequiresSets,
     defaultDivisionTypeSelections,
     eventData,
-    firstDivisionDetailForDefaults,
     leagueData,
     playoffData,
 }: BuildResetDivisionEditorStateOptions): DivisionEditorState => {
@@ -118,23 +111,9 @@ export const buildResetDivisionEditorState = ({
         name: '',
         price: Math.max(0, eventData.price || 0),
         maxParticipants: Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
-        playoffTeamCount: Math.max(
-            2,
-            Math.trunc(
-                eventData.eventType === 'TOURNAMENT'
-                    && leagueData.includePlayoffs
-                    && typeof firstDivisionDetailForDefaults?.playoffTeamCount === 'number'
-                    ? firstDivisionDetailForDefaults.playoffTeamCount
-                    : typeof leagueData.playoffTeamCount === 'number'
-                        ? leagueData.playoffTeamCount
-                        : eventData.maxParticipants || 2,
-            ),
-        ),
-        poolCount: eventData.eventType === 'TOURNAMENT'
-            && leagueData.includePlayoffs
-            && typeof firstDivisionDetailForDefaults?.poolCount === 'number'
-            ? Math.max(1, Math.trunc(firstDivisionDetailForDefaults.poolCount))
-            : null,
+        playoffTeamCount: null,
+        poolCount: null,
+        phaseSettings: {},
         playoffPlacementDivisionIds: [],
         leagueConfig: normalizeLeagueConfigForSetMode(leagueData, currentSportRequiresSets),
         playoffConfig: buildTournamentConfig(playoffData),
@@ -208,18 +187,14 @@ export const buildLeagueDivisionEditorState = ({
         name: detail.name,
         price: Math.max(0, detail.price || 0),
         maxParticipants: Math.max(2, Math.trunc(detail.maxParticipants || eventData.maxParticipants || 2)),
-        playoffTeamCount: Math.max(
-            2,
-            Math.trunc(
-                detail.playoffTeamCount
-                    || detail.maxParticipants
-                    || eventData.maxParticipants
-                    || 2,
-            ),
-        ),
+        playoffTeamCount: typeof detail.playoffTeamCount === 'number'
+            && Number.isFinite(detail.playoffTeamCount)
+            ? Math.trunc(detail.playoffTeamCount)
+            : null,
         poolCount: typeof detail.poolCount === 'number'
             ? Math.max(1, Math.trunc(detail.poolCount))
             : null,
+        phaseSettings: normalizeDivisionPhaseSettingsMap(detail.phaseSettings),
         playoffPlacementDivisionIds: normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds),
         leagueConfig: buildDivisionLeagueConfig(detail, leagueData, currentSportRequiresSets),
         playoffConfig: buildTournamentConfig(detail.playoffConfig ?? playoffData),
@@ -260,6 +235,7 @@ export const buildPlayoffDivisionEditorState = ({
         : detail.maxParticipants,
     playoffTeamCount: null,
     poolCount: null,
+    phaseSettings: normalizeDivisionPhaseSettingsMap(detail.phaseSettings),
     playoffPlacementDivisionIds: [],
     leagueConfig: normalizeLeagueConfigForSetMode(leagueData, currentSportRequiresSets),
     playoffConfig: buildTournamentConfig(detail.playoffConfig),

@@ -64,7 +64,7 @@ const baseTournamentData: TournamentConfig = {
 };
 
 describe('TournamentFields', () => {
-  it('shows match duration for non-set sports and updates tournament data', () => {
+  it('does not show a standalone match duration for timed sports', () => {
     const setTournamentData = jest.fn();
 
     renderWithMantine(
@@ -75,17 +75,7 @@ describe('TournamentFields', () => {
       />,
     );
 
-    const matchDuration = screen.getByLabelText(/Match Duration \(minutes\)/i);
-    fireEvent.change(matchDuration, { target: { value: '75' } });
-
-    const lastCall = setTournamentData.mock.calls[setTournamentData.mock.calls.length - 1];
-    const updater = lastCall?.[0] as
-      | ((prev: TournamentConfig) => TournamentConfig)
-      | undefined;
-    expect(typeof updater).toBe('function');
-    const next = updater?.(baseTournamentData);
-    expect(next?.matchDurationMinutes).toBe(75);
-    expect(next?.setDurationMinutes).toBeUndefined();
+    expect(screen.queryByLabelText(/Match Duration/i)).not.toBeInTheDocument();
   });
 
   it('shows set duration for set-based sports and updates tournament data', () => {
@@ -103,7 +93,7 @@ describe('TournamentFields', () => {
       />,
     );
 
-    const setDuration = screen.getByLabelText(/Set Duration \(minutes\)/i);
+    const setDuration = screen.getByLabelText(/Set duration/i);
     fireEvent.change(setDuration, { target: { value: '30' } });
 
     const lastCall = setTournamentData.mock.calls[setTournamentData.mock.calls.length - 1];
@@ -149,7 +139,7 @@ describe('TournamentFields', () => {
       />,
     );
 
-    const setDuration = screen.getByLabelText(/Set Duration \(minutes\)/i);
+    const setDuration = screen.getByLabelText(/Set duration/i);
     fireEvent.change(setDuration, { target: { value: '0' } });
 
     let lastCall = setTournamentData.mock.calls[setTournamentData.mock.calls.length - 1];
@@ -195,7 +185,7 @@ describe('TournamentFields', () => {
       />,
     );
 
-    expect(screen.getByLabelText(/Set Duration \(minutes\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Set duration/i)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /Winner Set Count/i })).toHaveValue('Best of 3');
     expect(screen.getByLabelText(/Set 3/i)).toBeInTheDocument();
   });
@@ -212,11 +202,11 @@ describe('TournamentFields', () => {
       />,
     );
 
-    expect(screen.queryByLabelText(/Match Duration \(minutes\)/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/Set Duration \(minutes\)/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Match Duration/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Set duration/i)).not.toBeInTheDocument();
   });
 
-  it('shows sport segment rules for period-based playoff settings without set controls', () => {
+  it('keeps period-based configuration focused on bracket settings', () => {
     const setTournamentData = jest.fn();
 
     renderWithMantine(
@@ -229,8 +219,7 @@ describe('TournamentFields', () => {
       />,
     );
 
-    expect(screen.getByText('Quarter Count')).toBeInTheDocument();
-    expect(screen.getByText('4 Quarters from sport rules')).toBeInTheDocument();
+    expect(screen.queryByText('Quarter Count')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Winner Set Count/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Set 1/i)).not.toBeInTheDocument();
   });
@@ -269,8 +258,7 @@ describe('TournamentFields', () => {
       />,
     );
 
-    expect(screen.getByText('Half Count')).toBeInTheDocument();
-    expect(screen.getByText('2 Halves from sport rules')).toBeInTheDocument();
+    expect(screen.queryByText('Half Count')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Winner Set Count/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/Set 1/i)).not.toBeInTheDocument();
   });

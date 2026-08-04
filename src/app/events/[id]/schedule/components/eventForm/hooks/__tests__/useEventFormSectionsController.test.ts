@@ -94,4 +94,14 @@ describe('useEventFormSectionsController', () => {
         expect(setManualPaymentsEnabled).toHaveBeenCalledWith(true);
         expect(mockExpandSection).toHaveBeenCalledWith('section-manual-payments');
     });
+
+    it('adds validation counts to visible navigation items', () => {
+        const { result } = renderController({
+            sectionErrorCounts: { 'section-manual-payments': 2 },
+        });
+
+        expect(result.current.visibleSectionNavItems.find(
+            (item) => item.id === 'section-manual-payments',
+        )).toEqual(expect.objectContaining({ errorCount: 2 }));
+    });
 });

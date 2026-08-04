@@ -2,6 +2,7 @@ import {
     useCallback,
     useEffect,
     useMemo,
+    useRef,
 } from 'react';
 
 import { createClientId } from '@/lib/clientId';
@@ -30,6 +31,7 @@ type UseOfficialAssignmentsControllerParams = Pick<
     | 'eventData'
     | 'fields'
     | 'isOrganizationHostedEvent'
+    | 'isCreateMode'
     | 'selectedFieldIds'
     | 'selectedSportForOfficials'
     | 'setEventData'
@@ -43,6 +45,7 @@ export const useOfficialAssignmentsController = ({
     eventData,
     fields,
     isOrganizationHostedEvent,
+    isCreateMode = false,
     organizationAllowedOfficialIdSet,
     organizationOfficialsById,
     selectedFieldIds,
@@ -54,6 +57,34 @@ export const useOfficialAssignmentsController = ({
         () => normalizeSportOfficialPositionTemplates(selectedSportForOfficials?.officialPositionTemplates),
         [selectedSportForOfficials],
     );
+    const seededSportIdsRef = useRef(new Set<string>());
+
+    useEffect(() => {
+        const sportId = String(selectedSportForOfficials?.$id ?? '').trim();
+        if (!isCreateMode || !sportId || seededSportIdsRef.current.has(sportId)) return;
+        seededSportIdsRef.current.add(sportId);
+        if (sportOfficialPositionTemplates.length === 0 || eventData.officialPositions?.length) return;
+
+        const nextPositions = buildOfficialPositionsFromTemplates(sportOfficialPositionTemplates);
+        setEventData((previous) => {
+            if (previous.officialPositions?.length) return previous;
+            return {
+                ...previous,
+                officialPositions: nextPositions,
+                eventOfficials: normalizeEventOfficials(
+                    previous.eventOfficials,
+                    getEventOfficialUserIds(previous.eventOfficials),
+                    nextPositions,
+                ),
+            };
+        }, { shouldDirty: false });
+    }, [
+        eventData.officialPositions,
+        isCreateMode,
+        selectedSportForOfficials?.$id,
+        setEventData,
+        sportOfficialPositionTemplates,
+    ]);
     const availableOfficialFieldOptions = useMemo(
         () => buildAvailableOfficialFieldOptions(fields, selectedFieldIds),
         [fields, selectedFieldIds],

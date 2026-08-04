@@ -11,6 +11,14 @@ import HostPriceInput from '@/components/ui/HostPriceInput';
 import type { Event } from '@/types';
 
 import { AnimatedLayoutSection } from '../components/AnimatedSection';
+import {
+    DIVISION_ALIGNED_INPUT_STYLES,
+    DIVISION_COMPACT_FIELD_CLASS,
+    DIVISION_MEDIUM_FIELD_CLASS,
+    DIVISION_NAME_FIELD_CLASS,
+    DIVISION_NUMBER_FIELD_CLASS,
+    DIVISION_PRICE_FIELD_CLASS,
+} from '../divisionLayout';
 
 type DivisionEditorCoreControlsProps = {
     gender: string;
@@ -87,8 +95,8 @@ export const DivisionEditorCoreControls = ({
             placeholder="Select gender"
             data={genderOptions}
             value={gender || null}
-            className="md:col-span-4"
-            maw={280}
+            className={DIVISION_COMPACT_FIELD_CLASS}
+            styles={DIVISION_ALIGNED_INPUT_STYLES}
             comboboxProps={comboboxProps}
             disabled={divisionsImmutable}
             onChange={(value) => onGenderChange((value as '' | 'M' | 'F' | 'C') || '')}
@@ -98,8 +106,8 @@ export const DivisionEditorCoreControls = ({
             placeholder="Select skill division"
             data={skillDivisionTypeOptions}
             value={skillDivisionTypeId || null}
-            className="md:col-span-4"
-            maw={280}
+            className={DIVISION_MEDIUM_FIELD_CLASS}
+            styles={DIVISION_ALIGNED_INPUT_STYLES}
             comboboxProps={comboboxProps}
             disabled={divisionsImmutable}
             searchable
@@ -111,8 +119,8 @@ export const DivisionEditorCoreControls = ({
             placeholder="Select age division"
             data={ageDivisionTypeOptions}
             value={ageDivisionTypeId || null}
-            className="md:col-span-4"
-            maw={320}
+            className={DIVISION_MEDIUM_FIELD_CLASS}
+            styles={DIVISION_ALIGNED_INPUT_STYLES}
             comboboxProps={comboboxProps}
             disabled={divisionsImmutable}
             searchable
@@ -123,15 +131,15 @@ export const DivisionEditorCoreControls = ({
             label="Division Name"
             placeholder="Division display name"
             value={name}
-            className="md:col-span-6"
-            maw={520}
+            className={DIVISION_NAME_FIELD_CLASS}
+            styles={DIVISION_ALIGNED_INPUT_STYLES}
             maxLength={maxMediumTextLength}
             disabled={divisionsImmutable || !divisionEditorReady}
             onChange={(event) => onNameChange(event.currentTarget.value)}
         />
         <AnimatedLayoutSection
             in={!hideCapacity && (!singleDivision || showCapacityForSingleDivision)}
-            className="md:col-span-3"
+            className={DIVISION_NUMBER_FIELD_CLASS}
         >
             <NumberInput
                 label={teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
@@ -139,7 +147,7 @@ export const DivisionEditorCoreControls = ({
                 max={maxStandardNumber}
                 value={maxParticipants ?? ''}
                 w="100%"
-                maw={220}
+                styles={DIVISION_ALIGNED_INPUT_STYLES}
                 clampBehavior="strict"
                 disabled={divisionsImmutable || !divisionEditorReady}
                 onChange={(value) => {
@@ -157,12 +165,12 @@ export const DivisionEditorCoreControls = ({
         </AnimatedLayoutSection>
         <AnimatedLayoutSection
             in={!hidePrice && (!singleDivision || showPriceForSingleDivision) && !allowPaymentPlans}
-            className="md:col-span-3 md:col-start-1"
+            className={DIVISION_PRICE_FIELD_CLASS}
         >
             <div>
                 {simplePriceInput ? (
                     <CentsInput
-                        label="Division price"
+                        label="Registration price"
                         maxCents={maxPriceCents}
                         value={price}
                         disabled={divisionsImmutable || !divisionEditorReady}

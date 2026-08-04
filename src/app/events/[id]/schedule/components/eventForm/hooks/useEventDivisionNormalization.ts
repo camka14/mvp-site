@@ -221,62 +221,6 @@ export const useEventDivisionNormalization = ({
     ]);
 
     useEffect(() => {
-        if (eventData.eventType !== 'LEAGUE' || !leagueData.includePlayoffs || !eventData.singleDivision) {
-            return;
-        }
-        if (typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2) {
-            return;
-        }
-        const fallbackFromDivision = eventData.divisionDetails?.[0]?.playoffTeamCount
-            ?? eventData.divisionDetails?.[0]?.maxParticipants
-            ?? eventData.maxParticipants
-            ?? 2;
-        setLeagueData((previous) => ({
-            ...previous,
-            playoffTeamCount: Math.max(2, Math.trunc(fallbackFromDivision)),
-        }), { shouldDirty: false });
-    }, [
-        eventData.divisionDetails,
-        eventData.eventType,
-        eventData.maxParticipants,
-        eventData.singleDivision,
-        leagueData.includePlayoffs,
-        leagueData.playoffTeamCount,
-        setLeagueData,
-    ]);
-
-    useEffect(() => {
-        if (eventData.eventType !== 'LEAGUE' || !leagueData.includePlayoffs || eventData.singleDivision) {
-            return;
-        }
-        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
-        if (!currentDetails.length) {
-            return;
-        }
-        let changed = false;
-        const nextDetails = currentDetails.map((detail) => {
-            if (typeof detail.playoffTeamCount === 'number' && detail.playoffTeamCount >= 2) {
-                return detail;
-            }
-            changed = true;
-            return {
-                ...detail,
-                playoffTeamCount: Math.max(2, Math.trunc(detail.maxParticipants || eventData.maxParticipants || 2)),
-            };
-        });
-        if (changed) {
-            setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: true });
-        }
-    }, [
-        eventData.divisionDetails,
-        eventData.eventType,
-        eventData.maxParticipants,
-        eventData.singleDivision,
-        leagueData.includePlayoffs,
-        setValue,
-    ]);
-
-    useEffect(() => {
         const selectedSport = (
             eventData.sportId ? sportsById.get(eventData.sportId) : null
         ) ?? eventData.sportConfig;

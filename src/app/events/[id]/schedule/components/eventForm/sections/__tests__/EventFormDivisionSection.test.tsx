@@ -3,6 +3,7 @@ import {
     render,
     screen,
 } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 
 import type { EventFormValues } from '../../formTypes';
 import { EventFormDivisionSection } from '../EventFormDivisionSection';
@@ -127,7 +128,8 @@ const renderSection = ({
     setValue?: jest.Mock;
 } = {}) => {
     render(
-        <EventFormDivisionSection
+        <MantineProvider>
+            <EventFormDivisionSection
             collapsed={false}
             comboboxProps={{}}
             control={{} as never}
@@ -155,7 +157,8 @@ const renderSection = ({
             splitLeaguePlayoffDivisionsLocked={false}
             supportsEditableTeamSignup
             tournamentData={eventData.tournamentData}
-        />,
+            />
+        </MantineProvider>,
     );
     return { paymentController, setValue };
 };

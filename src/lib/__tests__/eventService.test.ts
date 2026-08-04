@@ -450,6 +450,8 @@ describe('eventService', () => {
       leagueScoringConfigId: 'cfg_1',
       leagueScoringConfig: {
         $id: 'cfg_1',
+        $createdAt: '2025-01-01T00:00:00.000Z',
+        $updatedAt: '2025-01-02T00:00:00.000Z',
         pointsForWin: 3,
         pointsForDraw: 1,
         pointsForLoss: 0,
@@ -659,6 +661,8 @@ describe('eventService', () => {
       leagueScoringConfigId: 'cfg_1',
       leagueScoringConfig: {
         $id: 'cfg_1',
+        $createdAt: '2025-01-01T00:00:00.000Z',
+        $updatedAt: '2025-01-02T00:00:00.000Z',
         pointsForWin: 3,
         pointsForDraw: 1,
         pointsForLoss: 0,
@@ -688,6 +692,7 @@ describe('eventService', () => {
         },
       ],
       requiredTemplateIds: ['template_event_1'],
+      affiliateActionUrl: 'https://bracket-iq.com/out/event/evt_1/signed-token',
       sourceUrl: 'https://source.example/events/evt_1',
       organizerName: 'External Organizer',
       scheduleText: 'Schedule posted by organizer',
@@ -765,6 +770,7 @@ describe('eventService', () => {
     expect((options?.body as any)?.event?.leagueScoringConfig?.$id).toBeUndefined();
     expect((options?.body as any)?.event?.fields?.[0]?.matches).toBeUndefined();
     expect((options?.body as any)?.event?.timeSlots?.[0]?.event).toBeUndefined();
+    expect((options?.body as any)?.event?.affiliateActionUrl).toBeUndefined();
     expect((options?.body as any)?.event?.sourceUrl).toBeUndefined();
     expect((options?.body as any)?.event?.organizerName).toBeUndefined();
     expect((options?.body as any)?.event?.scheduleText).toBeUndefined();

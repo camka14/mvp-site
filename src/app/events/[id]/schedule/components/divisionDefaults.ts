@@ -54,13 +54,10 @@ export const applyEventDefaultsToDivisionDetails = <T extends DivisionDefaultsTa
 ): ApplyEventDivisionDefaultsResult<T> => {
     const normalizedPrice = normalizePrice(params.defaultPrice);
     const normalizedMaxParticipants = normalizeCapacity(params.defaultMaxParticipants);
-    const shouldUpdatePlayoff = params.includePlayoffs || Boolean(params.includeTournamentPoolPlay);
+    const shouldUpdatePlayoff = (params.includePlayoffs || Boolean(params.includeTournamentPoolPlay))
+        && Number.isFinite(params.defaultPlayoffTeamCount);
     const normalizedPlayoffTeamCount = shouldUpdatePlayoff
-        ? normalizeCapacity(
-            Number.isFinite(params.defaultPlayoffTeamCount)
-                ? (params.defaultPlayoffTeamCount as number)
-                : normalizedMaxParticipants,
-        )
+        ? Math.trunc(params.defaultPlayoffTeamCount as number)
         : undefined;
     const shouldUpdatePool = Boolean(params.includeTournamentPoolPlay);
     const normalizedPoolCount = shouldUpdatePool

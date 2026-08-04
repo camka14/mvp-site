@@ -273,7 +273,7 @@ export const applyImmutableEventDefaults = ({
                 price: Math.max(0, next.price || 0),
                 maxParticipants: Math.max(2, Math.trunc(next.maxParticipants || 2)),
                 playoffTeamCount: Number.isFinite((defaults as any).playoffTeamCount)
-                    ? Math.max(2, Math.trunc((defaults as any).playoffTeamCount))
+                    ? Math.trunc((defaults as any).playoffTeamCount)
                     : undefined,
                 playoffPlacementDivisionIds: [],
                 allowPaymentPlans: Boolean((defaults as any).allowPaymentPlans),

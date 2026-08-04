@@ -1,4 +1,6 @@
 import type {
+  DivisionCompetitionPhase,
+  DivisionPhaseSettingsMap,
   EventOfficialPosition,
   MatchIncidentCardColor,
   MatchIncidentDefinitionKind,
@@ -12,6 +14,7 @@ import type {
   ResolvedMatchTimekeepingConfig,
   ResolvedMatchRules,
 } from '@/types';
+import { normalizeDivisionPhaseSettingsMap } from '@/lib/divisionPhaseSettings';
 
 const DEFAULT_POINT_INCIDENT_TYPE = 'POINT';
 const DEFAULT_INCIDENT_CODES = [DEFAULT_POINT_INCIDENT_TYPE, 'DISCIPLINE', 'NOTE', 'ADMIN'];
@@ -167,6 +170,12 @@ const normalizePositiveNullableInt = (value: unknown): number | null => {
   return Math.trunc(numeric);
 };
 
+const normalizeNonNegativeNullableInt = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.trunc(numeric);
+};
+
 const normalizeTimekeepingConfig = (value: unknown): MatchTimekeepingConfig => {
   if (!isRecord(value)) return {};
   const segmentDurationMinutes = normalizePositiveNullableInt(value.segmentDurationMinutes);
@@ -175,10 +184,12 @@ const normalizeTimekeepingConfig = (value: unknown): MatchTimekeepingConfig => {
         .map((entry) => normalizePositiveNullableInt(entry))
         .filter((entry): entry is number => entry !== null)
     : [];
+  const segmentBreakDurationMinutes = normalizeNonNegativeNullableInt(value.segmentBreakDurationMinutes);
   return {
     ...(typeof value.timerMode === 'string' ? { timerMode: normalizeTimerMode(value.timerMode, 'NONE') } : {}),
     ...(segmentDurationMinutes ? { segmentDurationMinutes } : value.segmentDurationMinutes === null ? { segmentDurationMinutes: null } : {}),
     ...(sequenceDurations.length ? { segmentDurationMinutesBySequence: sequenceDurations } : {}),
+    ...(segmentBreakDurationMinutes !== null ? { segmentBreakDurationMinutes } : {}),
     ...(typeof value.canUseAddedTime === 'boolean' ? { canUseAddedTime: value.canUseAddedTime } : {}),
     ...(typeof value.addedTimeEnabled === 'boolean' ? { addedTimeEnabled: value.addedTimeEnabled } : {}),
     ...(typeof value.stopAtRegulationEnd === 'boolean' ? { stopAtRegulationEnd: value.stopAtRegulationEnd } : {}),
@@ -212,6 +223,7 @@ const resolveTimekeeping = (params: {
         .map((entry) => normalizePositiveNullableInt(entry))
         .filter((entry): entry is number => entry !== null)
     : [];
+  const segmentBreakDurationMinutes = normalizeNonNegativeNullableInt(merged.segmentBreakDurationMinutes) ?? 0;
   const sportAllowsAddedTime = sportTimekeeping.canUseAddedTime === true;
   const canUseAddedTime = sportAllowsAddedTime || (!Object.keys(params.sportTemplate).length && eventTimekeeping.canUseAddedTime === true);
   const addedTimeEnabled = timerMode !== 'NONE'
@@ -228,6 +240,7 @@ const resolveTimekeeping = (params: {
     timerMode,
     segmentDurationMinutes,
     segmentDurationMinutesBySequence: sequenceDurations,
+    segmentBreakDurationMinutes,
     canUseAddedTime: timerMode !== 'NONE' && canUseAddedTime,
     addedTimeEnabled,
     stopAtRegulationEnd,
@@ -331,6 +344,63 @@ export const resolveMatchRules = (params: {
       eventOverride,
     }),
   };
+};
+
+export const resolveMatchRulesForDivisionPhase = (params: {
+  phase: DivisionCompetitionPhase;
+  phaseSettings?: DivisionPhaseSettingsMap | null;
+  sportTemplate?: unknown;
+  eventOverride?: unknown;
+  autoCreatePointMatchIncidents?: boolean | null;
+  usesSets?: boolean | null;
+  setsPerMatch?: number | null;
+  winnerSetCount?: number | null;
+  matchDurationMinutes?: number | null;
+  officialPositions?: EventOfficialPosition[];
+}): ResolvedMatchRules => {
+  const phaseSettings = normalizeDivisionPhaseSettingsMap(params.phaseSettings)[params.phase] ?? {};
+  const eventOverride = normalizeRulesConfig(params.eventOverride);
+  const phaseOverride = normalizeRulesConfig(phaseSettings.matchRulesOverride);
+  if (params.usesSets) {
+    delete phaseOverride.segmentCount;
+  }
+
+  const segmentLengthMinutes = normalizePositiveNullableInt(phaseSettings.segmentLengthMinutes);
+  const segmentBreakDurationMinutes = normalizeNonNegativeNullableInt(phaseSettings.segmentBreakMinutes);
+  const eventTimekeeping = normalizeTimekeepingConfig(eventOverride.timekeeping);
+  const phaseTimekeeping = normalizeTimekeepingConfig(phaseOverride.timekeeping);
+  const mergedOverride: MatchRulesConfig = {
+    ...eventOverride,
+    ...phaseOverride,
+    ...(
+      Object.keys(eventTimekeeping).length
+      || Object.keys(phaseTimekeeping).length
+      || segmentLengthMinutes
+      || segmentBreakDurationMinutes !== null
+        ? {
+            timekeeping: {
+              ...eventTimekeeping,
+              ...phaseTimekeeping,
+              ...(segmentLengthMinutes ? { segmentDurationMinutes: segmentLengthMinutes } : {}),
+              ...(segmentBreakDurationMinutes !== null ? { segmentBreakDurationMinutes } : {}),
+            },
+          }
+        : {}
+    ),
+  };
+
+  return resolveMatchRules({
+    sportTemplate: params.sportTemplate,
+    eventOverride: mergedOverride,
+    autoCreatePointMatchIncidents: typeof phaseSettings.autoCreatePointMatchIncidents === 'boolean'
+      ? phaseSettings.autoCreatePointMatchIncidents
+      : params.autoCreatePointMatchIncidents,
+    usesSets: params.usesSets,
+    setsPerMatch: params.setsPerMatch,
+    winnerSetCount: params.winnerSetCount,
+    matchDurationMinutes: params.matchDurationMinutes,
+    officialPositions: params.officialPositions,
+  });
 };
 
 const positiveIntOrZero = (value: unknown): number => {

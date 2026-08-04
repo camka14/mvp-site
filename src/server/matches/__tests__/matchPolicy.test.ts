@@ -20,6 +20,7 @@ const baseRules: ResolvedMatchRules = {
     timerMode: 'NONE',
     segmentDurationMinutes: null,
     segmentDurationMinutesBySequence: [],
+    segmentBreakDurationMinutes: 0,
     canUseAddedTime: false,
     addedTimeEnabled: false,
     stopAtRegulationEnd: true,

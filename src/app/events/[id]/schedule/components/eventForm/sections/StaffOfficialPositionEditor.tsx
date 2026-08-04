@@ -27,6 +27,8 @@ type StaffOfficialPositionEditorProps = {
     onAddPosition: () => void;
     onUpdatePosition: (positionId: string, updates: Partial<EventOfficialPosition>) => void;
     onRemovePosition: (positionId: string) => void;
+    showSchedulingMode?: boolean;
+    showPositions?: boolean;
 };
 
 const OFFICIAL_SCHEDULING_MODE_OPTIONS = [
@@ -48,10 +50,12 @@ export const StaffOfficialPositionEditor = ({
     onAddPosition,
     onUpdatePosition,
     onRemovePosition,
+    showSchedulingMode = true,
+    showPositions = true,
 }: StaffOfficialPositionEditorProps) => (
     <Paper withBorder radius="md" p="md" bg="white">
         <Stack gap="sm">
-            <MantineSelect
+            {showSchedulingMode ? <MantineSelect
                 label="Official scheduling mode"
                 description="Choose how the scheduler should prioritize staffing requirements."
                 data={OFFICIAL_SCHEDULING_MODE_OPTIONS}
@@ -59,13 +63,13 @@ export const StaffOfficialPositionEditor = ({
                 onChange={onSchedulingModeChange}
                 comboboxProps={comboboxProps}
                 error={coverageError ?? undefined}
-            />
-            {coverageError ? (
+            /> : null}
+            {showSchedulingMode && coverageError ? (
                 <Alert color="yellow" variant="light">
                     {coverageError}
                 </Alert>
             ) : null}
-            <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
+            {showPositions ? <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
                 <div>
                     <Title order={6}>Official Positions</Title>
                     <Text size="sm" c="dimmed">
@@ -86,8 +90,8 @@ export const StaffOfficialPositionEditor = ({
                         Add position
                     </Button>
                 </Group>
-            </Group>
-            <Stack gap="xs">
+            </Group> : null}
+            {showPositions ? <Stack gap="xs">
                 {officialPositions.map((position) => (
                     <Group key={position.id} align="flex-end" gap="sm" wrap="nowrap">
                         <TextInput
@@ -123,7 +127,7 @@ export const StaffOfficialPositionEditor = ({
                         No official positions configured yet. Add them here or load the sport defaults.
                     </Text>
                 ) : null}
-            </Stack>
+            </Stack> : null}
         </Stack>
     </Paper>
 );

@@ -36,6 +36,10 @@ import {
     slotMatchesLockedRental,
 } from '../slotForm';
 import { normalizeSlotState } from '../slotValidation';
+import {
+    normalizeScheduleSlotsForStyle,
+} from '../simpleSetup/scheduleStyle';
+import type { EventSetupScheduleStyle } from '../simpleSetup/types';
 
 type SetEventFormValue = (
     name: string,
@@ -58,6 +62,7 @@ type UseEventSlotControllerOptions = {
     eventTimeZone?: string | null;
     eventType: Event['eventType'];
     fields: Field[];
+    fixedWindowFieldIds?: string[];
     getValues: UseFormGetValues<EventFormValues>;
     hasExternalRentalField: boolean;
     hasImmutableTimeSlots: boolean;
@@ -69,6 +74,7 @@ type UseEventSlotControllerOptions = {
     parentEvent?: string | null;
     rentalLockedSlotsForDraft: TimeSlot[];
     resolvedOrganizationId: string;
+    simpleScheduleStyle?: EventSetupScheduleStyle;
     setLeagueData: SetScheduleConfig<LeagueConfig>;
     setPlayoffData: SetScheduleConfig<TournamentConfig>;
     setValue: SetEventFormValue;
@@ -106,6 +112,7 @@ export const useEventSlotController = ({
     eventTimeZone,
     eventType,
     fields,
+    fixedWindowFieldIds,
     getValues,
     hasExternalRentalField,
     hasImmutableTimeSlots,
@@ -117,6 +124,7 @@ export const useEventSlotController = ({
     parentEvent,
     rentalLockedSlotsForDraft,
     resolvedOrganizationId,
+    simpleScheduleStyle,
     setLeagueData,
     setPlayoffData,
     setValue,
@@ -125,6 +133,7 @@ export const useEventSlotController = ({
     slotDivisionLookup,
 }: UseEventSlotControllerOptions) => {
     const previousEditableScheduleModeRef = useRef<boolean | null>(null);
+    const previousSimpleScheduleStyleRef = useRef<EventSetupScheduleStyle | null>(null);
     const slotConflictRequestRef = useRef(0);
     const slotDivisionKeysRef = useRef<string[]>(slotDivisionKeys);
 
@@ -365,16 +374,49 @@ export const useEventSlotController = ({
         };
     }, [hasImmutableTimeSlots, resolvedOrganizationId, setLeagueSlots, slotConflictCheckKey]);
 
-    const handleAddSlot = useCallback(() => {
+    const handleAddSlot = useCallback((repeating: boolean = true) => {
         if (hasImmutableTimeSlots) {
             return;
         }
         clearErrors('leagueSlots');
+        const created = createLeagueSlotForm(
+            {
+                repeating,
+                startDate: repeating ? undefined : eventStart ?? undefined,
+                endDate: repeating ? undefined : eventEnd ?? undefined,
+                timeZone: eventTimeZone ?? undefined,
+            },
+            slotDivisionKeys,
+            eventStart,
+            eventEnd,
+            eventTimeZone,
+        );
+        const normalized = repeating
+            ? created
+            : normalizeLeagueSlotUpdate({
+                slot: created,
+                updates: { repeating: false },
+                eventStart,
+                eventEnd,
+                singleDivision,
+                slotDivisionKeys,
+                slotDivisionLookup,
+            });
         updateLeagueSlots((previous) => [
             ...previous,
-            createLeagueSlotForm(undefined, slotDivisionKeys),
+            normalized,
         ]);
-    }, [clearErrors, hasImmutableTimeSlots, slotDivisionKeys, updateLeagueSlots]);
+    }, [
+        clearErrors,
+        eventEnd,
+        eventStart,
+        eventTimeZone,
+        hasImmutableTimeSlots,
+        singleDivision,
+        slotDivisionKeys,
+        slotDivisionLookup,
+        updateLeagueSlots,
+    ]);
 
     const handleRemoveSlot = useCallback((index: number) => {
         if (hasImmutableTimeSlots) {
@@ -525,6 +567,45 @@ export const useEventSlotController = ({
             { shouldDirty: false },
         );
     }, [eventEnd, eventStart, eventType, hasImmutableTimeSlots, immutableFields, immutableTimeSlots, setLeagueSlots]);
+
+    useEffect(() => {
+        if (!simpleScheduleStyle || !eventSupportsScheduleSlots || hasImmutableTimeSlots) {
+            previousSimpleScheduleStyleRef.current = simpleScheduleStyle ?? null;
+            return;
+        }
+        const previousStyle = previousSimpleScheduleStyleRef.current;
+        previousSimpleScheduleStyleRef.current = simpleScheduleStyle;
+        const currentSlots = getValues('leagueSlots') ?? [];
+        const synchronizedFieldIds = fixedWindowFieldIds
+            ?? normalizeSlotFieldIds(currentSlots[0] ?? {});
+        const nextSlots = normalizeSlotState(normalizeScheduleSlotsForStyle({
+            style: simpleScheduleStyle,
+            slots: currentSlots,
+            eventStart,
+            eventEnd,
+            timeZone: eventTimeZone,
+            fieldIds: synchronizedFieldIds,
+            divisionKeys: slotDivisionKeys,
+        }), eventType, parentEvent);
+        const styleChanged = previousStyle !== null && previousStyle !== simpleScheduleStyle;
+        setLeagueSlots(nextSlots, {
+            shouldDirty: styleChanged,
+            shouldValidate: styleChanged,
+        });
+    }, [
+        eventEnd,
+        eventStart,
+        eventSupportsScheduleSlots,
+        eventTimeZone,
+        eventType,
+        fixedWindowFieldIds,
+        getValues,
+        hasImmutableTimeSlots,
+        parentEvent,
+        setLeagueSlots,
+        simpleScheduleStyle,
+        slotDivisionKeys,
+    ]);
 
     useEffect(() => {
         const previousMode = previousEditableScheduleModeRef.current;

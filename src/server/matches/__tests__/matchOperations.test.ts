@@ -1,8 +1,55 @@
 import {
+  resolveMatchRulesForDivisionPhase,
   resolveMatchRules,
   resolveMatchRulesForContext,
   shouldFreezeMatchRulesSnapshot,
 } from '@/server/matches/matchOperations';
+
+describe('resolveMatchRulesForDivisionPhase', () => {
+  it('applies division phase rules after legacy event and sport defaults', () => {
+    expect(resolveMatchRulesForDivisionPhase({
+      phase: 'LEAGUE',
+      phaseSettings: {
+        LEAGUE: {
+          matchRulesOverride: { segmentCount: 4, segmentLabel: 'Quarter' },
+          autoCreatePointMatchIncidents: true,
+          segmentLengthMinutes: 12,
+          segmentBreakMinutes: 2,
+        },
+      },
+      sportTemplate: {
+        scoringModel: 'PERIODS',
+        segmentCount: 2,
+        segmentLabel: 'Half',
+        timekeeping: { timerMode: 'COUNT_UP', segmentDurationMinutes: 45 },
+      },
+      eventOverride: { segmentLabel: 'Period' },
+      autoCreatePointMatchIncidents: false,
+    })).toEqual(expect.objectContaining({
+      segmentCount: 4,
+      segmentLabel: 'Quarter',
+      pointIncidentRequiresParticipant: true,
+      timekeeping: expect.objectContaining({
+        segmentDurationMinutes: 12,
+        segmentBreakDurationMinutes: 2,
+      }),
+    }));
+  });
+
+  it('keeps set count in the set-format configuration', () => {
+    expect(resolveMatchRulesForDivisionPhase({
+      phase: 'BRACKET',
+      phaseSettings: {
+        BRACKET: { matchRulesOverride: { segmentCount: 9 } },
+      },
+      usesSets: true,
+      winnerSetCount: 3,
+    })).toEqual(expect.objectContaining({
+      scoringModel: 'SETS',
+      segmentCount: 3,
+    }));
+  });
+});
 
 describe('shouldFreezeMatchRulesSnapshot', () => {
   it('does not freeze when there are no segment score or incident changes', () => {

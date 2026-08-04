@@ -2,7 +2,6 @@
 
 import type { EventFormSectionsProps } from '../sections/EventFormSections';
 import { SimpleSetupBasicsPage } from './SimpleSetupBasicsPage';
-import { SimpleSetupCompetitionRulesPage } from './SimpleSetupCompetitionRulesPage';
 import { SimpleSetupDivisionsPage } from './SimpleSetupDivisionsPage';
 import { SimpleSetupDocumentsPage } from './SimpleSetupDocumentsPage';
 import { SimpleSetupPricingRegistrationPage } from './SimpleSetupPricingRegistrationPage';
@@ -34,13 +33,20 @@ export const SimpleSetupFormPage = ({
         return <SimpleSetupDivisionsPage model={model} />;
     }
     if (pageId === 'schedule-location') {
-        return <SimpleSetupScheduleLocationPage model={model} />;
-    }
-    if (pageId === 'competition-rules') {
-        return <SimpleSetupCompetitionRulesPage model={model} />;
+        return (
+            <SimpleSetupScheduleLocationPage
+                model={model}
+                scheduleStyle={choices.scheduleStyle}
+            />
+        );
     }
     if (pageId === 'pricing-registration') {
-        return <SimpleSetupPricingRegistrationPage model={model} />;
+        return (
+            <SimpleSetupPricingRegistrationPage
+                model={model}
+                paidRegistration={choices.paidRegistration}
+            />
+        );
     }
     if (pageId === 'documents-questions') {
         const { questionActions } = model.sectionsController;
@@ -66,7 +72,7 @@ export const SimpleSetupFormPage = ({
         );
     }
     if (pageId === 'staff-operations') {
-        return <SimpleSetupStaffOperationsPage model={model} />;
+        return <SimpleSetupStaffOperationsPage model={model} choices={choices} />;
     }
 
     return null;

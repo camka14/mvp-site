@@ -1,9 +1,8 @@
-import { Button, Collapse, Paper } from '@mantine/core';
 import type { LeagueScoringConfig, Sport } from '@/types';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 
 import { AnimatedSection } from '../components/AnimatedSection';
-import { SECTION_ANIMATION_DURATION_MS } from '../constants';
+import { CollapsibleEventFormSection } from '../components/CollapsibleEventFormSection';
 
 type LeagueScoringConfigKey = keyof LeagueScoringConfig;
 
@@ -15,6 +14,8 @@ type LeagueScoringConfigSectionProps = {
     sport?: Sport;
     editable: boolean;
     onToggle: () => void;
+    errorCount?: number;
+    firstErrorMessage?: string;
     onChange: <K extends LeagueScoringConfigKey>(key: K, next: LeagueScoringConfig[K]) => void;
 };
 
@@ -26,40 +27,27 @@ export const LeagueScoringConfigSection = ({
     sport,
     editable,
     onToggle,
+    errorCount,
+    firstErrorMessage,
     onChange,
 }: LeagueScoringConfigSectionProps) => (
     <AnimatedSection in={visible}>
-        <Paper
+        <CollapsibleEventFormSection
             id="section-league-scoring-config"
-            shadow="xs"
-            radius="md"
-            withBorder
-            p="lg"
-            className="scroll-mt-20 bg-gray-50"
+            title={title}
+            collapsed={collapsed}
+            onToggle={onToggle}
+            errorCount={errorCount}
+            firstErrorMessage={firstErrorMessage}
         >
-            <div className="flex items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold">{title}</h3>
-                <Button
-                    type="button"
-                    variant="subtle"
-                    size="xs"
-                    aria-expanded={!collapsed}
-                    aria-controls="section-league-scoring-config-content"
-                    onClick={onToggle}
-                >
-                    {collapsed ? 'Expand' : 'Collapse'}
-                </Button>
+            <div className="mt-4">
+                <LeagueScoringConfigPanel
+                    value={value}
+                    sport={sport}
+                    editable={editable}
+                    onChange={onChange}
+                />
             </div>
-            <Collapse in={!collapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                <div id="section-league-scoring-config-content" className="mt-4">
-                    <LeagueScoringConfigPanel
-                        value={value}
-                        sport={sport}
-                        editable={editable}
-                        onChange={onChange}
-                    />
-                </div>
-            </Collapse>
-        </Paper>
+        </CollapsibleEventFormSection>
     </AnimatedSection>
 );

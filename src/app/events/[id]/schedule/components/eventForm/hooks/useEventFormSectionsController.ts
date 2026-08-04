@@ -23,6 +23,7 @@ type UseEventFormSectionsControllerParams = {
     setManualPaymentsEnabled: (enabled: boolean) => void;
     setRegistrationQuestionDrafts: Dispatch<SetStateAction<RegistrationQuestionDraft[]>>;
     usesRentalSlots: boolean;
+    sectionErrorCounts?: Record<string, number>;
 };
 
 export const useEventFormSectionsController = ({
@@ -35,6 +36,7 @@ export const useEventFormSectionsController = ({
     setManualPaymentsEnabled,
     setRegistrationQuestionDrafts,
     usesRentalSlots,
+    sectionErrorCounts,
 }: UseEventFormSectionsControllerParams) => {
     const leagueData = eventData.leagueData;
     const isSchedulableEventType = !isAffiliateEvent && supportsScheduleSlotsForEvent(
@@ -70,6 +72,7 @@ export const useEventFormSectionsController = ({
             divisionSettingsSectionLabel: 'Divisions',
             showScoringConfigSection,
             showScheduleConfig,
+            sectionErrorCounts,
         })),
         [
             scoringConfigSectionLabel,
@@ -78,6 +81,7 @@ export const useEventFormSectionsController = ({
             showScheduleConfig,
             showScoringConfigSection,
             showStaffSection,
+            sectionErrorCounts,
         ],
     );
     const navigation = useEventFormSectionNavigation({

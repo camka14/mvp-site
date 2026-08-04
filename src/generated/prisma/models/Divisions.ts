@@ -199,6 +199,7 @@ export type DivisionsCountAggregateOutputType = {
   playoffTeamCount: number
   playoffPlacementDivisionIds: number
   standingsOverrides: number
+  phaseSettings: number
   gamesPerOpponent: number
   restTimeMinutes: number
   usesSets: number
@@ -416,6 +417,7 @@ export type DivisionsCountAggregateInputType = {
   playoffTeamCount?: true
   playoffPlacementDivisionIds?: true
   standingsOverrides?: true
+  phaseSettings?: true
   gamesPerOpponent?: true
   restTimeMinutes?: true
   usesSets?: true
@@ -564,6 +566,7 @@ export type DivisionsGroupByOutputType = {
   playoffTeamCount: number | null
   playoffPlacementDivisionIds: string[]
   standingsOverrides: runtime.JsonValue | null
+  phaseSettings: runtime.JsonValue | null
   gamesPerOpponent: number | null
   restTimeMinutes: number | null
   usesSets: boolean | null
@@ -648,6 +651,7 @@ export type DivisionsWhereInput = {
   playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   playoffPlacementDivisionIds?: Prisma.StringNullableListFilter<"Divisions">
   standingsOverrides?: Prisma.JsonNullableFilter<"Divisions">
+  phaseSettings?: Prisma.JsonNullableFilter<"Divisions">
   gamesPerOpponent?: Prisma.IntNullableFilter<"Divisions"> | number | null
   restTimeMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
   usesSets?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
@@ -709,6 +713,7 @@ export type DivisionsOrderByWithRelationInput = {
   playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
   playoffPlacementDivisionIds?: Prisma.SortOrder
   standingsOverrides?: Prisma.SortOrderInput | Prisma.SortOrder
+  phaseSettings?: Prisma.SortOrderInput | Prisma.SortOrder
   gamesPerOpponent?: Prisma.SortOrderInput | Prisma.SortOrder
   restTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   usesSets?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -773,6 +778,7 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   playoffPlacementDivisionIds?: Prisma.StringNullableListFilter<"Divisions">
   standingsOverrides?: Prisma.JsonNullableFilter<"Divisions">
+  phaseSettings?: Prisma.JsonNullableFilter<"Divisions">
   gamesPerOpponent?: Prisma.IntNullableFilter<"Divisions"> | number | null
   restTimeMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
   usesSets?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
@@ -834,6 +840,7 @@ export type DivisionsOrderByWithAggregationInput = {
   playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
   playoffPlacementDivisionIds?: Prisma.SortOrder
   standingsOverrides?: Prisma.SortOrderInput | Prisma.SortOrder
+  phaseSettings?: Prisma.SortOrderInput | Prisma.SortOrder
   gamesPerOpponent?: Prisma.SortOrderInput | Prisma.SortOrder
   restTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   usesSets?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -903,6 +910,7 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   playoffTeamCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   playoffPlacementDivisionIds?: Prisma.StringNullableListFilter<"Divisions">
   standingsOverrides?: Prisma.JsonNullableWithAggregatesFilter<"Divisions">
+  phaseSettings?: Prisma.JsonNullableWithAggregatesFilter<"Divisions">
   gamesPerOpponent?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   restTimeMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   usesSets?: Prisma.BoolNullableWithAggregatesFilter<"Divisions"> | boolean | null
@@ -964,6 +972,7 @@ export type DivisionsCreateInput = {
   playoffTeamCount?: number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsCreateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: number | null
   restTimeMinutes?: number | null
   usesSets?: boolean | null
@@ -1025,6 +1034,7 @@ export type DivisionsUncheckedCreateInput = {
   playoffTeamCount?: number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsCreateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: number | null
   restTimeMinutes?: number | null
   usesSets?: boolean | null
@@ -1086,6 +1096,7 @@ export type DivisionsUpdateInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1147,6 +1158,7 @@ export type DivisionsUncheckedUpdateInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1208,6 +1220,7 @@ export type DivisionsCreateManyInput = {
   playoffTeamCount?: number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsCreateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: number | null
   restTimeMinutes?: number | null
   usesSets?: boolean | null
@@ -1269,6 +1282,7 @@ export type DivisionsUpdateManyMutationInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1330,6 +1344,7 @@ export type DivisionsUncheckedUpdateManyInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  phaseSettings?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1399,6 +1414,7 @@ export type DivisionsCountOrderByAggregateInput = {
   playoffTeamCount?: Prisma.SortOrder
   playoffPlacementDivisionIds?: Prisma.SortOrder
   standingsOverrides?: Prisma.SortOrder
+  phaseSettings?: Prisma.SortOrder
   gamesPerOpponent?: Prisma.SortOrder
   restTimeMinutes?: Prisma.SortOrder
   usesSets?: Prisma.SortOrder
@@ -1709,6 +1725,7 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  phaseSettings?: boolean
   gamesPerOpponent?: boolean
   restTimeMinutes?: boolean
   usesSets?: boolean
@@ -1770,6 +1787,7 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  phaseSettings?: boolean
   gamesPerOpponent?: boolean
   restTimeMinutes?: boolean
   usesSets?: boolean
@@ -1831,6 +1849,7 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  phaseSettings?: boolean
   gamesPerOpponent?: boolean
   restTimeMinutes?: boolean
   usesSets?: boolean
@@ -1892,6 +1911,7 @@ export type DivisionsSelectScalar = {
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  phaseSettings?: boolean
   gamesPerOpponent?: boolean
   restTimeMinutes?: boolean
   usesSets?: boolean
@@ -1934,7 +1954,7 @@ export type DivisionsSelectScalar = {
   teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "sortOrder" | "eventId" | "organizationId" | "scope" | "status" | "sourceDivisionId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "skillDivisionTypeId" | "ageDivisionTypeId" | "ratingType" | "gender" | "description" | "registrationUrl" | "sourceUrl" | "lastVerifiedAt" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "sortOrder" | "eventId" | "organizationId" | "scope" | "status" | "sourceDivisionId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "phaseSettings" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "skillDivisionTypeId" | "ageDivisionTypeId" | "ratingType" | "gender" | "description" | "registrationUrl" | "sourceUrl" | "lastVerifiedAt" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1958,6 +1978,7 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     playoffTeamCount: number | null
     playoffPlacementDivisionIds: string[]
     standingsOverrides: runtime.JsonValue | null
+    phaseSettings: runtime.JsonValue | null
     gamesPerOpponent: number | null
     restTimeMinutes: number | null
     usesSets: boolean | null
@@ -2439,6 +2460,7 @@ export interface DivisionsFieldRefs {
   readonly playoffTeamCount: Prisma.FieldRef<"Divisions", 'Int'>
   readonly playoffPlacementDivisionIds: Prisma.FieldRef<"Divisions", 'String[]'>
   readonly standingsOverrides: Prisma.FieldRef<"Divisions", 'Json'>
+  readonly phaseSettings: Prisma.FieldRef<"Divisions", 'Json'>
   readonly gamesPerOpponent: Prisma.FieldRef<"Divisions", 'Int'>
   readonly restTimeMinutes: Prisma.FieldRef<"Divisions", 'Int'>
   readonly usesSets: Prisma.FieldRef<"Divisions", 'Boolean'>

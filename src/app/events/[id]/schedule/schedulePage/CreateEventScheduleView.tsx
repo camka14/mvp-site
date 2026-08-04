@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode, type Ref } from 'react';
+import { useCallback, useEffect, useState, type ReactNode, type Ref } from 'react';
 import {
   Alert,
   Button,
@@ -133,8 +133,16 @@ export default function CreateEventScheduleView({
 }: CreateEventScheduleViewProps) {
   const [directTemplateId, setDirectTemplateId] = useState<string | null>(null);
   const [dismissedDirectTemplateId, setDismissedDirectTemplateId] = useState<string | null>(null);
+  const validityKey = `${templateSeedKey}:${event?.$id ?? ''}`;
+  const [validity, setValidity] = useState({ key: '', isValid: false });
+  const canCreateEvent = validity.key === validityKey && validity.isValid;
+  const handleValidityChange = useCallback((isValid: boolean) => {
+    setValidity({ key: validityKey, isValid });
+  }, [validityKey]);
   useEffect(() => {
     const nextTemplateId = new URLSearchParams(window.location.search).get('templateId')?.trim() || null;
+    // This is a one-time synchronization from the browser URL after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDirectTemplateId(nextTemplateId);
     setDismissedDirectTemplateId((current) => (
       current && current !== nextTemplateId ? null : current
@@ -187,7 +195,7 @@ export default function CreateEventScheduleView({
                 color="green"
                 onClick={onPublish}
                 loading={publishing}
-                disabled={reschedulingMatches || cancelling}
+                disabled={!canCreateEvent || reschedulingMatches || cancelling}
               >
                 {createButtonLabel}
               </Button>
@@ -356,6 +364,8 @@ export default function CreateEventScheduleView({
               isOpen
               onClose={onEventFormClose}
               onDirtyStateChange={onDirtyStateChange}
+              onValidityChange={handleValidityChange}
+              onSubmitRequest={onPublish}
               currentUser={user}
               organization={organization}
               defaultLocation={defaultLocation}

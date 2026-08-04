@@ -90,9 +90,22 @@ export const apiRequest = async <T>(path: string, options: ApiRequestOptions = {
   const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => null);
 
   if (!res.ok) {
-    const message = (data && typeof data === 'object' && 'error' in data)
+    const baseMessage = (data && typeof data === 'object' && 'error' in data)
       ? String((data as { error?: string }).error)
       : res.statusText || 'Request failed';
+    const rawFieldDetails = data && typeof data === 'object'
+      ? ('fields' in data && Array.isArray((data as { fields?: unknown[] }).fields)
+          ? (data as { fields: unknown[] }).fields
+          : 'unknownKeys' in data && Array.isArray((data as { unknownKeys?: unknown[] }).unknownKeys)
+            ? (data as { unknownKeys: unknown[] }).unknownKeys
+            : [])
+      : [];
+    const fieldDetails = rawFieldDetails
+          .map((field) => String(field).trim())
+          .filter(Boolean);
+    const message = fieldDetails.length > 0
+      ? `${baseMessage} Fields: ${fieldDetails.join(', ')}.`
+      : baseMessage;
     throw new ApiRequestError(message, res.status, data);
   }
 

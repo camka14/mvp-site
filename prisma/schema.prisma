@@ -783,6 +783,7 @@ model Divisions {
   playoffTeamCount                    Int?
   playoffPlacementDivisionIds         String[]           @default([])
   standingsOverrides                  Json?
+  phaseSettings                       Json?
   gamesPerOpponent                    Int?
   restTimeMinutes                     Int?
   usesSets                            Boolean?

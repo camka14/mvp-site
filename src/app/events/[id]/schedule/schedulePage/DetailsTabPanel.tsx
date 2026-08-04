@@ -15,6 +15,8 @@ type DetailsTabPanelProps = {
   isActive: boolean;
   onClose: () => void;
   onDirtyStateChange: (hasChanges: boolean) => void;
+  onValidityChange?: (isValid: boolean) => void;
+  onSubmitRequest?: () => void;
   event: Event;
   organization: Organization | null;
   defaultLocation?: DefaultLocation;
@@ -34,6 +36,8 @@ export default function DetailsTabPanel({
   isActive,
   onClose,
   onDirtyStateChange,
+  onValidityChange,
+  onSubmitRequest,
   event,
   organization,
   defaultLocation,
@@ -53,6 +57,8 @@ export default function DetailsTabPanel({
           isOpen={isActive}
           onClose={onClose}
           onDirtyStateChange={onDirtyStateChange}
+          onValidityChange={onValidityChange}
+          onSubmitRequest={onSubmitRequest}
           currentUser={user}
           event={event}
           organization={organization}

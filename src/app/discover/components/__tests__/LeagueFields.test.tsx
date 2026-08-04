@@ -123,6 +123,119 @@ describe('LeagueFields', () => {
     expect(onUpdateSlot).toHaveBeenCalledWith(0, expect.objectContaining({ repeating: false }));
   });
 
+  it('renders only the slot type owned by a single-style Simple Setup page', () => {
+    const fixedSlot: LeagueSlotForm = {
+      ...baseSlot,
+      key: 'slot-2',
+      repeating: false,
+      startDate: '2026-08-10T09:00:00',
+      endDate: '2026-08-10T10:00:00',
+    };
+
+    const { unmount } = renderWithMantine(
+      <LeagueFields
+        leagueData={{ gamesPerOpponent: 1, includePlayoffs: false, usesSets: false, restTimeMinutes: 0 }}
+        onLeagueDataChange={noop}
+        slots={[baseSlot, fixedSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        timeslotMode="WEEKLY"
+        unstyled
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Weekly Timeslots' })).toBeInTheDocument();
+    expect(screen.getByText('Timeslot #1')).toBeInTheDocument();
+    expect(screen.queryByText('Timeslot #2')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Repeats weekly')).not.toBeInTheDocument();
+
+    unmount();
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{ gamesPerOpponent: 1, includePlayoffs: false, usesSets: false, restTimeMinutes: 0 }}
+        onLeagueDataChange={noop}
+        slots={[baseSlot, fixedSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        timeslotMode="FIXED"
+        unstyled
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'One-time Timeslots' })).toBeInTheDocument();
+    expect(screen.queryByText('Timeslot #1')).not.toBeInTheDocument();
+    expect(screen.getByText('Timeslot #2')).toBeInTheDocument();
+  });
+
+  it('groups mixed timeslots and creates the requested slot type', () => {
+    const onAddSlot = jest.fn();
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{ gamesPerOpponent: 1, includePlayoffs: false, usesSets: false, restTimeMinutes: 0 }}
+        onLeagueDataChange={noop}
+        slots={[
+          baseSlot,
+          {
+            ...baseSlot,
+            key: 'slot-2',
+            repeating: false,
+            startDate: '2026-08-10T09:00:00',
+            endDate: '2026-08-10T10:00:00',
+          },
+        ]}
+        onAddSlot={onAddSlot}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        timeslotMode="MIXED"
+        unstyled
+      />,
+    );
+
+    expect(screen.getByText('Weekly repeating timeslots')).toBeInTheDocument();
+    expect(screen.getByText('One-time timeslots')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Weekly Timeslot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add One-time Timeslot' }));
+    expect(onAddSlot).toHaveBeenNthCalledWith(1, true);
+    expect(onAddSlot).toHaveBeenNthCalledWith(2, false);
+  });
+
+  it('shows fixed-window resource assignment without editable time controls or an outer paper', () => {
+    const { container } = renderWithMantine(
+      <LeagueFields
+        leagueData={{ gamesPerOpponent: 1, includePlayoffs: false, usesSets: false, restTimeMinutes: 0 }}
+        onLeagueDataChange={noop}
+        slots={[{
+          ...baseSlot,
+          repeating: false,
+          startDate: '2026-08-10T09:00:00',
+          endDate: '2026-08-10T10:00:00',
+        }]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        timeslotMode="FIXED_WINDOW"
+        unstyled
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Fixed event window' })).toBeInTheDocument();
+    expect(screen.getByText(/updates automatically when the event date or time changes/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Add .*Timeslot/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Repeats weekly')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Start Date')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.mantine-Paper-root')).toHaveLength(1);
+  });
+
   it('renders conflict warning when conflicts are present', () => {
     renderWithMantine(
       <LeagueFields
@@ -754,13 +867,12 @@ describe('LeagueFields', () => {
       />,
     );
 
-    expect(screen.getByText(/Playoff team count is required/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Playoff Team Count')).toHaveValue('');
+    expect(screen.getByText('At least 2 teams need to be in the bracket.')).toBeInTheDocument();
   });
 
-  it('allows zero and blank match duration values while warning', () => {
-    const onLeagueDataChange = jest.fn();
-
-    const warningRender = renderWithMantine(
+  it('does not show a standalone match duration for timed sports', () => {
+    renderWithMantine(
       <LeagueFields
         leagueData={{
           gamesPerOpponent: 1,
@@ -769,7 +881,7 @@ describe('LeagueFields', () => {
           matchDurationMinutes: 0,
           restTimeMinutes: 0,
         }}
-        onLeagueDataChange={onLeagueDataChange}
+        onLeagueDataChange={jest.fn()}
         slots={[baseSlot]}
         onAddSlot={noop}
         onUpdateSlot={noop}
@@ -779,34 +891,8 @@ describe('LeagueFields', () => {
       />,
     );
 
-    expect(screen.getByText(/Match duration should be greater than 0/i)).toBeInTheDocument();
-    warningRender.unmount();
-
-    renderWithMantine(
-      <LeagueFields
-        leagueData={{
-          gamesPerOpponent: 1,
-          includePlayoffs: false,
-          usesSets: false,
-          matchDurationMinutes: 60,
-          restTimeMinutes: 0,
-        }}
-        onLeagueDataChange={onLeagueDataChange}
-        slots={[baseSlot]}
-        onAddSlot={noop}
-        onUpdateSlot={noop}
-        onRemoveSlot={noop}
-        fields={[field]}
-        fieldsLoading={false}
-      />,
-    );
-
-    const matchDurationInput = getLabeledInput(/Match Duration \(minutes\)/i);
-    fireEvent.change(matchDurationInput, { target: { value: '0' } });
-    expect(onLeagueDataChange).toHaveBeenLastCalledWith({ matchDurationMinutes: 0 });
-
-    fireEvent.change(matchDurationInput, { target: { value: '' } });
-    expect(onLeagueDataChange).toHaveBeenLastCalledWith({ matchDurationMinutes: undefined });
+    expect(screen.queryByLabelText(/Match Duration/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Match duration should be greater than 0/i)).not.toBeInTheDocument();
   });
 
   it('allows zero and blank set duration values while warning', () => {

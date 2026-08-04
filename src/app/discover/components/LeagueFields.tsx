@@ -6,20 +6,20 @@ import {
   Select as MantineSelect,
   MultiSelect as MantineMultiSelect,
   Button,
-  Card,
   Group,
   Text,
   Alert,
   Loader,
   Stack,
   Badge,
-  SimpleGrid,
   Paper,
   Title,
   TextInput,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
+import { BRACKET_TEAM_COUNT_ERROR } from '@/app/events/[id]/schedule/components/eventForm/divisionMessages';
+import { parseOptionalWholeNumber } from '@/app/events/[id]/schedule/components/eventForm/divisionNumbers';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFacilityScopedFieldDisplayName, getFieldDisplayName } from '@/lib/fieldUtils';
@@ -631,13 +631,15 @@ export type LeagueFieldOption = {
   rentalHostRequiredTemplateIds?: string[];
 };
 
+export type LeagueTimeslotMode = 'ALL' | 'WEEKLY' | 'FIXED' | 'MIXED' | 'FIXED_WINDOW';
+
 interface LeagueFieldsProps {
   leagueData: LeagueConfig;
   sport?: Sport;
   participantCount?: number;
   onLeagueDataChange: (updates: Partial<LeagueConfig>) => void;
   slots: LeagueSlotForm[];
-  onAddSlot: () => void;
+  onAddSlot: (repeating?: boolean) => void;
   onUpdateSlot: (index: number, updates: Partial<LeagueSlotForm>) => void;
   onRemoveSlot: (index: number) => void;
   fields: Field[];
@@ -645,6 +647,7 @@ interface LeagueFieldsProps {
   fieldOptions?: LeagueFieldOption[];
   divisionOptions?: { value: string; label: string }[];
   eventStartDate?: string;
+  timeslotMode?: LeagueTimeslotMode;
   lockSlotDivisions?: boolean;
   lockedDivisionKeys?: string[];
   readOnly?: boolean;
@@ -673,6 +676,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   fieldOptions,
   divisionOptions = [],
   eventStartDate,
+  timeslotMode = 'ALL',
   lockSlotDivisions = false,
   lockedDivisionKeys = [],
   readOnly = false,
@@ -749,6 +753,22 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     }
     return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
   }, [eventStartDate]);
+  const visibleSlotEntries = useMemo(() => {
+    const entries = slots.map((slot, index) => ({ slot, index }));
+    if (timeslotMode === 'WEEKLY') {
+      return entries.filter(({ slot }) => slot.repeating !== false);
+    }
+    if (timeslotMode === 'FIXED' || timeslotMode === 'FIXED_WINDOW') {
+      return entries.filter(({ slot }) => slot.repeating === false);
+    }
+    if (timeslotMode === 'MIXED') {
+      return [
+        ...entries.filter(({ slot }) => slot.repeating !== false),
+        ...entries.filter(({ slot }) => slot.repeating === false),
+      ];
+    }
+    return entries;
+  }, [slots, timeslotMode]);
   const [fieldSearchBySlot, setFieldSearchBySlot] = useState<Record<string, string>>({});
   const [fieldAnchorBySlot, setFieldAnchorBySlot] = useState<Record<string, string>>({});
   const [resourceGroupExpandedBySlot, setResourceGroupExpandedBySlot] = useState<Record<string, boolean>>({});
@@ -930,8 +950,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             <Title order={4} mb="md">
               {configurationTitle}
             </Title>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-end">
-              <div>
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="w-full sm:w-48 sm:flex-none">
                 <NumberInput
                   label="Games per Opponent"
                   min={1}
@@ -943,29 +963,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                 />
               </div>
 
-              {!requiresSets && (
-                <div>
-                  <NumberInput
-                    label="Match Duration (minutes)"
-                    min={0}
-                    max={MAX_STANDARD_NUMBER}
-                    step={5}
-                    value={leagueData.matchDurationMinutes ?? ''}
-                    onChange={(value) => onLeagueDataChange({ matchDurationMinutes: parseOptionalDurationMinutes(value) })}
-                    clampBehavior="none"
-                    maw={220}
-                  />
-                  {durationNeedsWarning(leagueData.matchDurationMinutes) ? (
-                    <Text size="xs" c="orange" mt={4}>
-                      Match duration should be greater than 0 before scheduling.
-                    </Text>
-                  ) : null}
-                </div>
-              )}
-
-              <div>
+              <div className="w-full sm:w-56 sm:flex-none">
                 <NumberInput
-                  label="Rest Time Between Matches (minutes)"
+                  label="Rest between matches"
+                  suffix=" min"
                   min={0}
                   max={MAX_STANDARD_NUMBER}
                   step={5}
@@ -983,7 +984,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
               {requiresSets && (
                 <>
-                  <div>
+                  <div className="w-full sm:w-48 sm:flex-none">
                     <MantineSelect
                       label="Sets per Match"
                       value={String(setsPerMatch)}
@@ -997,7 +998,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       maw={220}
                     />
                   </div>
-                  <div>
+                  <div className="w-full sm:w-56 sm:flex-none">
                     <NumberInput
                       label="Set Duration (minutes)"
                       min={0}
@@ -1034,19 +1035,18 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   label="Playoff Team Count"
                   min={2}
                   max={MAX_STANDARD_NUMBER}
-                  value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                  value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : ''}
                   onChange={(value) => {
-                    const numeric = typeof value === 'number' ? value : Number(value);
                     onLeagueDataChange({
-                      playoffTeamCount: Number.isFinite(numeric) ? numeric : undefined,
+                      playoffTeamCount: parseOptionalWholeNumber(value),
                     });
                   }}
-                  clampBehavior="strict"
+                  clampBehavior="none"
                   maw={220}
                   error={
                     leagueData.includePlayoffs &&
                     !(typeof leagueData.playoffTeamCount === 'number' && leagueData.playoffTeamCount >= 2)
-                      ? 'Playoff team count is required'
+                      ? BRACKET_TEAM_COUNT_ERROR
                       : undefined
                   }
                 />
@@ -1062,7 +1062,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               <Text size="sm" c="dimmed" mb="sm">
                 Configure the points required to win each set.
               </Text>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" className="md:items-end">
+              <div className="flex flex-wrap items-end gap-4">
                 {Array.from({ length: setsPerMatch }).map((_, idx) => (
                   <NumberInput
                     key={`points-set-${idx}`}
@@ -1072,10 +1072,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     value={pointsToVictory[idx] ?? 21}
                     onChange={(value) => handlePointChange(idx, value)}
                     clampBehavior="strict"
-                    maw={160}
+                    className="w-full sm:w-40 sm:flex-none"
                   />
                 ))}
-              </SimpleGrid>
+              </div>
             </div>
           )}
         </div>
@@ -1085,11 +1085,42 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         <div>
           <div className="flex items-center justify-between mb-4 gap-3">
             <Title order={4} className="m-0">
-              Weekly Timeslots
+              {timeslotMode === 'FIXED_WINDOW'
+                ? 'Fixed event window'
+                : timeslotMode === 'FIXED'
+                  ? 'One-time Timeslots'
+                  : timeslotMode === 'MIXED'
+                    ? 'Schedule Timeslots'
+                    : 'Weekly Timeslots'}
             </Title>
-            <Button variant="light" onClick={onAddSlot} disabled={readOnly}>
-              Add Timeslot
-            </Button>
+            {timeslotMode === 'FIXED_WINDOW' ? null : timeslotMode === 'MIXED' ? (
+              <Group gap="xs">
+                <Button variant="light" onClick={() => onAddSlot(true)} disabled={readOnly}>
+                  Add Weekly Timeslot
+                </Button>
+                <Button variant="light" onClick={() => onAddSlot(false)} disabled={readOnly}>
+                  Add One-time Timeslot
+                </Button>
+              </Group>
+            ) : (
+              <Button
+                variant="light"
+                onClick={() => {
+                  if (timeslotMode === 'ALL') {
+                    onAddSlot();
+                    return;
+                  }
+                  onAddSlot(timeslotMode !== 'FIXED');
+                }}
+                disabled={readOnly}
+              >
+                {timeslotMode === 'ALL'
+                  ? 'Add Timeslot'
+                  : timeslotMode === 'FIXED'
+                    ? 'Add One-time Timeslot'
+                    : 'Add Weekly Timeslot'}
+              </Button>
+            )}
           </div>
 
           {fieldsLoading && (
@@ -1105,14 +1136,16 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             </Alert>
           )}
 
-          {slots.length === 0 && (
+          {visibleSlotEntries.length === 0 && (
             <Alert color="blue" radius="md" className="mb-4">
-              Add at least one weekly timeslot so we know where to schedule matches.
+              {timeslotMode === 'FIXED'
+                ? 'Add at least one one-time timeslot so we know where to schedule matches.'
+                : 'Add at least one weekly timeslot so we know where to schedule matches.'}
             </Alert>
           )}
 
           <Stack gap="md">
-            {slots.map((slot, index) => {
+            {visibleSlotEntries.map(({ slot, index }, visibleIndex) => {
               const conflictCount = slot.conflicts.length;
               const slotFieldIds = normalizeSlotFieldIds(slot);
               const rentalFieldIds = new Set(
@@ -1218,14 +1251,19 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
             const hasConflicts = conflictCount > 0;
             const slotTimingReadOnly = readOnly || slot.rentalLocked === true;
             const resourceGroups = buildSlotResourceGroups(fieldOptionsForSlot, fieldSearch);
+            const previousVisibleSlot = visibleSlotEntries[visibleIndex - 1]?.slot;
+            const mixedGroupLabel = isRepeating ? 'Weekly repeating timeslots' : 'One-time timeslots';
+            const showMixedGroupLabel = timeslotMode === 'MIXED'
+              && (!previousVisibleSlot || (previousVisibleSlot.repeating !== false) !== isRepeating);
             return (
-              <Card
-                key={slot.key}
-                shadow="xs"
-                radius="md"
-                padding="lg"
-                withBorder
-                className={hasConflicts ? 'border-yellow-500 bg-yellow-50/40' : undefined}
+              <React.Fragment key={slot.key}>
+              {showMixedGroupLabel ? (
+                <Text fw={700} size="sm" mt={visibleIndex === 0 ? 0 : 'md'}>
+                  {mixedGroupLabel}
+                </Text>
+              ) : null}
+              <div
+                className={`border-t border-gray-200 pt-5 first:border-t-0 first:pt-0 ${hasConflicts ? 'bg-yellow-50/40' : ''}`}
               >
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
@@ -1235,14 +1273,14 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     </Group>
                     <Group gap="xs">
                       {slot.checking && <Loader size="sm" />}
-                      <Button
+                      {timeslotMode === 'FIXED_WINDOW' ? null : <Button
                         variant="subtle"
                         color="red"
                         onClick={() => onRemoveSlot(index)}
                         disabled={slots.length === 1 || readOnly}
                       >
                         Remove
-                      </Button>
+                      </Button>}
                     </Group>
                   </div>
 
@@ -1260,7 +1298,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                       <div
                         className={`overflow-hidden rounded-xl border bg-white shadow-sm ${fieldMissing && !resourcesReadOnly ? 'border-red-500' : 'border-gray-300'}`}
                       >
-                        <div className="max-h-44 overflow-y-auto [scrollbar-gutter:stable]">
+                        <div className="max-h-44 overflow-y-auto">
                           {resourceGroups.length > 0 ? (
                             <Stack gap={0}>
                               {resourceGroups.map((group) => {
@@ -1376,7 +1414,23 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                         maw={360}
                       />
 
-                      {isRepeating ? (
+                      {timeslotMode === 'FIXED_WINDOW' ? (
+                        <div className="rounded-lg bg-gray-50 p-3">
+                          <Text fw={600} size="sm">Event time range</Text>
+                          <Text size="sm" c="dimmed">
+                            {slotStartDate
+                              ? `${formatDisplayDate(slotStartDate)} at ${formatClockTime(slotStartDate)}`
+                              : 'Start time is not set'}
+                            {' to '}
+                            {slotEndDate
+                              ? `${formatDisplayDate(slotEndDate)} at ${formatClockTime(slotEndDate)}`
+                              : 'end time is not set'}
+                          </Text>
+                          <Text size="xs" c="dimmed" mt={4}>
+                            This range updates automatically when the event date or time changes.
+                          </Text>
+                        </div>
+                      ) : isRepeating ? (
                         <>
                           <MantineMultiSelect
                             label="Days of Week"
@@ -1491,12 +1545,12 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     </div>
                   </div>
 
-                  <Switch
+                  {timeslotMode === 'ALL' || timeslotMode === 'MIXED' ? <Switch
                     label="Repeats weekly"
                     checked={slot.repeating !== false}
                     onChange={(event) => onUpdateSlot(index, { repeating: event.currentTarget.checked })}
                     disabled={slotTimingReadOnly}
-                  />
+                  /> : null}
 
                 {conflictCount > 0 && (
                   <Alert color="yellow" radius="md">
@@ -1536,7 +1590,8 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                     </Alert>
                   )}
                 </div>
-              </Card>
+              </div>
+              </React.Fragment>
             );
           })}
           </Stack>

@@ -8578,6 +8578,7 @@ export const DivisionsScalarFieldEnum = {
   playoffTeamCount: 'playoffTeamCount',
   playoffPlacementDivisionIds: 'playoffPlacementDivisionIds',
   standingsOverrides: 'standingsOverrides',
+  phaseSettings: 'phaseSettings',
   gamesPerOpponent: 'gamesPerOpponent',
   restTimeMinutes: 'restTimeMinutes',
   usesSets: 'usesSets',

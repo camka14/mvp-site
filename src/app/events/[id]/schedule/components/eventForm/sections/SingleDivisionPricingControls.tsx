@@ -17,6 +17,7 @@ import {
 
 import type { EventFormValues } from '../formTypes';
 import { AnimatedLayoutSection, AnimatedSection } from '../components/AnimatedSection';
+import { DIVISION_PRICE_FIELD_CLASS } from '../divisionLayout';
 
 type SingleDivisionPricingControlsProps = {
     visible: boolean;
@@ -57,14 +58,14 @@ export const SingleDivisionPricingControls = ({
         return (
             <AnimatedLayoutSection
                 in={visible}
-                className="md:col-span-3 md:col-start-1"
+                className={DIVISION_PRICE_FIELD_CLASS}
             >
                 <Controller
                     name="price"
                     control={control}
                     render={({ field }) => (
                         <CentsInput
-                            label="Price"
+                            label="Registration price"
                             maxCents={maxPriceCents}
                             value={field.value}
                             disabled={priceImmutable}
@@ -82,7 +83,7 @@ export const SingleDivisionPricingControls = ({
     return (
         <AnimatedLayoutSection
             in={visible}
-            className="md:col-span-3 md:col-start-1"
+            className={DIVISION_PRICE_FIELD_CLASS}
         >
             <Controller
                 name="price"

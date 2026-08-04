@@ -3,8 +3,7 @@
 import { Controller, type Control } from 'react-hook-form';
 import {
     Alert,
-    Badge,
-    Checkbox,
+    Button,
     NumberInput,
     Radio,
     Select,
@@ -32,8 +31,8 @@ type SimpleSetupPlanningPageProps = {
     capabilities: EventSetupCapabilities;
     choices: EventSetupChoices;
     includePlayoffs: boolean;
-    fieldCount: number;
-    setFieldCount: (count: number) => void;
+    hasStripeAccount: boolean;
+    connectingStripe: boolean;
     onChoicesChange: (updates: Partial<EventSetupChoices>) => void;
     onEventTypeChange: (nextType: Event['eventType'], applyValue: (nextType: Event['eventType']) => void) => void;
     onExternalRegistrationChange: (checked: boolean, applyValue: (checked: boolean) => void) => void;
@@ -41,10 +40,38 @@ type SimpleSetupPlanningPageProps = {
     onIncludePlayoffsChange: (checked: boolean) => void;
     onIncludePoolPlayChange: (checked: boolean) => void;
     onSplitLeaguePlayoffDivisionsChange: (checked: boolean, applyValue: (checked: boolean) => void) => void;
+    onConnectStripe: () => void;
+    onRegistrationPaymentModeChange: (mode: 'ONLINE' | 'MANUAL') => void;
     isImmutableField: (key: keyof Event) => boolean;
 };
 
 const choiceCardClassName = 'rounded-md border border-gray-200 bg-gray-50 p-4';
+const scheduleStyleOptions: Array<{
+    value: EventSetupChoices['scheduleStyle'];
+    label: string;
+    description: string;
+}> = [
+    {
+        value: 'FIXED_WINDOW',
+        label: 'Fixed event window',
+        description: 'Use one non-repeating timeslot that always matches the event start and end.',
+    },
+    {
+        value: 'WEEKLY_SLOTS',
+        label: 'Weekly repeating timeslots',
+        description: 'Use the same selected weekdays and times each week during the event.',
+    },
+    {
+        value: 'FIXED_SLOTS',
+        label: 'Fixed one-time timeslots',
+        description: 'Add individual dates and times that do not repeat.',
+    },
+    {
+        value: 'MIXED_SLOTS',
+        label: 'Mixed repeating and fixed timeslots',
+        description: 'Combine weekly availability with one-time dates or exceptions.',
+    },
+];
 
 export const SimpleSetupPlanningPage = ({
     pageId,
@@ -54,8 +81,8 @@ export const SimpleSetupPlanningPage = ({
     capabilities,
     choices,
     includePlayoffs,
-    fieldCount,
-    setFieldCount,
+    hasStripeAccount,
+    connectingStripe,
     onChoicesChange,
     onEventTypeChange,
     onExternalRegistrationChange,
@@ -63,6 +90,8 @@ export const SimpleSetupPlanningPage = ({
     onIncludePlayoffsChange,
     onIncludePoolPlayChange,
     onSplitLeaguePlayoffDivisionsChange,
+    onConnectStripe,
+    onRegistrationPaymentModeChange,
     isImmutableField,
 }: SimpleSetupPlanningPageProps) => {
     if (pageId === 'format') {
@@ -74,46 +103,53 @@ export const SimpleSetupPlanningPage = ({
                         These choices determine which setup pages and BracketIQ tools apply to this event.
                     </Text>
                 </div>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-                    <Controller
-                        name="eventType"
-                        control={control}
-                        render={({ field, fieldState }) => (
-                            <Select
-                                label="Event type"
-                                description="Tryouts are available only to organizations with club features enabled."
-                                data={eventTypeOptions}
-                                value={field.value}
-                                disabled={isImmutableField('eventType')}
-                                error={fieldState.error?.message as string | undefined}
-                                onChange={(value) => {
-                                    if (!value || isImmutableField('eventType')) return;
-                                    onEventTypeChange(value as Event['eventType'], field.onChange);
-                                }}
-                            />
-                        )}
-                    />
-                    <Controller
-                        name="isAffiliateEvent"
-                        control={control}
-                        render={({ field }) => (
-                            <Radio.Group
-                                label="Registration destination"
-                                description="External listings send participants to the official registration website."
-                                value={field.value ? 'EXTERNAL' : 'BRACKET_IQ'}
-                                onChange={(value) => {
-                                    if (isImmutableField('affiliateUrl')) return;
-                                    onExternalRegistrationChange(value === 'EXTERNAL', field.onChange);
-                                }}
-                            >
-                                <Stack gap="xs" mt="sm">
-                                    <Radio value="BRACKET_IQ" label="BracketIQ registration" />
-                                    <Radio value="EXTERNAL" label="External registration" />
-                                </Stack>
-                            </Radio.Group>
-                        )}
-                    />
-                </SimpleGrid>
+                <div
+                    data-testid="simple-setup-format-layout"
+                    className="flex flex-wrap items-start gap-x-8 gap-y-6"
+                >
+                    <div className="w-full sm:w-[22rem] sm:flex-none">
+                        <Controller
+                            name="eventType"
+                            control={control}
+                            render={({ field, fieldState }) => (
+                                <Select
+                                    label="Event type"
+                                    description="Tryouts are available only to organizations with club features enabled."
+                                    data={eventTypeOptions}
+                                    value={field.value}
+                                    disabled={isImmutableField('eventType')}
+                                    error={fieldState.error?.message as string | undefined}
+                                    onChange={(value) => {
+                                        if (!value || isImmutableField('eventType')) return;
+                                        onEventTypeChange(value as Event['eventType'], field.onChange);
+                                    }}
+                                />
+                            )}
+                        />
+                    </div>
+                    <div className="w-full min-w-0 sm:w-auto sm:min-w-[22rem] sm:flex-none">
+                        <Controller
+                            name="isAffiliateEvent"
+                            control={control}
+                            render={({ field }) => (
+                                <Radio.Group
+                                    label="Registration destination"
+                                    description="External listings send participants to the official registration website."
+                                    value={field.value ? 'EXTERNAL' : 'BRACKET_IQ'}
+                                    onChange={(value) => {
+                                        if (isImmutableField('affiliateUrl')) return;
+                                        onExternalRegistrationChange(value === 'EXTERNAL', field.onChange);
+                                    }}
+                                >
+                                    <Stack gap="xs" mt="sm">
+                                        <Radio value="BRACKET_IQ" label="BracketIQ registration" />
+                                        <Radio value="EXTERNAL" label="External registration" />
+                                    </Stack>
+                                </Radio.Group>
+                            )}
+                        />
+                    </div>
+                </div>
                 {capabilities.isExternal ? (
                     <Alert color="blue" variant="light">
                         BracketIQ will publish and filter this listing, but checkout, questions, documents,
@@ -274,93 +310,36 @@ export const SimpleSetupPlanningPage = ({
                 <div>
                     <Title order={4}>Plan the schedule structure</Title>
                     <Text size="sm" c="dimmed">
-                        Choose the schedule and resource model before entering dates, locations, and timeslots.
+                        Choose how dates and timeslots will work before entering the schedule and location.
                     </Text>
                 </div>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-                    <Select
-                        label="Schedule style"
-                        value={choices.scheduleStyle}
-                        disabled={!capabilities.usesInternalSchedule}
-                        data={[
-                            { value: 'FIXED_WINDOW', label: 'Fixed event window' },
-                            { value: 'WEEKLY_SLOTS', label: 'Weekly repeating timeslots' },
-                            { value: 'FIXED_SLOTS', label: 'Fixed one-time timeslots' },
-                            { value: 'MIXED_SLOTS', label: 'Mixed repeating and fixed timeslots' },
-                        ]}
-                        onChange={(value) => {
-                            if (value) onChoicesChange({ scheduleStyle: value as EventSetupChoices['scheduleStyle'] });
-                        }}
-                    />
-                    <Select
-                        label="Resource source"
-                        value={choices.resourceSource}
-                        disabled={!capabilities.usesInternalSchedule || choices.resourceSource === 'RENTAL_LOCKED'}
-                        data={[
-                            { value: 'ORGANIZATION', label: 'Organization resources' },
-                            { value: 'CUSTOM', label: 'Custom event resources' },
-                            { value: 'LOCATION_ONLY', label: 'Location only' },
-                            ...(choices.resourceSource === 'RENTAL_LOCKED'
-                                ? [{ value: 'RENTAL_LOCKED', label: 'Rental resources (locked)' }]
-                                : []),
-                        ]}
-                        onChange={(value) => {
-                            if (value) onChoicesChange({ resourceSource: value as EventSetupChoices['resourceSource'] });
-                        }}
-                    />
-                    <NumberInput
-                        label="Custom resource count"
-                        min={0}
-                        max={12}
-                        value={fieldCount}
-                        disabled={!capabilities.usesInternalSchedule || choices.resourceSource !== 'CUSTOM'}
-                        onChange={(value) => {
-                            const numeric = typeof value === 'number' && Number.isFinite(value)
-                                ? Math.max(0, Math.trunc(value))
-                                : 0;
-                            setFieldCount(numeric);
-                        }}
-                    />
-                    <div className={choiceCardClassName}>
-                        <Text fw={600} size="sm">Division assignment</Text>
-                        <Text size="sm" c="dimmed">
-                            {eventData.singleDivision
-                                ? 'Shared configuration assigns all divisions to each timeslot.'
-                                : capabilities.isTryout
-                                    ? 'Each tryout timeslot must select its organization division.'
-                                    : 'Each timeslot can apply to all divisions or selected divisions.'}
-                        </Text>
-                    </div>
-                </SimpleGrid>
-            </Stack>
-        );
-    }
-
-    if (pageId === 'competition-plan') {
-        return (
-            <Stack gap="lg">
-                <div>
-                    <Title order={4}>Choose competition options</Title>
-                    <Text size="sm" c="dimmed">Enable the rule editors you intend to customize.</Text>
-                </div>
-                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                    <div className={choiceCardClassName}>
-                        <Switch
-                            label="Customize match rules"
-                            description="Override sport defaults for scoring, incidents, and match behavior."
-                            checked={choices.customizeMatchRules}
-                            onChange={(event) => onChoicesChange({ customizeMatchRules: event.currentTarget.checked })}
-                        />
-                    </div>
-                    <div className={choiceCardClassName}>
-                        <Switch
-                            label="Customize standings or pool scoring"
-                            checked={choices.customizeScoring}
-                            disabled={!capabilities.isLeague && !capabilities.isTournament}
-                            onChange={(event) => onChoicesChange({ customizeScoring: event.currentTarget.checked })}
-                        />
-                    </div>
-                </SimpleGrid>
+                <Radio.Group
+                    label="Schedule style"
+                    value={choices.scheduleStyle}
+                    onChange={(value) => onChoicesChange({
+                        scheduleStyle: value as EventSetupChoices['scheduleStyle'],
+                    })}
+                >
+                    <Stack gap="md" mt="sm">
+                        {scheduleStyleOptions.map((option) => (
+                            <label
+                                key={option.value}
+                                className="flex cursor-pointer items-start gap-3"
+                            >
+                                <Radio
+                                    value={option.value}
+                                    aria-label={option.label}
+                                    disabled={!capabilities.usesInternalSchedule}
+                                    mt={2}
+                                />
+                                <div className="min-w-0">
+                                    <Text fw={600} size="sm">{option.label}</Text>
+                                    <Text c="dimmed" mt={2} size="sm">{option.description}</Text>
+                                </div>
+                            </label>
+                        ))}
+                    </Stack>
+                </Radio.Group>
             </Stack>
         );
     }
@@ -382,19 +361,6 @@ export const SimpleSetupPlanningPage = ({
                             checked={choices.paidRegistration}
                             onChange={(event) => onChoicesChange({ paidRegistration: event.currentTarget.checked })}
                         />
-                        <Controller
-                            name="allowPaymentPlans"
-                            control={control}
-                            render={({ field }) => (
-                                <Switch
-                                    mt="md"
-                                    label="Payment plans"
-                                    checked={Boolean(field.value)}
-                                    disabled={!choices.paidRegistration || capabilities.isExternal || isImmutableField('allowPaymentPlans')}
-                                    onChange={(event) => field.onChange(event.currentTarget.checked)}
-                                />
-                            )}
-                        />
                     </div>
                     <div className={choiceCardClassName}>
                         <Controller
@@ -404,15 +370,38 @@ export const SimpleSetupPlanningPage = ({
                                 <Radio.Group
                                     label="Payment collection"
                                     value={field.value ?? 'ONLINE'}
-                                    onChange={(value) => field.onChange(value)}
+                                    onChange={(value) => {
+                                        const mode = value as 'ONLINE' | 'MANUAL';
+                                        if (mode === 'ONLINE' && !hasStripeAccount) return;
+                                        onRegistrationPaymentModeChange(mode);
+                                    }}
                                 >
                                     <Stack gap="xs" mt="sm">
-                                        <Radio value="ONLINE" label="BracketIQ online checkout" disabled={capabilities.isExternal} />
+                                        <Radio
+                                            value="ONLINE"
+                                            label="BracketIQ online checkout"
+                                            disabled={capabilities.isExternal || !hasStripeAccount}
+                                        />
                                         <Radio value="MANUAL" label="Self-managed payment" disabled={capabilities.isExternal} />
                                     </Stack>
                                 </Radio.Group>
                             )}
                         />
+                        {!capabilities.isExternal && !hasStripeAccount ? (
+                            <Alert color="orange" variant="light" mt="md">
+                                <Text size="sm" mb="sm">
+                                    Self-managed payment is the default until Stripe is connected.
+                                </Text>
+                                <Button
+                                    type="button"
+                                    size="xs"
+                                    loading={connectingStripe}
+                                    onClick={onConnectStripe}
+                                >
+                                    Connect Stripe for online checkout
+                                </Button>
+                            </Alert>
+                        ) : null}
                     </div>
                     <div className={choiceCardClassName}>
                         <Switch
@@ -466,62 +455,16 @@ export const SimpleSetupPlanningPage = ({
                         />
                     </div>
                     <div className={choiceCardClassName}>
-                        <Controller
-                            name="teamCheckInMode"
-                            control={control}
-                            render={({ field }) => (
-                                <Checkbox
-                                    label="Team check-in and roster operations"
-                                    checked={field.value !== 'OFF'}
-                                    disabled={!eventData.teamSignup}
-                                    onChange={(event) => {
-                                        field.onChange(event.currentTarget.checked ? 'EVENT' : 'OFF');
-                                    }}
-                                />
-                            )}
+                        <Switch
+                            label="Team check-in and roster operations"
+                            checked={choices.useTeamCheckInAndRosterOperations}
+                            disabled={!eventData.teamSignup}
+                            onChange={(event) => onChoicesChange({
+                                useTeamCheckInAndRosterOperations: event.currentTarget.checked,
+                            })}
                         />
                     </div>
                 </SimpleGrid>
-            </Stack>
-        );
-    }
-
-    if (pageId === 'review-publish') {
-        const eventTypeLabel = eventTypeOptions.find((option) => option.value === eventData.eventType)?.label
-            ?? eventData.eventType;
-        return (
-            <Stack gap="lg">
-                <div>
-                    <Title order={4}>Review the event setup</Title>
-                    <Text size="sm" c="dimmed">
-                        Review the summary, open any page that needs changes, then use the form&apos;s save action.
-                    </Text>
-                </div>
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-5">
-                    <Stack gap="sm">
-                        <div>
-                            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Event</Text>
-                            <Text fw={700}>{eventData.name?.trim() || 'Untitled event'}</Text>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <Badge variant="light">{eventTypeLabel}</Badge>
-                            <Badge variant="light">{capabilities.isExternal ? 'External registration' : 'BracketIQ registration'}</Badge>
-                            <Badge variant="light">{eventData.teamSignup ? 'Teams' : 'Individuals'}</Badge>
-                            <Badge variant="light">{eventData.singleDivision ? 'Shared configuration' : 'Split divisions'}</Badge>
-                            <Badge variant="light">
-                                {eventData.noFixedEndDateTime
-                                    ? 'End date set during match generation'
-                                    : choices.scheduleStyle.replace(/_/g, ' ').toLowerCase()}
-                            </Badge>
-                        </div>
-                        <Text size="sm" c="dimmed">
-                            {eventData.location?.trim() || 'Location not specified'}
-                        </Text>
-                    </Stack>
-                </div>
-                <Alert color="blue" variant="light">
-                    Simple and Advanced Setup use the same draft. Switching modes will not discard these values.
-                </Alert>
             </Stack>
         );
     }

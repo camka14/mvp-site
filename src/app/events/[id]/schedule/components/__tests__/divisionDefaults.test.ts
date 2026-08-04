@@ -68,4 +68,24 @@ describe('applyEventDefaultsToDivisionDetails', () => {
             { id: 'div_2', price: 11, maxParticipants: 9, playoffTeamCount: 5 },
         ]);
     });
+
+    it('does not invent playoff counts when the event default is empty', () => {
+        const current: DivisionRow[] = [
+            { id: 'div_1', price: 5, maxParticipants: 6 },
+            { id: 'div_2', price: 6, maxParticipants: 7 },
+        ];
+
+        const result = applyEventDefaultsToDivisionDetails({
+            details: current,
+            defaultPrice: 11,
+            defaultMaxParticipants: 9,
+            includePlayoffs: true,
+            defaultPlayoffTeamCount: undefined,
+        });
+
+        expect(result.details).toEqual([
+            { id: 'div_1', price: 11, maxParticipants: 9 },
+            { id: 'div_2', price: 11, maxParticipants: 9 },
+        ]);
+    });
 });

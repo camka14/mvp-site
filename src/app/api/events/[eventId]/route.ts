@@ -46,6 +46,7 @@ import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps } from '@
 import {
   normalizeManualPaymentInstructions,
   normalizeManualPaymentLinks,
+  normalizeManualPaymentLinksForPersistence,
   normalizeRegistrationPaymentMode,
 } from '@/lib/manualRegistrationPayments';
 import {
@@ -879,9 +880,9 @@ const normalizeDivisionDetailsInput = (
           ?? normalizePlayoffDivisionConfig(row)
         )
       : explicitPlayoffConfig;
-    const parsedLeagueConfig = parsedKind === 'LEAGUE'
-      ? normalizeLeagueDivisionConfig(row)
-      : null;
+    // Tournament bracket rows also carry the pool-phase match configuration.
+    // Preserve it so generated pool divisions inherit the saved values.
+    const parsedLeagueConfig = normalizeLeagueDivisionConfig(row);
     const parsedAllowPaymentPlans = normalizeInputOptionalBoolean(row.allowPaymentPlans);
     const parsedInstallmentCount = normalizeInputNullableNumber(row.installmentCount);
     const parsedInstallmentDueDates = Object.prototype.hasOwnProperty.call(row, 'installmentDueDates')
@@ -2103,7 +2104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.registrationPaymentMode = targetRegistrationPaymentMode;
       }
       if (Object.prototype.hasOwnProperty.call(data, 'manualPaymentLinks')) {
-        data.manualPaymentLinks = normalizeManualPaymentLinks(data.manualPaymentLinks);
+        data.manualPaymentLinks = normalizeManualPaymentLinksForPersistence(data.manualPaymentLinks);
       }
       if (Object.prototype.hasOwnProperty.call(data, 'manualPaymentInstructions')) {
         data.manualPaymentInstructions = normalizeManualPaymentInstructions(data.manualPaymentInstructions);

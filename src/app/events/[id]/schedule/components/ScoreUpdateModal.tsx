@@ -39,6 +39,11 @@ import {
 import { canIncreaseSetScore, getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
 import { hasResolvedMatchParticipants } from '@/lib/matchParticipants';
 import {
+  buildRestartedSegmentBreakMetadata,
+  buildSkippedSegmentBreakMetadata,
+  resolveMatchSegmentBreakCountdown,
+} from '@/lib/matchSegmentBreak';
+import {
   Division,
   Event,
   getTeamAvatarUrl,
@@ -500,6 +505,7 @@ const DEFAULT_TIMEKEEPING: ResolvedMatchTimekeepingConfig = {
   timerMode: 'NONE',
   segmentDurationMinutes: null,
   segmentDurationMinutesBySequence: [],
+  segmentBreakDurationMinutes: 0,
   canUseAddedTime: false,
   addedTimeEnabled: false,
   stopAtRegulationEnd: true,
@@ -599,6 +605,7 @@ const normalizeTimekeepingForRules = (
     timerMode,
     segmentDurationMinutes,
     segmentDurationMinutesBySequence: sequenceDurations,
+    segmentBreakDurationMinutes: Math.max(0, Math.trunc(raw.segmentBreakDurationMinutes ?? 0)),
     canUseAddedTime: timerMode !== 'NONE' && raw.canUseAddedTime === true,
     addedTimeEnabled: timerMode !== 'NONE' && raw.canUseAddedTime === true && raw.addedTimeEnabled === true,
     stopAtRegulationEnd: timerMode === 'NONE'
@@ -1182,6 +1189,14 @@ export default function ScoreUpdateModal({
   const scoringIncidentLabel = incidentLabelForType(scoringIncidentType);
   const scoringActionLabel = normalizedIncidentType(scoringIncidentType) === 'POINT' ? 'Point' : scoringIncidentLabel;
   const activeSegment = segments[activeIndex] ?? segments[0];
+  const previousSegment = activeIndex > 0 ? segments[activeIndex - 1] : undefined;
+  const segmentBreakCountdown = resolveMatchSegmentBreakCountdown({
+    previousSegment,
+    currentSegment: activeSegment,
+    breakDurationMinutes: rules.timekeeping.segmentBreakDurationMinutes,
+    now: timerNow,
+  });
+  const segmentBreakActive = segmentBreakCountdown !== null;
   const team1Score = scoreForSegment(activeSegment, activeIndex, team1Id, match.team1Points);
   const team2Score = scoreForSegment(activeSegment, activeIndex, team2Id, match.team2Points);
   const activeSegmentDurationMinutes = activeSegment
@@ -1607,12 +1622,12 @@ export default function ScoreUpdateModal({
   }, [segments]);
 
   useEffect(() => {
-    if (!isOpen || !activeTimerRunning) {
+    if (!isOpen || (!activeTimerRunning && !segmentBreakActive)) {
       return undefined;
     }
     const intervalId = window.setInterval(() => setTimerNow(Date.now()), 1000);
     return () => window.clearInterval(intervalId);
-  }, [activeTimerRunning, isOpen, timerSegmentKey]);
+  }, [activeTimerRunning, isOpen, segmentBreakActive, timerSegmentKey]);
 
   useEffect(() => {
     if (!regulationClockEnded) {
@@ -2312,7 +2327,7 @@ export default function ScoreUpdateModal({
   };
 
   const startActiveSegmentTimer = async () => {
-    if (!canManage || !activeSegment || !hasMatchClock || activeSegmentStartDate) return;
+    if (!canManage || !activeSegment || !hasMatchClock || activeSegmentStartDate || segmentBreakActive) return;
     const now = new Date();
     const nowIso = now.toISOString();
     const next = segmentsRef.current.map((segment, index) => (
@@ -2352,6 +2367,37 @@ export default function ScoreUpdateModal({
       setActualStartValue(now);
       setActualEndValue(null);
     }
+    applyLocalSegmentState(next);
+  };
+
+  const updateActiveSegmentBreak = async (action: 'SKIP' | 'RESTART') => {
+    if (!canManage || !activeSegment || !segmentBreakActive || timerSaving) return;
+    const confirmationMessage = action === 'SKIP'
+      ? 'Skip the remaining break?'
+      : 'Restart the break from its full duration?';
+    if (!window.confirm(confirmationMessage)) return;
+
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const metadata = action === 'SKIP'
+      ? buildSkippedSegmentBreakMetadata(activeSegment, nowIso)
+      : buildRestartedSegmentBreakMetadata(activeSegment, nowIso);
+    const next = segmentsRef.current.map((segment, index) => (
+      index === activeIndex ? { ...segment, metadata } satisfies MatchSegment : segment
+    ));
+    const activeNext = next[activeIndex] ?? activeSegment;
+
+    setTimerSaving(true);
+    const success = await emit(payload(next, {
+      segmentOperations: [{
+        id: activeNext.id ?? activeNext.$id,
+        sequence: activeNext.sequence,
+        metadata,
+      }],
+    }));
+    setTimerSaving(false);
+    if (!success) return;
+    setTimerNow(now.getTime());
     applyLocalSegmentState(next);
   };
 
@@ -2438,7 +2484,11 @@ export default function ScoreUpdateModal({
   const mapQuery = Number.isFinite(mapLat) && Number.isFinite(mapLng) ? `${mapLat},${mapLng}` : locationLabel;
   const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed` : null;
   const canScore =
-    canManage && matchStarted && activeSegment?.status !== "COMPLETE" && !matchComplete();
+    canManage
+    && matchStarted
+    && activeSegment?.status !== "COMPLETE"
+    && !segmentBreakActive
+    && !matchComplete();
   const activeSegmentLabel = activeSegment
     ? labelForSegment(rules, activeSegment.sequence)
     : labelForSegment(rules, 1);
@@ -2997,7 +3047,7 @@ export default function ScoreUpdateModal({
   );
 
   const renderTimerCard = () => {
-    if (!hasMatchClock) return null;
+    if (!hasMatchClock && !segmentBreakActive) return null;
     const timerStarted = Boolean(activeSegmentStartDate);
     const timerActionLabel = timerStarted
       ? 'Reset Timer'
@@ -3011,46 +3061,68 @@ export default function ScoreUpdateModal({
             <Group gap="xs">
               <Timer size={16} />
               <Text fw={700} size="sm">
-                Match Clock
+                {segmentBreakActive ? 'Segment Break' : 'Match Clock'}
               </Text>
             </Group>
             <Badge
-              color={activeTimerRunning ? 'green' : regulationClockEnded ? 'red' : timerStarted ? 'gray' : 'blue'}
+              color={segmentBreakActive ? 'orange' : activeTimerRunning ? 'green' : regulationClockEnded ? 'red' : timerStarted ? 'gray' : 'blue'}
               variant="light"
             >
-              {activeTimerRunning ? 'Running' : regulationClockEnded ? 'Regulation ended' : timerStarted ? 'Stopped' : 'Ready'}
+              {segmentBreakActive ? 'Break' : activeTimerRunning ? 'Running' : regulationClockEnded ? 'Regulation ended' : timerStarted ? 'Stopped' : 'Ready'}
             </Badge>
           </Group>
           <div>
             <Text size="xs" c="dimmed" fw={700}>
-              {activeSegmentLabel}
+              {segmentBreakActive ? `Before ${activeSegmentLabel}` : activeSegmentLabel}
             </Text>
             <Text
               fw={800}
               lh={1}
               style={{ fontVariantNumeric: 'tabular-nums', fontSize: 42 }}
-              c={clockInAddedTime ? 'orange' : regulationClockEnded ? 'red' : undefined}
+              c={segmentBreakActive || clockInAddedTime ? 'orange' : regulationClockEnded ? 'red' : undefined}
             >
-              {clockDisplay}
+              {segmentBreakCountdown ? formatClockSeconds(segmentBreakCountdown.remainingSeconds) : clockDisplay}
             </Text>
             <Text size="xs" c="dimmed">
-              {activeSegmentDurationMinutes
+              {segmentBreakCountdown
+                ? `${Math.ceil(segmentBreakCountdown.totalSeconds / 60)} minute scheduled break`
+                : activeSegmentDurationMinutes
                 ? `${activeSegmentDurationMinutes} minute regulation ${rules.segmentLabel.toLowerCase()}`
                 : 'No regulation length configured'}
-              {rules.timekeeping.addedTimeEnabled ? ' with added time' : ''}
+              {!segmentBreakActive && rules.timekeeping.addedTimeEnabled ? ' with added time' : ''}
             </Text>
           </div>
           {canManage ? (
             <Group gap="xs">
-              <Button
-                size="xs"
-                loading={timerSaving}
-                disabled={activeSegment?.status === 'COMPLETE'}
-                onClick={timerStarted ? resetActiveSegmentTimer : startMatch}
-              >
-                {timerActionLabel}
-              </Button>
-              {regulationClockEnded ? (
+              {segmentBreakActive ? (
+                <>
+                  <Button
+                    size="xs"
+                    variant="default"
+                    loading={timerSaving}
+                    onClick={() => { void updateActiveSegmentBreak('SKIP'); }}
+                  >
+                    Skip Break
+                  </Button>
+                  <Button
+                    size="xs"
+                    loading={timerSaving}
+                    onClick={() => { void updateActiveSegmentBreak('RESTART'); }}
+                  >
+                    Restart Break
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="xs"
+                  loading={timerSaving}
+                  disabled={activeSegment?.status === 'COMPLETE'}
+                  onClick={timerStarted ? resetActiveSegmentTimer : startMatch}
+                >
+                  {timerActionLabel}
+                </Button>
+              )}
+              {!segmentBreakActive && regulationClockEnded ? (
                 <Text size="xs" c="red" fw={600}>
                   Regulation time reached.
                 </Text>

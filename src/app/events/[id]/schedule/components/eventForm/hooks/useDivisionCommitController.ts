@@ -23,6 +23,7 @@ import {
     normalizeTournamentConfigForSetMode,
 } from '../configDefaults';
 import { parseDateValue } from '../dateHelpers';
+import { BRACKET_TEAM_COUNT_ERROR } from '../divisionMessages';
 import {
     applyDivisionAgeCutoff,
     buildCompositeDivisionTypeId,
@@ -160,6 +161,7 @@ export const useDivisionCommitController = ({
                 ...defaultDetail,
                 name,
                 maxParticipants: normalizedMaxParticipants,
+                phaseSettings: divisionEditor.phaseSettings,
                 playoffConfig: buildTournamentConfig(divisionEditor.playoffConfig),
             };
             const nextPlayoffDivisions = existingDetail
@@ -203,12 +205,12 @@ export const useDivisionCommitController = ({
             if (eventData.eventType === 'LEAGUE' && eventData.singleDivision) {
                 return typeof leagueData.playoffTeamCount === 'number'
                     ? leagueData.playoffTeamCount
-                    : eventData.maxParticipants;
+                    : undefined;
             }
             return divisionEditor.playoffTeamCount;
         })();
         const normalizedDivisionPlayoffTeamCount = typeof rawDivisionPlayoffTeamCount === 'number'
-            ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount))
+            ? Math.trunc(rawDivisionPlayoffTeamCount)
             : undefined;
         const normalizedDivisionPoolCount = (
             eventData.eventType === 'TOURNAMENT'
@@ -288,7 +290,7 @@ export const useDivisionCommitController = ({
             && !eventData.singleDivision
             && typeof rawDivisionPlayoffTeamCount !== 'number'
         ) {
-            setDivisionEditor((previous) => ({ ...previous, error: 'Division playoff team count is required.' }));
+            setDivisionEditor((previous) => ({ ...previous, error: BRACKET_TEAM_COUNT_ERROR }));
             return;
         }
         if (
@@ -297,7 +299,7 @@ export const useDivisionCommitController = ({
             && !eventData.singleDivision
             && !(typeof normalizedDivisionPlayoffTeamCount === 'number' && normalizedDivisionPlayoffTeamCount >= 2)
         ) {
-            setDivisionEditor((previous) => ({ ...previous, error: 'Division playoff team count must be at least 2.' }));
+            setDivisionEditor((previous) => ({ ...previous, error: BRACKET_TEAM_COUNT_ERROR }));
             return;
         }
         if (eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs) {
@@ -306,7 +308,7 @@ export const useDivisionCommitController = ({
                 return;
             }
             if (!(typeof normalizedDivisionPlayoffTeamCount === 'number' && normalizedDivisionPlayoffTeamCount >= 2)) {
-                setDivisionEditor((previous) => ({ ...previous, error: 'Bracket team count is required.' }));
+                setDivisionEditor((previous) => ({ ...previous, error: BRACKET_TEAM_COUNT_ERROR }));
                 return;
             }
             if (normalizedDivisionMaxParticipants % normalizedDivisionPoolCount !== 0) {
@@ -445,6 +447,7 @@ export const useDivisionCommitController = ({
             playoffTeamCount: normalizedDivisionPlayoffTeamCount,
             poolCount: normalizedDivisionPoolCount,
             poolTeamCount: normalizedDivisionPoolTeamCount,
+            phaseSettings: divisionEditor.phaseSettings,
             playoffPlacementDivisionIds: normalizedPlacementMapping,
             ...((eventData.eventType === 'LEAGUE' || (eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs))
                 ? leagueConfigToDivisionFields(normalizeLeagueConfigForSetMode(divisionEditor.leagueConfig, currentSportRequiresSets))
@@ -517,7 +520,7 @@ export const useDivisionCommitController = ({
             maxParticipants: normalizedDivisionMaxParticipants,
             playoffTeamCount: typeof normalizedDivisionPlayoffTeamCount === 'number'
                 ? normalizedDivisionPlayoffTeamCount
-                : Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
+                : null,
             poolCount: typeof normalizedDivisionPoolCount === 'number'
                 ? normalizedDivisionPoolCount
                 : null,
@@ -529,6 +532,7 @@ export const useDivisionCommitController = ({
             installmentDueDates: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [],
             installmentDueRelativeDays: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueRelativeDays : [],
             installmentAmounts: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentAmounts : [],
+            phaseSettings: {},
             nameTouched: false,
             error: null,
         });

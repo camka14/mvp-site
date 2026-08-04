@@ -15,6 +15,8 @@ type EventFormShellProps = {
     leagueError?: string | null;
     onSelectSection: (sectionId: string) => void;
     hideSectionNavigation?: boolean;
+    validationErrorCount?: number;
+    firstValidationError?: string;
     children: ReactNode;
 };
 
@@ -27,6 +29,8 @@ export const EventFormShell = ({
     leagueError,
     onSelectSection,
     hideSectionNavigation = false,
+    validationErrorCount = 0,
+    firstValidationError,
     children,
 }: EventFormShellProps) => (
     <div className="w-full space-y-6">
@@ -42,6 +46,12 @@ export const EventFormShell = ({
                 /> : null}
 
                 <div className="min-w-0">
+                    {validationErrorCount > 0 ? (
+                        <Alert color="red" variant="light" radius="md" mb="md" role="status" aria-live="polite">
+                            {validationErrorCount} {validationErrorCount === 1 ? 'issue needs' : 'issues need'} attention.
+                            {firstValidationError ? ` ${firstValidationError}` : ''}
+                        </Alert>
+                    ) : null}
                     {!hideSectionNavigation ? <SectionNavigation
                         items={sectionNavItems}
                         activeSectionId={activeSectionId}

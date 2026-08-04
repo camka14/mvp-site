@@ -3,24 +3,20 @@
 import { Controller } from 'react-hook-form';
 import {
     Alert,
-    Button,
-    Group,
-    Select,
     Stack,
     Text,
     Textarea,
-    TextInput,
     Title,
 } from '@mantine/core';
-
-import { normalizeManualPaymentProvider } from '@/lib/manualRegistrationPayments';
 
 import { EventDetailsLocationControls } from '../sections/EventDetailsLocationControls';
 import { EventDetailsTimingControls } from '../sections/EventDetailsTimingControls';
 import type { EventFormSectionsProps } from '../sections/EventFormSections';
+import { ManualPaymentDestinationEditor } from '../sections/ManualPaymentDestinationEditor';
 import { SingleDivisionDefaultsPanel } from '../sections/SingleDivisionDefaultsPanel';
 import { sumInstallmentAmounts } from '../paymentPlanHelpers';
 import { normalizeNumber } from '../configDefaults';
+import { SimpleSetupDivisionPricingList } from './SimpleSetupDivisionPricingList';
 
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
@@ -38,13 +34,14 @@ const MAX_PRICE_CENTS = 9_999_999 * 100;
 
 type SimpleSetupPricingRegistrationPageProps = {
     model: EventFormSectionsProps;
+    paidRegistration: boolean;
 };
 
 export const SimpleSetupPricingRegistrationPage = ({
     model,
+    paidRegistration,
 }: SimpleSetupPricingRegistrationPageProps) => {
     const {
-        configurationActions,
         control,
         divisionController,
         eventData,
@@ -59,12 +56,12 @@ export const SimpleSetupPricingRegistrationPage = ({
         connectingStripe,
         eventTaxableForPreview,
         eventTaxPolicyForPreview,
+        hasStripeAccount,
         manualPaymentLinks,
         manualPaymentsEnabled,
         organizationDefaultEventTaxHandling,
         organizerManualTaxSelected,
         organizerTaxCollectionAllowed,
-        pricingControlsEnabled,
         removeInstallment,
         removeManualPaymentLink,
         setInstallmentAmount,
@@ -74,10 +71,7 @@ export const SimpleSetupPricingRegistrationPage = ({
         syncInstallmentCount,
         addManualPaymentLink,
     } = paymentController;
-    const {
-        handleManualPaymentsChange,
-        showManualPaymentsSection,
-    } = sectionsController;
+    const { showManualPaymentsSection } = sectionsController;
     const {
         setLeagueData,
         setPlayoffData,
@@ -111,7 +105,6 @@ export const SimpleSetupPricingRegistrationPage = ({
                     onStartChange={() => undefined}
                     onEndChange={() => undefined}
                     onNoFixedEndDateTimeChange={() => undefined}
-                    onManualPaymentsChange={handleManualPaymentsChange}
                     showScheduleControls={false}
                     showRegistrationControls
                 />
@@ -142,7 +135,11 @@ export const SimpleSetupPricingRegistrationPage = ({
                 teamSignup={Boolean(eventData.teamSignup)}
             />
 
-            {eventData.singleDivision && !model.isAffiliateEvent ? (
+            {!paidRegistration ? (
+                <Alert color="blue" variant="light">
+                    Registration is free. Turn on Paid registration in Registration Plan to configure prices and payment methods.
+                </Alert>
+            ) : eventData.singleDivision && !model.isAffiliateEvent ? (
                 <SingleDivisionDefaultsPanel
                     control={control}
                     eventData={eventData}
@@ -154,15 +151,16 @@ export const SimpleSetupPricingRegistrationPage = ({
                     maxStandardNumber={MAX_STANDARD_NUMBER}
                     maxPriceCents={MAX_PRICE_CENTS}
                     numberInputStyles={alignedDetailsFieldStyles}
-                    hasStripeAccount={pricingControlsEnabled}
+                    hasStripeAccount={hasStripeAccount}
                     organizerTaxCollectionAllowed={organizerTaxCollectionAllowed}
                     organizerResponsibilityMessage={eventTaxPolicyForPreview.organizerResponsibilityMessage}
                     isOrganizationHostedEvent={model.resourceController.isOrganizationHostedEvent}
                     organizerManualTaxSelected={organizerManualTaxSelected}
                     organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
                     connectingStripe={connectingStripe}
-                    simplifiedPricing
+                    simplifiedPricing={manualPaymentsEnabled}
                     showCapacityControls={false}
+                    showPaymentPlanControls={!manualPaymentsEnabled}
                     showScheduleControls={false}
                     title="Registration price"
                     description="This price and payment plan apply to the shared division."
@@ -196,12 +194,23 @@ export const SimpleSetupPricingRegistrationPage = ({
                         shouldValidate: true,
                     })}
                 />
-            ) : (
+            ) : model.isAffiliateEvent ? (
                 <Alert color="blue" variant="light">
-                    {model.isAffiliateEvent
-                        ? 'External listings manage payment on the linked registration site.'
-                        : 'Each division owns its price and payment plan. Edit those values on the Divisions page.'}
+                    External listings manage payment on the linked registration site.
                 </Alert>
+            ) : (
+                <SimpleSetupDivisionPricingList
+                    eventData={eventData}
+                    hasStripeAccount={hasStripeAccount}
+                    manualPaymentsEnabled={manualPaymentsEnabled}
+                    eventTaxableForPreview={eventTaxableForPreview}
+                    connectingStripe={connectingStripe}
+                    disabled={isImmutableField('divisions')}
+                    maxPriceCents={MAX_PRICE_CENTS}
+                    maxStandardNumber={MAX_STANDARD_NUMBER}
+                    onConnectStripe={connectStripe}
+                    setValue={setValue}
+                />
             )}
 
             {showManualPaymentsSection ? (
@@ -215,55 +224,13 @@ export const SimpleSetupPricingRegistrationPage = ({
                     <Alert color="yellow" variant="light">
                         Manual payments are handled outside BracketIQ. The host confirms payment and handles refunds.
                     </Alert>
-                    {manualPaymentLinks.map((link, index) => (
-                        <Group key={link.id || index} align="flex-end" grow>
-                            <Select
-                                label={index === 0 ? 'Provider' : undefined}
-                                value={normalizeManualPaymentProvider(link.provider)}
-                                data={[
-                                    { value: 'CASH_APP', label: 'Cash App' },
-                                    { value: 'VENMO', label: 'Venmo' },
-                                    { value: 'PAYPAL', label: 'PayPal' },
-                                    { value: 'STRIPE', label: 'Stripe' },
-                                    { value: 'ZELLE', label: 'Zelle' },
-                                    { value: 'OTHER', label: 'Other' },
-                                ]}
-                                onChange={(value) => setManualPaymentLinkValue(index, 'provider', value ?? 'OTHER')}
-                            />
-                            <TextInput
-                                label={index === 0 ? 'Label' : undefined}
-                                value={link.label ?? ''}
-                                onChange={(event) => setManualPaymentLinkValue(
-                                    index,
-                                    'label',
-                                    event.currentTarget.value,
-                                )}
-                            />
-                            <TextInput
-                                label={index === 0 ? 'Payment destination' : undefined}
-                                value={link.url ?? ''}
-                                placeholder="Username or https://..."
-                                onChange={(event) => setManualPaymentLinkValue(
-                                    index,
-                                    'url',
-                                    event.currentTarget.value,
-                                )}
-                            />
-                            <Button
-                                type="button"
-                                variant="subtle"
-                                color="red"
-                                onClick={() => removeManualPaymentLink(index)}
-                            >
-                                Remove
-                            </Button>
-                        </Group>
-                    ))}
-                    <Group justify="flex-start">
-                        <Button type="button" variant="default" onClick={addManualPaymentLink}>
-                            Add payment destination
-                        </Button>
-                    </Group>
+                    <ManualPaymentDestinationEditor
+                        control={control}
+                        links={manualPaymentLinks}
+                        onAddLink={addManualPaymentLink}
+                        onLinkChange={setManualPaymentLinkValue}
+                        onRemoveLink={removeManualPaymentLink}
+                    />
                     <Controller
                         name="manualPaymentInstructions"
                         control={control}

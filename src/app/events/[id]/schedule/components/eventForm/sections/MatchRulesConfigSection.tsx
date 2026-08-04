@@ -1,4 +1,3 @@
-import { Button, Collapse, Paper } from '@mantine/core';
 import type {
     EventOfficialPosition,
     MatchRulesConfig,
@@ -6,7 +5,7 @@ import type {
 } from '@/types';
 
 import MatchRulesSection from '../../MatchRulesSection';
-import { SECTION_ANIMATION_DURATION_MS } from '../constants';
+import { CollapsibleEventFormSection } from '../components/CollapsibleEventFormSection';
 
 type MatchRulesConfigSectionProps = {
     visible: boolean;
@@ -24,6 +23,8 @@ type MatchRulesConfigSectionProps = {
     incidentToggleDisabled?: boolean;
     comboboxProps?: Record<string, unknown>;
     onToggle: () => void;
+    errorCount?: number;
+    firstErrorMessage?: string;
 };
 
 export const MatchRulesConfigSection = ({
@@ -42,51 +43,38 @@ export const MatchRulesConfigSection = ({
     incidentToggleDisabled,
     comboboxProps,
     onToggle,
+    errorCount,
+    firstErrorMessage,
 }: MatchRulesConfigSectionProps) => {
     if (!visible) {
         return null;
     }
 
     return (
-        <Paper
+        <CollapsibleEventFormSection
             id="section-match-rules"
-            shadow="xs"
-            radius="md"
-            withBorder
-            p="lg"
-            className="scroll-mt-20 bg-gray-50"
+            title="Match Rules"
+            collapsed={collapsed}
+            onToggle={onToggle}
+            errorCount={errorCount}
+            firstErrorMessage={firstErrorMessage}
         >
-            <div className="flex items-center justify-between gap-3">
-                <h3 className="text-lg font-semibold">Match Rules</h3>
-                <Button
-                    type="button"
-                    variant="subtle"
-                    size="xs"
-                    aria-expanded={!collapsed}
-                    aria-controls="section-match-rules-content"
-                    onClick={onToggle}
-                >
-                    {collapsed ? 'Expand' : 'Collapse'}
-                </Button>
+            <div className="mt-4">
+                <MatchRulesSection
+                    sport={sport ?? undefined}
+                    usesSets={usesSets}
+                    setsPerMatch={setsPerMatch}
+                    winnerSetCount={winnerSetCount}
+                    officialPositions={officialPositions}
+                    value={value}
+                    onChange={onChange}
+                    autoCreatePointMatchIncidents={autoCreatePointMatchIncidents}
+                    onAutoCreatePointMatchIncidentsChange={onAutoCreatePointMatchIncidentsChange}
+                    disabled={disabled}
+                    incidentToggleDisabled={incidentToggleDisabled}
+                    comboboxProps={comboboxProps}
+                />
             </div>
-            <Collapse in={!collapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                <div id="section-match-rules-content" className="mt-4">
-                    <MatchRulesSection
-                        sport={sport ?? undefined}
-                        usesSets={usesSets}
-                        setsPerMatch={setsPerMatch}
-                        winnerSetCount={winnerSetCount}
-                        officialPositions={officialPositions}
-                        value={value}
-                        onChange={onChange}
-                        autoCreatePointMatchIncidents={autoCreatePointMatchIncidents}
-                        onAutoCreatePointMatchIncidentsChange={onAutoCreatePointMatchIncidentsChange}
-                        disabled={disabled}
-                        incidentToggleDisabled={incidentToggleDisabled}
-                        comboboxProps={comboboxProps}
-                    />
-                </div>
-            </Collapse>
-        </Paper>
+        </CollapsibleEventFormSection>
     );
 };

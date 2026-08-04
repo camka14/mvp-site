@@ -30,6 +30,11 @@ const positiveIntArray = (value: unknown): number[] | null => {
   return normalized.length ? normalized : null;
 };
 
+const nonNegativeIntOrNull = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? Math.trunc(numeric) : null;
+};
+
 const resizePointTargets = (
   value: unknown,
   segmentCount: number,
@@ -66,11 +71,15 @@ const normalizeTimekeeping = (
   const sequenceDurations = positiveIntArray(policy.timekeeping?.segmentDurationMinutesBySequence)
     ?? positiveIntArray(row.segmentDurationMinutesBySequence)
     ?? [];
+  const segmentBreakDurationMinutes = nonNegativeIntOrNull(policy.timekeeping?.segmentBreakDurationMinutes)
+    ?? nonNegativeIntOrNull(row.segmentBreakDurationMinutes)
+    ?? 0;
 
   return {
     timerMode: scoringModel === 'POINTS_ONLY' && !segmentDurationMinutes ? 'NONE' : timerMode,
     segmentDurationMinutes,
     segmentDurationMinutesBySequence: sequenceDurations,
+    segmentBreakDurationMinutes,
     canUseAddedTime: row.canUseAddedTime === true || policy.timekeeping?.canUseAddedTime === true,
     addedTimeEnabled: row.addedTimeEnabled === true || policy.timekeeping?.addedTimeEnabled === true,
     stopAtRegulationEnd: policy.timekeeping?.stopAtRegulationEnd ?? row.stopAtRegulationEnd ?? true,

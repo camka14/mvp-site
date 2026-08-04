@@ -126,8 +126,10 @@ type SimpleSetupPageFrameProps = {
     page: EventSetupPage;
     isFirstUsedPage: boolean;
     isLastUsedPage: boolean;
+    canSubmit: boolean;
     onBack: () => void;
     onNext: () => void;
+    onSubmit?: () => void;
     onOpenControllerPage: (pageId: EventSetupPageId) => void;
     children: React.ReactNode;
 };
@@ -136,12 +138,14 @@ export const SimpleSetupPageFrame = ({
     page,
     isFirstUsedPage,
     isLastUsedPage,
+    canSubmit,
     onBack,
     onNext,
+    onSubmit,
     onOpenControllerPage,
     children,
 }: SimpleSetupPageFrameProps) => (
-    <section aria-labelledby={`simple-setup-${page.id}-title`} className="rounded-lg border border-gray-200 bg-white shadow-sm">
+    <section aria-labelledby={`simple-setup-${page.id}-title`} className="min-w-0">
         <div className="border-b border-gray-200 px-5 py-4">
             <h2 id={`simple-setup-${page.id}-title`} className="text-xl font-semibold text-gray-950">
                 {page.label}
@@ -175,10 +179,11 @@ export const SimpleSetupPageFrame = ({
             </button>
             <button
                 type="button"
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                onClick={onNext}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={isLastUsedPage && !canSubmit}
+                onClick={isLastUsedPage && onSubmit ? onSubmit : onNext}
             >
-                {isLastUsedPage ? 'Review event' : 'Next'}
+                {isLastUsedPage ? 'Create Event' : 'Next'}
             </button>
         </div>
     </section>

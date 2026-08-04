@@ -23,6 +23,7 @@ export const useStaffOfficialController = (params: UseStaffOfficialControllerPar
     const officialAssignments = useOfficialAssignmentsController({
         eventData: params.eventData,
         fields: params.fields,
+        isCreateMode: params.isCreateMode,
         isOrganizationHostedEvent: params.isOrganizationHostedEvent,
         organizationAllowedOfficialIdSet: roster.organizationAllowedOfficialIdSet,
         organizationOfficialsById: roster.organizationOfficialsById,

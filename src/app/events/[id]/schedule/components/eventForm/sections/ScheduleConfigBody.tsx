@@ -4,6 +4,7 @@ import { Text } from '@mantine/core';
 import LeagueFields, {
     type LeagueFieldOption,
     type LeagueSlotForm,
+    type LeagueTimeslotMode,
 } from '@/app/discover/components/LeagueFields';
 import type { Event, Field, LeagueConfig, Sport } from '@/types';
 
@@ -35,6 +36,7 @@ type ScheduleConfigBodyProps = {
     leagueFieldOptions?: LeagueFieldOption[];
     divisionOptions: DivisionOption[];
     eventStartDate?: string;
+    timeslotMode?: LeagueTimeslotMode;
     lockSlotDivisions: boolean;
     lockedDivisionKeys: string[];
     readOnly: boolean;
@@ -66,6 +68,7 @@ export const ScheduleConfigBody = ({
     leagueFieldOptions,
     divisionOptions,
     eventStartDate,
+    timeslotMode,
     lockSlotDivisions,
     lockedDivisionKeys,
     readOnly,
@@ -77,7 +80,7 @@ export const ScheduleConfigBody = ({
     onRemoveSlot,
     onAutoResolveSlotConflict,
 }: ScheduleConfigBodyProps) => (
-    <div id="section-schedule-config-content" className="mt-4 space-y-6">
+    <div className="mt-4 space-y-6">
         {!isSchedulableEventType && usesRentalSlots ? (
             <div className="rounded-lg border border-gray-200 bg-white p-4">
                 <Text fw={600} size="sm">Rental Slot Schedule</Text>
@@ -143,6 +146,7 @@ export const ScheduleConfigBody = ({
                     fieldOptions={leagueFieldOptions}
                     divisionOptions={divisionOptions}
                     eventStartDate={eventStartDate}
+                    timeslotMode={timeslotMode}
                     lockSlotDivisions={lockSlotDivisions}
                     lockedDivisionKeys={lockedDivisionKeys}
                     readOnly={readOnly}
@@ -150,6 +154,7 @@ export const ScheduleConfigBody = ({
                     allowResourceEditsWhenReadOnly={allowResourceEditsWhenReadOnly}
                     showPlayoffSettings={false}
                     showLeagueConfiguration={false}
+                    unstyled={Boolean(timeslotMode)}
                     emptyFieldsMessage={isOrganizationManagedEvent
                         ? 'No resources found. Create a resource on the Organizations page first, then return here to attach weekly availability.'
                         : undefined}

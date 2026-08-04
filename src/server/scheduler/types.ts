@@ -9,6 +9,7 @@ import type {
   RegistrationPaymentMode,
   ResolvedMatchRules,
   TeamCheckInMode,
+  DivisionPhaseSettingsMap,
 } from '@/types';
 import {
   getDateTimePartsInTimeZone,
@@ -154,6 +155,7 @@ export class Division implements Group {
   standingsConfirmedBy: string | null;
   playoffConfig: PlayoffDivisionConfig | null;
   leagueConfig: LeagueDivisionConfig | null;
+  phaseSettings: DivisionPhaseSettingsMap;
 
   constructor(
     id: string,
@@ -170,6 +172,7 @@ export class Division implements Group {
     playoffConfig?: PlayoffDivisionConfig | null,
     teamIds?: string[],
     leagueConfig?: LeagueDivisionConfig | null,
+    phaseSettings?: DivisionPhaseSettingsMap | null,
   ) {
     this.id = id;
     this.name = name ?? id;
@@ -209,6 +212,9 @@ export class Division implements Group {
             : undefined,
         }
       : null;
+    this.phaseSettings = phaseSettings && typeof phaseSettings === 'object'
+      ? { ...phaseSettings }
+      : {};
   }
 }
 

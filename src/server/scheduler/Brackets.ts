@@ -10,10 +10,10 @@ import {
   Team,
   Tournament,
   UserData,
-  TIMES,
   oppositeSide,
   usesTeamOfficialScheduling,
 } from './types';
+import { resolveScheduledMatchDurationMs } from './divisionPhaseRules';
 
 const createId = () => crypto.randomUUID();
 
@@ -79,6 +79,13 @@ export class Brackets {
 
   private getMultiplier(match: Match): number {
     return match.team1Points.length;
+  }
+
+  private fallbackMatchDurationMs(match: Match): number {
+    const durationMinutes = this.tournament.usesSets
+      ? (this.tournament.setDurationMinutes || 20) * Math.max(this.getMultiplier(match), 1)
+      : this.tournament.matchDurationMinutes || 60;
+    return Math.max(1, durationMinutes) * 60 * 1000;
   }
 
   private attachMatchToParticipants(match: Match): void {
@@ -435,17 +442,23 @@ export class Brackets {
     let count = 1;
     for (const match of [...matches].reverse()) {
       match.matchId = count;
+      let matchDurationMs = this.fallbackMatchDurationMs(match);
       try {
         match.requiresTeamOfficial = usesTeamOfficialScheduling(this.tournament);
+        matchDurationMs = resolveScheduledMatchDurationMs(
+          this.tournament,
+          match,
+          matchDurationMs,
+        );
         if (this.tournament.officialSchedulingMode === 'STAFFING' && this.officialStaffingPlanner.hasStaffingRequirement()) {
-          this.bracketSchedule.scheduleEventWithOptions(match, this.getMultiplier(match) * TIMES.SET, {
+          this.bracketSchedule.scheduleEventWithOptions(match, matchDurationMs, {
             canUseCandidate: ({ resource, start, end }) => (
               this.officialStaffingPlanner.previewSchedulingCandidate(match, resource, start, end)
             ),
           });
           this.officialStaffingPlanner.commitScheduledMatch(match);
         } else {
-          this.bracketSchedule.scheduleEvent(match, this.getMultiplier(match) * TIMES.SET);
+          this.bracketSchedule.scheduleEvent(match, matchDurationMs);
         }
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
@@ -459,7 +472,7 @@ export class Brackets {
           `[scheduler][match-failure] eventId=${this.tournament.id} matchId=${count} divisionId=${divisionId} reason=${error.message}`,
         );
         this.context.error(
-          `[scheduler][match-failure] eventWindow=${formatIso(this.tournament.start)}..${formatIso(this.tournament.end)} mode=${this.tournament.officialSchedulingMode} durationMs=${this.getMultiplier(match) * TIMES.SET}`,
+          `[scheduler][match-failure] eventWindow=${formatIso(this.tournament.start)}..${formatIso(this.tournament.end)} mode=${this.tournament.officialSchedulingMode} durationMs=${matchDurationMs}`,
         );
         this.context.error(
           `[scheduler][match-failure] matchState field=${match.field?.id ?? 'null'} start=${formatIso(match.start)} end=${formatIso(match.end)} deps=${match.getDependencies().map((dep) => dep.matchId ?? 'null').join(',') || 'none'}`,

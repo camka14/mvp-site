@@ -35,6 +35,8 @@ export interface EventFormProps {
         draft: Partial<Event>;
         baselineDraft: Partial<Event>;
     }) => void;
+    onValidityChange?: (isValid: boolean) => void;
+    onSubmitRequest?: () => void;
 }
 
 export type EventFormHandle = {

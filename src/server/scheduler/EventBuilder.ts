@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Brackets } from './Brackets';
 import { OfficialStaffingPlanner } from './officialStaffing';
 import { Schedule } from './Schedule';
+import { resolveScheduledMatchDurationMs } from './divisionPhaseRules';
 import {
   Division,
   League,
@@ -578,7 +579,10 @@ export class EventBuilder {
       const roundScheduled: Match[] = [];
       for (const [home, away] of roundPairs) {
         const match = this.createMatch(home, away, division, config);
-        this.scheduleMatch(match, config.durationMs);
+        this.scheduleMatch(
+          match,
+          resolveScheduledMatchDurationMs(this.event, match, config.durationMs),
+        );
         this.attachMatchToParticipants(match);
         scheduled.push(match);
         roundScheduled.push(match);
@@ -906,7 +910,7 @@ export class EventBuilder {
       maxParticipants: seeded.length,
       teamSignup: true,
       divisions: tournamentDivisions,
-      eventType: 'TOURNAMENT',
+      eventType: this.event.eventType,
       timeSlots: this.event.timeSlots,
       restTimeMinutes: config.restTimeMinutes,
       matchDurationMinutes: config.matchDurationMinutes ?? this.event.matchDurationMinutes,
@@ -914,6 +918,9 @@ export class EventBuilder {
       setDurationMinutes: config.setDurationMinutes ?? this.event.setDurationMinutes,
       officialSchedulingMode: this.event.officialSchedulingMode,
       officialPositions: this.event.officialPositions,
+      matchRulesOverride: this.event.matchRulesOverride,
+      autoCreatePointMatchIncidents: this.event.autoCreatePointMatchIncidents,
+      resolvedMatchRules: this.event.resolvedMatchRules,
       eventOfficials: this.event.eventOfficials,
       doTeamsOfficiate: usesTeamOfficialScheduling(this.event),
       teamOfficialsMaySwap: usesTeamOfficialScheduling(this.event) ? this.event.teamOfficialsMaySwap : false,
@@ -952,7 +959,10 @@ export class EventBuilder {
             match.losersBracket ? config.loserSetCount : config.winnerSetCount,
           )
         : playoffMatchDurationMs;
-      this.scheduleMatch(match, playoffDurationMs);
+      this.scheduleMatch(
+        match,
+        resolveScheduledMatchDurationMs(this.event, match, playoffDurationMs),
+      );
       this.attachMatchToParticipants(match);
       scheduledMatches.push(match);
     }

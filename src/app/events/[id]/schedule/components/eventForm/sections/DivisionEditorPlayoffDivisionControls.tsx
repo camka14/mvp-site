@@ -6,10 +6,24 @@ import {
 import { motion } from 'motion/react';
 
 import TournamentFields from '@/app/discover/components/TournamentFields';
-import type { Sport, TournamentConfig } from '@/types';
+import type {
+    DivisionPhaseSettings,
+    DivisionPhaseSettingsMap,
+    EventOfficialPosition,
+    MatchRulesConfig,
+    Sport,
+    TournamentConfig,
+} from '@/types';
 
 import { AnimatedSection } from '../components/AnimatedSection';
 import { DIVISION_LAYOUT_TRANSITION } from '../constants';
+import {
+    DIVISION_FIELD_ROW_CLASS,
+    DIVISION_FULL_WIDTH_CLASS,
+    DIVISION_NAME_FIELD_CLASS,
+    DIVISION_NUMBER_FIELD_CLASS,
+} from '../divisionLayout';
+import { DivisionPhaseConfigurationControls } from './DivisionPhaseRulesEditor';
 
 type DivisionEditorPlayoffDivisionControlsProps = {
     visible: boolean;
@@ -17,6 +31,10 @@ type DivisionEditorPlayoffDivisionControlsProps = {
     maxParticipants?: number | null;
     teamSignup: boolean;
     playoffConfig: TournamentConfig;
+    phaseSettings: DivisionPhaseSettingsMap;
+    eventMatchRulesOverride?: MatchRulesConfig | null;
+    officialPositions?: EventOfficialPosition[];
+    autoCreatePointMatchIncidents?: boolean;
     sport?: Sport;
     maxStandardNumber: number;
     maxMediumTextLength: number;
@@ -24,6 +42,7 @@ type DivisionEditorPlayoffDivisionControlsProps = {
     onNameChange: (value: string) => void;
     onMaxParticipantsChange: (value: string | number) => void;
     onPlayoffConfigChange: Dispatch<SetStateAction<TournamentConfig>>;
+    onPhaseSettingsChange: (settings: DivisionPhaseSettings) => void;
 };
 
 export const DivisionEditorPlayoffDivisionControls = ({
@@ -32,6 +51,10 @@ export const DivisionEditorPlayoffDivisionControls = ({
     maxParticipants,
     teamSignup,
     playoffConfig,
+    phaseSettings,
+    eventMatchRulesOverride,
+    officialPositions,
+    autoCreatePointMatchIncidents,
     sport,
     maxStandardNumber,
     maxMediumTextLength,
@@ -39,19 +62,19 @@ export const DivisionEditorPlayoffDivisionControls = ({
     onNameChange,
     onMaxParticipantsChange,
     onPlayoffConfigChange,
+    onPhaseSettingsChange,
 }: DivisionEditorPlayoffDivisionControlsProps) => (
     <AnimatedSection in={visible}>
         <motion.div
             layout
-            className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-start"
+            className={DIVISION_FIELD_ROW_CLASS}
             transition={DIVISION_LAYOUT_TRANSITION}
         >
             <TextInput
                 label="Playoff Division Name"
                 placeholder="Division display name"
                 value={name}
-                className="md:col-span-6"
-                maw={520}
+                className={DIVISION_NAME_FIELD_CLASS}
                 maxLength={maxMediumTextLength}
                 disabled={disabled}
                 onChange={(event) => onNameChange(event.currentTarget.value)}
@@ -60,19 +83,36 @@ export const DivisionEditorPlayoffDivisionControls = ({
                 label={teamSignup ? 'Teams Count' : 'Participants Count'}
                 value={maxParticipants ?? ''}
                 max={maxStandardNumber}
-                maw={220}
                 clampBehavior="none"
                 disabled={disabled}
-                className="md:col-span-3"
+                className={DIVISION_NUMBER_FIELD_CLASS}
                 onChange={onMaxParticipantsChange}
             />
-            <div className="md:col-span-12">
+            <div className={DIVISION_FULL_WIDTH_CLASS}>
                 <TournamentFields
                     title="Playoff Configuration"
                     tournamentData={playoffConfig}
                     setTournamentData={onPlayoffConfigChange}
                     sport={sport}
                     unstyled
+                />
+                <DivisionPhaseConfigurationControls
+                    phase="PLAYOFF"
+                    divisionName={name}
+                    phaseSettings={phaseSettings}
+                    sport={sport}
+                    eventMatchRulesOverride={eventMatchRulesOverride}
+                    officialPositions={officialPositions}
+                    autoCreatePointMatchIncidents={autoCreatePointMatchIncidents}
+                    usesSets={Boolean(playoffConfig.usesSets)}
+                    winnerSetCount={playoffConfig.winnerSetCount}
+                    configuredMatchDurationMinutes={playoffConfig.matchDurationMinutes}
+                    disabled={disabled}
+                    onChange={(_phase, settings) => onPhaseSettingsChange(settings)}
+                    onCalculatedDurationChange={(matchDurationMinutes) => onPlayoffConfigChange((previous) => ({
+                        ...previous,
+                        matchDurationMinutes,
+                    }))}
                 />
             </div>
         </motion.div>

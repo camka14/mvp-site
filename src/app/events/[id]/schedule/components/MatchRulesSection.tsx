@@ -30,6 +30,7 @@ type MatchRulesSectionProps = {
   onAutoCreatePointMatchIncidentsChange: (checked: boolean) => void;
   disabled?: boolean;
   incidentToggleDisabled?: boolean;
+  showSegmentCount?: boolean;
   comboboxProps?: Record<string, unknown>;
 };
 
@@ -43,6 +44,14 @@ const normalizePositiveInt = (value: unknown): number | undefined => {
     return undefined;
   }
   return Math.max(1, Math.trunc(numeric));
+};
+
+const normalizeNonNegativeInt = (value: unknown): number | undefined => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return undefined;
+  }
+  return Math.trunc(numeric);
 };
 
 const normalizeStringList = (value: unknown): string[] => (
@@ -168,6 +177,7 @@ const normalizeTimerMode = (value: unknown, fallback: MatchTimerMode): MatchTime
 const normalizeTimekeepingConfig = (value: unknown): MatchTimekeepingConfig => {
   if (!isRecord(value)) return {};
   const segmentDurationMinutes = normalizePositiveInt(value.segmentDurationMinutes);
+  const segmentBreakDurationMinutes = normalizeNonNegativeInt(value.segmentBreakDurationMinutes);
   const sequenceDurations = Array.isArray(value.segmentDurationMinutesBySequence)
     ? value.segmentDurationMinutesBySequence
         .map((entry) => normalizePositiveInt(entry))
@@ -176,6 +186,7 @@ const normalizeTimekeepingConfig = (value: unknown): MatchTimekeepingConfig => {
   return {
     ...(typeof value.timerMode === 'string' ? { timerMode: normalizeTimerMode(value.timerMode, 'NONE') } : {}),
     ...(segmentDurationMinutes ? { segmentDurationMinutes } : value.segmentDurationMinutes === null ? { segmentDurationMinutes: null } : {}),
+    ...(segmentBreakDurationMinutes !== undefined ? { segmentBreakDurationMinutes } : {}),
     ...(sequenceDurations.length ? { segmentDurationMinutesBySequence: sequenceDurations } : {}),
     ...(typeof value.canUseAddedTime === 'boolean' ? { canUseAddedTime: value.canUseAddedTime } : {}),
     ...(typeof value.addedTimeEnabled === 'boolean' ? { addedTimeEnabled: value.addedTimeEnabled } : {}),
@@ -289,11 +300,13 @@ const resolveTimekeeping = (params: {
   const fallbackMode: MatchTimerMode = sportTimekeeping.timerMode ?? (params.scoringModel === 'PERIODS' ? 'COUNT_UP' : 'NONE');
   const timerMode = normalizeTimerMode(merged.timerMode, fallbackMode);
   const segmentDurationMinutes = normalizePositiveInt(merged.segmentDurationMinutes) ?? null;
+  const segmentBreakDurationMinutes = normalizeNonNegativeInt(merged.segmentBreakDurationMinutes) ?? 0;
   const canUseAddedTime = timerMode !== 'NONE' && sportTimekeeping.canUseAddedTime === true;
   const addedTimeEnabled = canUseAddedTime && merged.addedTimeEnabled === true;
   return {
     timerMode,
     segmentDurationMinutes,
+    segmentBreakDurationMinutes,
     segmentDurationMinutesBySequence: Array.isArray(merged.segmentDurationMinutesBySequence)
       ? merged.segmentDurationMinutesBySequence
           .map((entry) => normalizePositiveInt(entry))
@@ -321,7 +334,7 @@ const resolveMatchRules = (params: {
   officialPositions?: EventOfficialPosition[] | null;
 }): ResolvedMatchRules => {
   const sportTemplate = normalizeRulesConfig(params.sportTemplate, { preserveSegmentCount: true });
-  const eventOverride = normalizeRulesConfig(params.eventOverride);
+  const eventOverride = normalizeRulesConfig(params.eventOverride, { preserveSegmentCount: true });
   const merged: MatchRulesConfig = { ...sportTemplate, ...eventOverride };
   const hasSportTemplate = Object.keys(sportTemplate).length > 0;
   const fallbackModel: ResolvedMatchRules['scoringModel'] = params.usesSets ? 'SETS' : 'POINTS_ONLY';
@@ -383,11 +396,6 @@ const emptyTimekeeping = (value?: MatchTimekeepingConfig): boolean => (
   !value || Object.keys(value).length === 0
 );
 
-const timekeepingLabelForSegment = (segmentLabel: string): string => {
-  const lower = segmentLabel.toLowerCase();
-  return lower === 'total' ? 'Match length' : `${segmentLabel} length`;
-};
-
 const cardBadgeColor = (color?: MatchIncidentCardColor | null): string => {
   if (color === 'yellow') return 'yellow';
   if (color === 'red') return 'red';
@@ -411,6 +419,7 @@ export default function MatchRulesSection({
   onAutoCreatePointMatchIncidentsChange,
   disabled = false,
   incidentToggleDisabled = false,
+  showSegmentCount = false,
   comboboxProps,
 }: MatchRulesSectionProps) {
   const baseRules = useMemo(
@@ -436,7 +445,10 @@ export default function MatchRulesSection({
     }),
     [autoCreatePointMatchIncidents, officialPositions, setsPerMatch, sport?.matchRulesTemplate, usesSets, value, winnerSetCount],
   );
-  const normalizedOverride = useMemo(() => normalizeRulesConfig(value), [value]);
+  const normalizedOverride = useMemo(
+    () => normalizeRulesConfig(value, { preserveSegmentCount: showSegmentCount }),
+    [showSegmentCount, value],
+  );
   const hasOverrides = Object.keys(normalizedOverride).length > 0;
   const autoPointIncidentType = resolvedRules.autoCreatePointIncidentType?.trim() || DEFAULT_POINT_INCIDENT_TYPE;
   const incidentDefinitionsByCode = useMemo(() => (
@@ -473,14 +485,14 @@ export default function MatchRulesSection({
   );
 
   const updateOverride = useCallback((updater: (draft: MatchRulesConfig) => void) => {
-    const draft = normalizeRulesConfig(normalizedOverride);
+    const draft = normalizeRulesConfig(normalizedOverride, { preserveSegmentCount: showSegmentCount });
     updater(draft);
     if (emptyTimekeeping(draft.timekeeping)) {
       delete draft.timekeeping;
     }
-    const next = normalizeRulesConfig(draft);
+    const next = normalizeRulesConfig(draft, { preserveSegmentCount: showSegmentCount });
     onChange(Object.keys(next).length > 0 ? next : null);
-  }, [normalizedOverride, onChange]);
+  }, [normalizedOverride, onChange, showSegmentCount]);
 
   const setBooleanOverride = useCallback((
     key: 'supportsOvertime' | 'supportsShootout',
@@ -504,16 +516,16 @@ export default function MatchRulesSection({
     });
   }, [updateOverride]);
 
-  const handleSegmentDurationChange = useCallback((value: string | number) => {
-    const nextDuration = normalizePositiveInt(value);
-    updateTimekeepingOverride((draft) => {
-      if (!nextDuration || nextDuration === baseRules.timekeeping.segmentDurationMinutes) {
-        delete draft.segmentDurationMinutes;
+  const handleSegmentCountChange = useCallback((value: string | number) => {
+    const nextCount = normalizePositiveInt(value);
+    updateOverride((draft) => {
+      if (!nextCount || nextCount === baseRules.segmentCount) {
+        delete draft.segmentCount;
       } else {
-        draft.segmentDurationMinutes = nextDuration;
+        draft.segmentCount = nextCount;
       }
     });
-  }, [baseRules.timekeeping.segmentDurationMinutes, updateTimekeepingOverride]);
+  }, [baseRules.segmentCount, updateOverride]);
 
   const handleAddedTimeChange = useCallback((checked: boolean) => {
     updateTimekeepingOverride((draft) => {
@@ -598,7 +610,8 @@ export default function MatchRulesSection({
     );
   }, [autoPointIncidentType, handleIncidentTypesChange, onAutoCreatePointMatchIncidentsChange, selectedIncidentTypes]);
 
-  const showTimekeeping = baseRules.timekeeping.timerMode !== 'NONE';
+  const showTimekeeping = baseRules.timekeeping.timerMode !== 'NONE'
+    && resolvedRules.timekeeping.canUseAddedTime;
 
   return (
     <Stack gap="md">
@@ -650,29 +663,28 @@ export default function MatchRulesSection({
         ) : null}
       </SimpleGrid>
 
+      {showSegmentCount && !usesSets ? (
+        <NumberInput
+          label={`${resolvedRules.segmentLabel} count`}
+          description="The schedule uses this count with the phase length and break values."
+          min={1}
+          step={1}
+          value={resolvedRules.segmentCount}
+          disabled={disabled}
+          onChange={handleSegmentCountChange}
+        />
+      ) : null}
+
       {showTimekeeping ? (
         <Stack gap="xs">
           <Text fw={600} size="sm">Match clock</Text>
-          <SimpleGrid cols={{ base: 1, md: resolvedRules.timekeeping.canUseAddedTime ? 2 : 1 }} spacing="sm">
-            <NumberInput
-              label={timekeepingLabelForSegment(resolvedRules.segmentLabel)}
-              description="Used by the match timer and schedule duration."
-              min={1}
-              step={1}
-              value={resolvedRules.timekeeping.segmentDurationMinutes ?? ''}
-              disabled={disabled}
-              onChange={handleSegmentDurationChange}
-            />
-            {resolvedRules.timekeeping.canUseAddedTime ? (
-              <Switch
-                label="Allow added time"
-                description="Continue showing the timer with a plus indicator after regulation time."
-                checked={resolvedRules.timekeeping.addedTimeEnabled}
-                disabled={disabled}
-                onChange={(event) => handleAddedTimeChange(event.currentTarget.checked)}
-              />
-            ) : null}
-          </SimpleGrid>
+          <Switch
+            label="Allow added time"
+            description="Continue showing the timer with a plus indicator after regulation time."
+            checked={resolvedRules.timekeeping.addedTimeEnabled}
+            disabled={disabled}
+            onChange={(event) => handleAddedTimeChange(event.currentTarget.checked)}
+          />
         </Stack>
       ) : null}
 

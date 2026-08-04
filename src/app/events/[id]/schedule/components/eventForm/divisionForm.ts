@@ -1,4 +1,11 @@
-import type { Division as CoreDivision, Event, LeagueConfig, Sport, TournamentConfig } from '@/types';
+import type {
+    Division as CoreDivision,
+    DivisionPhaseSettingsMap,
+    Event,
+    LeagueConfig,
+    Sport,
+    TournamentConfig,
+} from '@/types';
 import {
     buildDivisionName,
     buildDivisionToken,
@@ -12,6 +19,7 @@ import {
     normalizeDivisionRatingType,
 } from '@/lib/divisionTypes';
 import { normalizePriceCents } from '@/lib/priceUtils';
+import { normalizeDivisionPhaseSettingsMap } from '@/lib/divisionPhaseSettings';
 
 import {
     buildTournamentConfig,
@@ -47,6 +55,7 @@ export type DivisionEditorState = {
     maxParticipants: number | null;
     playoffTeamCount: number | null;
     poolCount: number | null;
+    phaseSettings: DivisionPhaseSettingsMap;
     playoffPlacementDivisionIds: string[];
     leagueConfig: LeagueConfig;
     playoffConfig: TournamentConfig;
@@ -340,7 +349,7 @@ export const deriveSingleDivisionPoolPlayDefaults = ({
     poolTeamCount: number | undefined;
 } => {
     const bracketTeams = typeof firstDivisionDetail?.playoffTeamCount === 'number'
-        ? Math.max(2, Math.trunc(firstDivisionDetail.playoffTeamCount))
+        ? Math.trunc(firstDivisionDetail.playoffTeamCount)
         : editorPlayoffTeamCount;
     const poolCount = typeof firstDivisionDetail?.poolCount === 'number'
         ? Math.max(1, Math.trunc(firstDivisionDetail.poolCount))
@@ -384,6 +393,7 @@ export type DivisionDetailForm = {
     playoffTeamCount?: number;
     poolCount?: number;
     poolTeamCount?: number;
+    phaseSettings?: DivisionPhaseSettingsMap;
     playoffPlacementDivisionIds?: string[];
     gamesPerOpponent?: number;
     restTimeMinutes?: number;
@@ -569,6 +579,7 @@ export const normalizeDivisionDetailEntry = (
         poolTeamCount: Number.isFinite(rawPoolTeamCount)
             ? Math.max(1, Math.trunc(rawPoolTeamCount as number))
             : undefined,
+        phaseSettings: normalizeDivisionPhaseSettingsMap(row.phaseSettings),
         playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
         ...leagueConfigToDivisionFields(rawLeagueConfig),
         ...(rawPlayoffConfig ? { playoffConfig: rawPlayoffConfig } : {}),
@@ -641,6 +652,7 @@ export const normalizePlayoffDivisionDetailEntry = (
                 playoffTeamCount: normalizedDivision.playoffTeamCount,
                 poolCount: normalizedDivision.poolCount,
                 poolTeamCount: normalizedDivision.poolTeamCount,
+                phaseSettings: normalizedDivision.phaseSettings,
                 allowPaymentPlans: normalizedDivision.allowPaymentPlans,
                 installmentCount: normalizedDivision.installmentCount,
                 installmentDueDates: normalizedDivision.installmentDueDates,

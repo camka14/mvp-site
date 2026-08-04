@@ -1,5 +1,6 @@
 import { organizationHasFeature } from '@/lib/organizationFeatures';
 
+import { resolveSimpleSetupValidationPage } from '../errorOwnership';
 import {
     EVENT_SETUP_PAGE_IDS,
     type EventSetupCapabilities,
@@ -16,8 +17,6 @@ const PAGE_LABELS: Record<EventSetupPageId, string> = {
     divisions: 'Divisions',
     'schedule-plan': 'Schedule Plan',
     'schedule-location': 'Schedule & Location',
-    'competition-plan': 'Competition Plan',
-    'competition-rules': 'Competition Rules',
     'registration-plan': 'Registration Plan',
     'pricing-registration': 'Pricing & Registration',
     'documents-questions': 'Documents & Questions',
@@ -29,69 +28,10 @@ const PAGE_LABELS: Record<EventSetupPageId, string> = {
 const PAGE_CONTROLLER: Partial<Record<EventSetupPageId, EventSetupPageId>> = {
     divisions: 'participation-plan',
     'schedule-location': 'schedule-plan',
-    'competition-rules': 'competition-plan',
     'pricing-registration': 'registration-plan',
     'documents-questions': 'registration-plan',
     'staff-operations': 'operations-plan',
 };
-
-const validationPrefixes: Array<[string, EventSetupPageId]> = [
-    ['eventType', 'format'],
-    ['isAffiliateEvent', 'format'],
-    ['affiliateUrl', 'basics'],
-    ['imageId', 'basics'],
-    ['name', 'basics'],
-    ['description', 'basics'],
-    ['sportId', 'basics'],
-    ['tags', 'basics'],
-    ['teamSignup', 'participation-plan'],
-    ['teamSizeLimit', 'participation-plan'],
-    ['singleDivision', 'participation-plan'],
-    ['registrationByDivisionType', 'participation-plan'],
-    ['splitLeaguePlayoffDivisions', 'participation-plan'],
-    ['divisionDetails', 'divisions'],
-    ['playoffDivisionDetails', 'divisions'],
-    ['divisions', 'divisions'],
-    ['location', 'schedule-location'],
-    ['address', 'schedule-location'],
-    ['coordinates', 'schedule-location'],
-    ['start', 'schedule-location'],
-    ['end', 'schedule-location'],
-    ['fields', 'schedule-location'],
-    ['fieldCount', 'schedule-location'],
-    ['selectedFieldIds', 'schedule-location'],
-    ['leagueSlots', 'schedule-location'],
-    ['leagueData', 'competition-rules'],
-    ['playoffData', 'competition-rules'],
-    ['tournamentData', 'competition-rules'],
-    ['matchRulesOverride', 'competition-rules'],
-    ['leagueScoringConfig', 'competition-rules'],
-    ['price', 'pricing-registration'],
-    ['allowPaymentPlans', 'pricing-registration'],
-    ['installmentCount', 'pricing-registration'],
-    ['installmentAmounts', 'pricing-registration'],
-    ['installmentDueDates', 'pricing-registration'],
-    ['installmentDueRelativeDays', 'pricing-registration'],
-    ['registrationPaymentMode', 'pricing-registration'],
-    ['manualPayment', 'pricing-registration'],
-    ['taxHandling', 'pricing-registration'],
-    ['organizerManualTaxRateBps', 'pricing-registration'],
-    ['registrationCutoffHours', 'pricing-registration'],
-    ['cancellationRefundHours', 'pricing-registration'],
-    ['requiredTemplateIds', 'documents-questions'],
-    ['registrationQuestions', 'documents-questions'],
-    ['hostId', 'staff-operations'],
-    ['assistantHostIds', 'staff-operations'],
-    ['officialIds', 'staff-operations'],
-    ['officialSchedulingMode', 'staff-operations'],
-    ['officialPositions', 'staff-operations'],
-    ['eventOfficials', 'staff-operations'],
-    ['teamCheckIn', 'staff-operations'],
-    ['allowMatchRosterEdits', 'staff-operations'],
-    ['allowTemporaryMatchPlayers', 'staff-operations'],
-    ['doTeamsOfficiate', 'staff-operations'],
-    ['teamOfficialsMaySwap', 'staff-operations'],
-];
 
 export const resolveEventSetupCapabilities = (
     input: EventSetupResolverInput,
@@ -133,7 +73,7 @@ export const resolveEventSetupCapabilities = (
         usesStaffAndOperations: usesOperationsPlanning && (
             input.choices.useStaffAssignments
             || input.choices.useDedicatedOfficials
-            || input.teamSignup
+            || input.choices.useTeamCheckInAndRosterOperations
         ),
         supportsTryoutType: organizationHasFeature(input.organizationFeatures, 'CLUB_TEAMS') || isTryout,
     };
@@ -143,13 +83,6 @@ const resolvePageUsage = (
     pageId: EventSetupPageId,
     capabilities: EventSetupCapabilities,
 ): { used: boolean; reason?: string } => {
-    if (pageId === 'competition-plan' || pageId === 'competition-rules') {
-        return capabilities.usesCompetition
-            ? { used: true }
-            : { used: false, reason: capabilities.isExternal
-                ? 'External listings do not generate BracketIQ matches.'
-                : 'Competition configuration is used by managed leagues and tournaments.' };
-    }
     if (pageId === 'documents-questions') {
         return capabilities.usesDocumentsAndQuestions
             ? { used: true }
@@ -223,15 +156,7 @@ export const resolveEventSetupPages = (
     });
 };
 
-export const resolveValidationPage = (fieldPath: string): EventSetupPageId => {
-    const normalizedPath = fieldPath.trim();
-    const match = validationPrefixes.find(([prefix]) => (
-        normalizedPath === prefix
-        || normalizedPath.startsWith(`${prefix}.`)
-        || normalizedPath.startsWith(`${prefix}[`)
-    ));
-    return match?.[1] ?? 'review-publish';
-};
+export const resolveValidationPage = resolveSimpleSetupValidationPage;
 
 export const describeEventSetupTransition = (
     previous: EventSetupResolverInput,
@@ -241,27 +166,27 @@ export const describeEventSetupTransition = (
     const categories = new Set<string>();
 
     if (previous.eventType !== next.eventType) {
-        ['participation-plan', 'divisions', 'schedule-plan', 'schedule-location', 'competition-plan', 'competition-rules']
+        ['participation-plan', 'divisions', 'schedule-plan', 'schedule-location']
             .forEach((pageId) => pageIds.add(pageId as EventSetupPageId));
         categories.add('participant and division settings');
         categories.add('schedule configuration');
         categories.add('competition configuration');
     }
     if (!previous.isExternalRegistration && next.isExternalRegistration) {
-        ['competition-plan', 'competition-rules', 'registration-plan', 'pricing-registration', 'documents-questions', 'operations-plan', 'staff-operations']
+        ['divisions', 'registration-plan', 'pricing-registration', 'documents-questions', 'operations-plan', 'staff-operations']
             .forEach((pageId) => pageIds.add(pageId as EventSetupPageId));
         categories.add('BracketIQ payments and registration requirements');
         categories.add('match, scoring, staff, and official settings');
     }
     if (previous.singleDivision !== next.singleDivision) {
-        ['divisions', 'schedule-location', 'competition-rules', 'pricing-registration']
+        ['divisions', 'schedule-location', 'pricing-registration']
             .forEach((pageId) => pageIds.add(pageId as EventSetupPageId));
         categories.add('division-owned capacity, price, schedule, and competition settings');
     }
     if (previous.includePlayoffs !== next.includePlayoffs
         || previous.includePoolPlay !== next.includePoolPlay
         || previous.splitLeaguePlayoffDivisions !== next.splitLeaguePlayoffDivisions) {
-        ['divisions', 'competition-plan', 'competition-rules']
+        ['divisions']
             .forEach((pageId) => pageIds.add(pageId as EventSetupPageId));
         categories.add('playoff, pool, and bracket settings');
     }

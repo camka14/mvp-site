@@ -8,6 +8,9 @@ import {
 import type { Event } from '@/types';
 
 import { AnimatedLayoutSection } from '../components/AnimatedSection';
+import { DIVISION_NUMBER_FIELD_CLASS } from '../divisionLayout';
+import { BRACKET_TEAM_COUNT_ERROR } from '../divisionMessages';
+import { parseOptionalWholeNumber } from '../divisionNumbers';
 import type { EventFormValues } from '../formTypes';
 
 type SingleDivisionCapacityControlsProps = {
@@ -38,9 +41,15 @@ export const SingleDivisionCapacityControls = ({
     playoffTeamCountDisabled,
     playoffTeamCountError,
     onPlayoffTeamCountChange,
-}: SingleDivisionCapacityControlsProps) => (
-    <>
-        <AnimatedLayoutSection in={singleDivision} className="md:col-span-3">
+}: SingleDivisionCapacityControlsProps) => {
+    const resolvedPlayoffTeamCountError = playoffTeamCountError || (
+        typeof playoffTeamCount === 'number' && playoffTeamCount >= 2
+            ? undefined
+            : BRACKET_TEAM_COUNT_ERROR
+    );
+
+    return <>
+        <AnimatedLayoutSection in={singleDivision} className={DIVISION_NUMBER_FIELD_CLASS}>
             <Controller
                 name="maxParticipants"
                 control={control}
@@ -68,7 +77,7 @@ export const SingleDivisionCapacityControls = ({
         </AnimatedLayoutSection>
         <AnimatedLayoutSection
             in={eventType === 'LEAGUE' && includePlayoffs}
-            className="md:col-span-3"
+            className={DIVISION_NUMBER_FIELD_CLASS}
         >
             <NumberInput
                 label={singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
@@ -76,21 +85,25 @@ export const SingleDivisionCapacityControls = ({
                 max={maxStandardNumber}
                 w="100%"
                 styles={numberInputStyles}
-                value={typeof playoffTeamCount === 'number' ? playoffTeamCount : undefined}
+                value={typeof playoffTeamCount === 'number' ? playoffTeamCount : ''}
                 disabled={playoffTeamCountDisabled}
-                clampBehavior="strict"
+                clampBehavior="none"
                 onChange={(value) => {
                     if (playoffTeamCountDisabled) return;
-                    const numeric = typeof value === 'number' ? value : Number(value);
-                    onPlayoffTeamCountChange(Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined);
+                    onPlayoffTeamCountChange(parseOptionalWholeNumber(value));
                 }}
-                error={playoffTeamCountError}
+                error={Boolean(resolvedPlayoffTeamCountError)}
             />
+            {resolvedPlayoffTeamCountError ? (
+                <Text size="xs" c="red" mt={4}>
+                    {resolvedPlayoffTeamCountError}
+                </Text>
+            ) : null}
             {!singleDivision ? (
                 <Text size="xs" c="dimmed" mt="xs">
                     Used as the default for new divisions.
                 </Text>
             ) : null}
         </AnimatedLayoutSection>
-    </>
-);
+    </>;
+};

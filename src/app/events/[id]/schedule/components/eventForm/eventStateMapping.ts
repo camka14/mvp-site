@@ -7,6 +7,7 @@ import {
     normalizeOrganizerManualTaxRateBps,
 } from '@/lib/taxPolicy';
 import {
+    formatManualPaymentProviderInput,
     normalizeManualPaymentInstructions,
     normalizeManualPaymentLinks,
     normalizeRegistrationPaymentMode,
@@ -190,7 +191,7 @@ export const mapEventToFormState = (event: Event): EventFormState => {
                 price: defaultEventPrice,
                 maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
                 playoffTeamCount: Number.isFinite(event.playoffTeamCount)
-                    ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
+                    ? Math.trunc(event.playoffTeamCount as number)
                     : undefined,
                 playoffPlacementDivisionIds: [],
                 allowPaymentPlans: defaultEventAllowPaymentPlans,
@@ -235,9 +236,9 @@ export const mapEventToFormState = (event: Event): EventFormState => {
                 ? Math.max(2, Math.trunc(event.maxParticipants))
                 : 10,
         playoffTeamCount: Number.isFinite(detail.playoffTeamCount)
-            ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+            ? Math.trunc(detail.playoffTeamCount as number)
             : Number.isFinite(event.playoffTeamCount)
-                ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
+                ? Math.trunc(event.playoffTeamCount as number)
                 : undefined,
         poolCount: Number.isFinite(detail.poolCount)
             ? Math.max(1, Math.trunc(detail.poolCount as number))
@@ -397,7 +398,10 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     isAffiliateEvent: existingAffiliateUrl.trim().length > 0 || event.eventType === 'AFFILIATE',
     affiliateUrl: existingAffiliateUrl,
     registrationPaymentMode: normalizeRegistrationPaymentMode(event.registrationPaymentMode),
-    manualPaymentLinks: normalizeManualPaymentLinks(event.manualPaymentLinks),
+    manualPaymentLinks: normalizeManualPaymentLinks(event.manualPaymentLinks).map((link) => ({
+        ...link,
+        url: formatManualPaymentProviderInput(link.provider, link.url),
+    })),
     manualPaymentInstructions: normalizeManualPaymentInstructions(event.manualPaymentInstructions) ?? '',
     tags: Array.isArray(event.tags) ? event.tags : [],
     location: event.location ?? '',

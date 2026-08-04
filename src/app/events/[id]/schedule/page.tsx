@@ -321,6 +321,7 @@ function EventScheduleContent() {
   const [changesMatches, setChangesMatches] = useState<Match[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [formHasUnsavedChanges, setFormHasUnsavedChanges] = useState(false);
+  const [isEventFormValid, setIsEventFormValid] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -5783,6 +5784,7 @@ function EventScheduleContent() {
             showSaveAction={showSaveActionButton}
             createButtonLabel={createButtonLabel}
             isCreateMode={isCreateMode}
+            formIsValid={isEventFormValid}
             onSave={isCreateMode ? handlePublish : handleSaveEvent}
             publishing={publishing}
             hasNetworkActionInFlight={hasNetworkActionInFlight}
@@ -5891,6 +5893,8 @@ function EventScheduleContent() {
               isActive={activeTab === 'details'}
               onClose={handleDetailsClose}
               onDirtyStateChange={handleEventFormDirtyStateChange}
+              onValidityChange={setIsEventFormValid}
+              onSubmitRequest={isCreateMode ? handlePublish : handleSaveEvent}
               event={activeEvent}
               organization={activeOrganization}
               defaultLocation={activeLocationDefaults}

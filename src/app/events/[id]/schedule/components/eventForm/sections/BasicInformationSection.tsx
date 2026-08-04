@@ -2,10 +2,7 @@ import type { ComponentProps } from 'react';
 import { Controller, type Control, type FieldErrors, type UseFormSetValue } from 'react-hook-form';
 import {
     Alert,
-    Button,
-    Collapse,
     Loader,
-    Paper,
     Select as MantineSelect,
     TextInput,
     Textarea,
@@ -13,8 +10,8 @@ import {
 import type { Event, EventTag, Sport } from '@/types';
 import { ImageUploader } from '@/components/ui/ImageUploader';
 
+import { CollapsibleEventFormSection } from '../components/CollapsibleEventFormSection';
 import type { EventFormValues } from '../formTypes';
-import { SECTION_ANIMATION_DURATION_MS } from '../constants';
 import { EventTagsInput } from '../EventTagsInput';
 
 type BasicInformationSectionProps = {
@@ -36,6 +33,8 @@ type BasicInformationSectionProps = {
     setValue: UseFormSetValue<EventFormValues>;
     onToggle: () => void;
     onImageChange: (fileId: string, url: string) => void;
+    errorCount?: number;
+    firstErrorMessage?: string;
 };
 
 export const BasicInformationSection = ({
@@ -57,30 +56,19 @@ export const BasicInformationSection = ({
     setValue,
     onToggle,
     onImageChange,
+    errorCount,
+    firstErrorMessage,
 }: BasicInformationSectionProps) => (
-    <Paper
+    <CollapsibleEventFormSection
         id="section-basic-information"
-        shadow="xs"
-        radius="md"
-        withBorder
-        p="lg"
-        className="scroll-mt-20 bg-gray-50"
+        title="Basic Information"
+        collapsed={collapsed}
+        onToggle={onToggle}
+        errorCount={errorCount}
+        firstErrorMessage={firstErrorMessage}
     >
-        <div className="flex items-center justify-between gap-3">
-            <h3 className="text-lg font-semibold">Basic Information</h3>
-            <Button
-                type="button"
-                variant="subtle"
-                size="xs"
-                aria-expanded={!collapsed}
-                aria-controls="section-basic-information-content"
-                onClick={onToggle}
-            >
-                {collapsed ? 'Expand' : 'Collapse'}
-            </Button>
-        </div>
-        <Collapse in={!collapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-            <div id="section-basic-information-content" className="mt-4 mb-6">
+        <div>
+            <div className="mt-4 mb-6">
                 <div className="block text-sm font-medium mb-2">Event Image</div>
                 <ImageUploader
                     currentImageUrl={selectedImageUrl}
@@ -207,6 +195,6 @@ export const BasicInformationSection = ({
                     />
                 )}
             />
-        </Collapse>
-    </Paper>
+        </div>
+    </CollapsibleEventFormSection>
 );

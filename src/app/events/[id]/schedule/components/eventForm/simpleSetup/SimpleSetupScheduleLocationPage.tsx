@@ -9,6 +9,7 @@ import { EventDetailsResourceControls } from '../sections/EventDetailsResourceCo
 import type { EventFormSectionsProps } from '../sections/EventFormSections';
 import { EventDetailsTimingControls } from '../sections/EventDetailsTimingControls';
 import { ScheduleConfigBody } from '../sections/ScheduleConfigBody';
+import type { EventSetupScheduleStyle } from './types';
 
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
@@ -26,10 +27,12 @@ const MAX_MEDIUM_TEXT_LENGTH = 160;
 
 type SimpleSetupScheduleLocationPageProps = {
     model: EventFormSectionsProps;
+    scheduleStyle: EventSetupScheduleStyle;
 };
 
 export const SimpleSetupScheduleLocationPage = ({
     model,
+    scheduleStyle,
 }: SimpleSetupScheduleLocationPageProps) => {
     const {
         configurationActions,
@@ -131,7 +134,6 @@ export const SimpleSetupScheduleLocationPage = ({
                     onStartChange={handleStartChange}
                     onEndChange={handleEndChange}
                     onNoFixedEndDateTimeChange={handleNoFixedEndDateTimeChange}
-                    onManualPaymentsChange={() => undefined}
                     showScheduleControls
                     showRegistrationControls={false}
                 />
@@ -207,7 +209,9 @@ export const SimpleSetupScheduleLocationPage = ({
                 <div>
                     <Title order={4}>Schedule</Title>
                     <Text size="sm" c="dimmed" mb="md">
-                        Configure the timeslots the match generator can use.
+                        {scheduleStyle === 'FIXED_WINDOW'
+                            ? 'Assign resources and divisions. The timeslot follows the event start and end automatically.'
+                            : 'Configure the timeslots the match generator can use.'}
                     </Text>
                     <ScheduleConfigBody
                         control={control}
@@ -232,6 +236,13 @@ export const SimpleSetupScheduleLocationPage = ({
                         leagueFieldOptions={leagueFieldOptions}
                         divisionOptions={divisionOptions}
                         eventStartDate={eventData.start}
+                        timeslotMode={scheduleStyle === 'FIXED_WINDOW'
+                            ? 'FIXED_WINDOW'
+                            : scheduleStyle === 'WEEKLY_SLOTS'
+                                ? 'WEEKLY'
+                                : scheduleStyle === 'FIXED_SLOTS'
+                                    ? 'FIXED'
+                                    : 'MIXED'}
                         lockSlotDivisions={Boolean(eventData.singleDivision)}
                         lockedDivisionKeys={slotDivisionKeys}
                         readOnly={hasImmutableTimeSlots}

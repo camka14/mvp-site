@@ -85,6 +85,10 @@ type StaffManagementPanelProps = {
         userId: string,
         updates: Partial<Pick<EventOfficial, 'positionIds' | 'fieldIds'>>,
     ) => void;
+    showStaffAssignments?: boolean;
+    showDedicatedOfficials?: boolean;
+    showCustomOfficialPositions?: boolean;
+    showTeamOperations?: boolean;
 };
 
 export const StaffManagementPanel = ({
@@ -142,20 +146,24 @@ export const StaffManagementPanel = ({
     onRemoveOfficial,
     onRemoveAssistantHost,
     onUpdateEventOfficialEligibility,
+    showStaffAssignments = true,
+    showDedicatedOfficials = true,
+    showCustomOfficialPositions = true,
+    showTeamOperations = true,
 }: StaffManagementPanelProps) => (
     <>
-        <TeamOfficiatingControls
+        {showDedicatedOfficials ? <TeamOfficiatingControls
             control={control}
             doTeamsOfficiate={Boolean(eventData.doTeamsOfficiate)}
             onTeamsOfficiateChange={onTeamsOfficiateChange}
-        />
-        <TeamCheckInControls
+        /> : null}
+        {showTeamOperations ? <TeamCheckInControls
             control={control}
             teamSignup={Boolean(eventData.teamSignup)}
             allowMatchRosterEdits={Boolean(eventData.allowMatchRosterEdits)}
             onRosterEditsChange={onRosterEditsChange}
-        />
-        <StaffOfficialPositionEditor
+        /> : null}
+        {showDedicatedOfficials || showCustomOfficialPositions ? <StaffOfficialPositionEditor
             officialSchedulingMode={eventData.officialSchedulingMode}
             officialPositions={eventData.officialPositions || []}
             sportDefaultPositionCount={sportDefaultPositionCount}
@@ -167,9 +175,11 @@ export const StaffManagementPanel = ({
             onAddPosition={onAddPosition}
             onUpdatePosition={onUpdatePosition}
             onRemovePosition={onRemovePosition}
-        />
+            showSchedulingMode={showDedicatedOfficials}
+            showPositions={showCustomOfficialPositions}
+        /> : null}
 
-        {isOrganizationHostedEvent ? (
+        {showStaffAssignments || showDedicatedOfficials ? isOrganizationHostedEvent ? (
             <StaffOrganizationRosterPicker
                 search={organizationStaffSearch}
                 typeFilter={organizationStaffTypeFilter}
@@ -191,6 +201,8 @@ export const StaffManagementPanel = ({
                 onAddOfficial={onAddOfficial}
                 onAddAssistantHost={onAddAssistantHost}
                 onSetHost={onSetHost}
+                showOfficialAssignments={showDedicatedOfficials}
+                showHostAssignments={showStaffAssignments}
             />
         ) : (
             <StaffNonOrganizationInvitePanel
@@ -212,10 +224,12 @@ export const StaffManagementPanel = ({
                 onInviteFieldChange={onInviteFieldChange}
                 onInviteRoleToggle={onInviteRoleToggle}
                 onStageInvite={onStageInvite}
+                showOfficialAssignments={showDedicatedOfficials}
+                showHostAssignments={showStaffAssignments}
             />
-        )}
+        ) : null}
 
-        <StaffAssignedCardsGrid
+        {showStaffAssignments || showDedicatedOfficials ? <StaffAssignedCardsGrid
             officialsListProps={{
                 cards: assignedOfficialCards,
                 visibleCount: officialCardVisibleCount,
@@ -251,8 +265,10 @@ export const StaffManagementPanel = ({
                     }
                 },
             }}
-        />
-        {staffInviteError ? (
+            showOfficials={showDedicatedOfficials}
+            showHosts={showStaffAssignments}
+        /> : null}
+        {(showStaffAssignments || showDedicatedOfficials) && staffInviteError ? (
             <Text size="xs" c="red">
                 {staffInviteError}
             </Text>

@@ -2,6 +2,9 @@ import type { ComponentProps } from 'react';
 import { NumberInput } from '@mantine/core';
 
 import { AnimatedLayoutSection } from '../components/AnimatedSection';
+import { DIVISION_NUMBER_FIELD_CLASS } from '../divisionLayout';
+import { BRACKET_TEAM_COUNT_ERROR } from '../divisionMessages';
+import { parseOptionalWholeNumber } from '../divisionNumbers';
 
 type DivisionEditorTournamentPoolControlsProps = {
     visible: boolean;
@@ -11,6 +14,7 @@ type DivisionEditorTournamentPoolControlsProps = {
     maxStandardNumber: number;
     numberInputStyles?: ComponentProps<typeof NumberInput>['styles'];
     disabled: boolean;
+    playoffTeamCountError?: string;
     onPlayoffTeamCountChange: (value: number | null) => void;
     onPoolCountChange: (value: number | null) => void;
 };
@@ -23,11 +27,12 @@ export const DivisionEditorTournamentPoolControls = ({
     maxStandardNumber,
     numberInputStyles,
     disabled,
+    playoffTeamCountError,
     onPlayoffTeamCountChange,
     onPoolCountChange,
 }: DivisionEditorTournamentPoolControlsProps) => (
     <>
-        <AnimatedLayoutSection in={visible} className="md:col-span-6">
+        <AnimatedLayoutSection in={visible} className={DIVISION_NUMBER_FIELD_CLASS}>
             <NumberInput
                 label="Bracket Teams"
                 min={2}
@@ -35,20 +40,22 @@ export const DivisionEditorTournamentPoolControls = ({
                 value={playoffTeamCount ?? ''}
                 w="100%"
                 styles={numberInputStyles}
-                clampBehavior="strict"
+                clampBehavior="none"
                 disabled={disabled}
                 onChange={(value) => {
                     if (disabled) {
                         return;
                     }
-                    const numeric = typeof value === 'number' ? value : Number(value);
-                    onPlayoffTeamCountChange(Number.isFinite(numeric)
-                        ? Math.max(2, Math.trunc(numeric))
-                        : null);
+                    onPlayoffTeamCountChange(parseOptionalWholeNumber(value) ?? null);
                 }}
+                error={playoffTeamCountError || (
+                    typeof playoffTeamCount === 'number' && playoffTeamCount >= 2
+                        ? undefined
+                        : BRACKET_TEAM_COUNT_ERROR
+                )}
             />
         </AnimatedLayoutSection>
-        <AnimatedLayoutSection in={visible} className="md:col-span-6">
+        <AnimatedLayoutSection in={visible} className={DIVISION_NUMBER_FIELD_CLASS}>
             <NumberInput
                 label="Pool Count"
                 min={1}
@@ -62,14 +69,11 @@ export const DivisionEditorTournamentPoolControls = ({
                     if (disabled) {
                         return;
                     }
-                    const numeric = typeof value === 'number' ? value : Number(value);
-                    onPoolCountChange(Number.isFinite(numeric)
-                        ? Math.max(1, Math.trunc(numeric))
-                        : null);
+                    onPoolCountChange(parseOptionalWholeNumber(value) ?? null);
                 }}
             />
         </AnimatedLayoutSection>
-        <AnimatedLayoutSection in={visible} className="md:col-span-6">
+        <AnimatedLayoutSection in={visible} className={DIVISION_NUMBER_FIELD_CLASS}>
             <NumberInput
                 label="Pool Team Count"
                 value={poolTeamCount ?? ''}

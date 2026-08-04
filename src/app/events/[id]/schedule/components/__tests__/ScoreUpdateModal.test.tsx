@@ -142,6 +142,7 @@ describe('ScoreUpdateModal', () => {
 
   afterEach(() => {
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   it('uses a single set for timed events and keeps Finish Match available', () => {
@@ -1637,6 +1638,84 @@ describe('ScoreUpdateModal', () => {
 
     expect(await screen.findByText('45:00')).toBeInTheDocument();
     expect(screen.getByText(/45 minute regulation half with added time/i)).toBeInTheDocument();
+  });
+
+  it('confirms and persists restart and skip actions during a segment break', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-19T10:31:00.000Z'));
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const rules = buildRules({
+      timekeeping: {
+        timerMode: 'COUNT_UP',
+        segmentDurationMinutes: 30,
+        segmentDurationMinutesBySequence: [30, 30],
+        segmentBreakDurationMinutes: 5,
+        canUseAddedTime: false,
+        addedTimeEnabled: false,
+        stopAtRegulationEnd: true,
+      },
+    });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          matchRulesSnapshot: rules,
+          resolvedMatchRules: rules,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'COMPLETE',
+              scores: { team_a: 1, team_b: 0 },
+              winnerEventTeamId: 'team_a',
+              endedAt: '2026-04-19T10:30:00.000Z',
+            },
+            {
+              id: 'match_1_segment_2',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 2,
+              status: 'NOT_STARTED',
+              scores: { team_a: 0, team_b: 0 },
+              winnerEventTeamId: null,
+            },
+          ],
+        })}
+        tournament={buildEvent({ resolvedMatchRules: rules })}
+        canManage
+        onScoreChange={onScoreChange}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByText('Segment Break')).toBeInTheDocument();
+    expect(screen.getByText('04:00')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start Half 2' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restart Break' }));
+    await waitFor(() => expect(onScoreChange).toHaveBeenCalledTimes(1));
+    expect(confirmSpy).toHaveBeenNthCalledWith(1, 'Restart the break from its full duration?');
+    expect(onScoreChange.mock.calls[0][0].segmentOperations).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_2',
+        metadata: expect.objectContaining({
+          segmentBreakStartedAt: '2026-04-19T10:31:00.000Z',
+        }),
+      }),
+    ]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Skip Break' })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip Break' }));
+    await waitFor(() => expect(onScoreChange).toHaveBeenCalledTimes(2));
+    expect(confirmSpy).toHaveBeenNthCalledWith(2, 'Skip the remaining break?');
+    expect(onScoreChange.mock.calls[1][0].segmentOperations[0].metadata).toEqual(expect.objectContaining({
+      segmentBreakSkippedAt: expect.any(String),
+    }));
+    expect(await screen.findByRole('button', { name: 'Start Half 2' })).toBeEnabled();
   });
 
   it('records first-half added-time incidents with added-time notation', async () => {

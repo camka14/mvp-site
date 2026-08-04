@@ -31,6 +31,7 @@ export type UseStaffOfficialControllerParams = {
     currentUser?: UserData | null;
     resolvedOrganization: Organization | null;
     isOrganizationHostedEvent: boolean;
+    isCreateMode?: boolean;
     selectedSportForOfficials?: Sport | null;
     fields: Field[];
     selectedFieldIds: string[];

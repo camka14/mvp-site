@@ -33,6 +33,8 @@ type StaffNonOrganizationInvitePanelProps = {
     onInviteFieldChange: (field: 'firstName' | 'lastName' | 'email', value: string) => void;
     onInviteRoleToggle: (role: StaffAssignmentRole) => void;
     onStageInvite: () => void;
+    showOfficialAssignments?: boolean;
+    showHostAssignments?: boolean;
 };
 
 export const StaffNonOrganizationInvitePanel = ({
@@ -54,13 +56,15 @@ export const StaffNonOrganizationInvitePanel = ({
     onInviteFieldChange,
     onInviteRoleToggle,
     onStageInvite,
+    showOfficialAssignments = true,
+    showHostAssignments = true,
 }: StaffNonOrganizationInvitePanelProps) => (
     <Paper withBorder radius="md" p="md" bg="white">
         <Stack gap="sm">
             <div>
                 <Title order={6}>Add / Invite Staff</Title>
                 <Text size="sm" c="dimmed">
-                    Add existing users or stage email invites as officials and assistant hosts.
+                    Add existing users or stage email invites for the enabled event roles.
                 </Text>
             </div>
             <TextInput
@@ -86,15 +90,15 @@ export const StaffNonOrganizationInvitePanel = ({
                             <Group key={result.$id} justify="space-between" align="center" gap="sm">
                                 <UserCard user={result} className="!p-0 !shadow-none flex-1" />
                                 <Group gap="xs">
-                                    <Button
+                                    {showOfficialAssignments ? <Button
                                         type="button"
                                         size="xs"
                                         disabled={isOfficialAssigned || eventOfficialsDisabled}
                                         onClick={() => onAddOfficial(result)}
                                     >
                                         Add as official
-                                    </Button>
-                                    <Button
+                                    </Button> : null}
+                                    {showHostAssignments ? <Button
                                         type="button"
                                         size="xs"
                                         variant="default"
@@ -102,7 +106,7 @@ export const StaffNonOrganizationInvitePanel = ({
                                         onClick={() => onAddAssistantHost(result)}
                                     >
                                         Add as assistant host
-                                    </Button>
+                                    </Button> : null}
                                 </Group>
                             </Group>
                         );
@@ -137,22 +141,22 @@ export const StaffNonOrganizationInvitePanel = ({
                         />
                     </SimpleGrid>
                     <Group gap="xs">
-                        <Button
+                        {showOfficialAssignments ? <Button
                             type="button"
                             size="xs"
                             variant={inviteDraft.roles.includes('OFFICIAL') ? 'filled' : 'default'}
                             onClick={() => onInviteRoleToggle('OFFICIAL')}
                         >
                             Official
-                        </Button>
-                        <Button
+                        </Button> : null}
+                        {showHostAssignments ? <Button
                             type="button"
                             size="xs"
                             variant={inviteDraft.roles.includes('ASSISTANT_HOST') ? 'filled' : 'default'}
                             onClick={() => onInviteRoleToggle('ASSISTANT_HOST')}
                         >
                             Assistant host
-                        </Button>
+                        </Button> : null}
                         <Button type="button" size="xs" onClick={onStageInvite}>
                             Add email invite
                         </Button>

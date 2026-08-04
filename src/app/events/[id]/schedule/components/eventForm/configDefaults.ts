@@ -58,7 +58,7 @@ export const normalizeLeagueConfigForSetMode = (
         : 1;
     const normalizedIncludePlayoffs = Boolean(source?.includePlayoffs);
     const normalizedPlayoffTeamCount = Number.isFinite(Number(source?.playoffTeamCount))
-        ? Math.max(2, Math.trunc(Number(source?.playoffTeamCount)))
+        ? Math.trunc(Number(source?.playoffTeamCount))
         : undefined;
 
     if (usesSets) {

@@ -2,7 +2,7 @@ import React from 'react';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
-import EventForm, { EventFormHandle } from '../EventForm';
+import EventForm, { buildDefaultSetupChoices, EventFormHandle } from '../EventForm';
 import { userService } from '@/lib/userService';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
@@ -11,6 +11,35 @@ import { apiRequest } from '@/lib/apiClient';
 import { CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES } from '@/lib/taxPolicy';
 
 jest.setTimeout(20000);
+
+describe('buildDefaultSetupChoices', () => {
+  it('does not treat sport-seeded official positions as enabled custom operations', () => {
+    const choices = buildDefaultSetupChoices({
+      sportConfig: {
+        officialPositionTemplates: [{ name: 'Referee', count: 1 }],
+      } as any,
+      officialPositions: [{ id: 'seeded-referee', name: 'Referee', count: 1, order: 0 }],
+      officialIds: [],
+      eventOfficials: [],
+      doTeamsOfficiate: false,
+    });
+
+    expect(choices.useDedicatedOfficials).toBe(false);
+    expect(choices.useCustomOfficialPositions).toBe(false);
+  });
+
+  it('recognizes an event-specific official position change', () => {
+    const choices = buildDefaultSetupChoices({
+      sportConfig: {
+        officialPositionTemplates: [{ name: 'Referee', count: 1 }],
+      } as any,
+      officialPositions: [{ id: 'custom-referee', name: 'Referee', count: 2, order: 0 }],
+    });
+
+    expect(choices.useDedicatedOfficials).toBe(true);
+    expect(choices.useCustomOfficialPositions).toBe(true);
+  });
+});
 
 let mockDateTimePickerValuesByLabel: Record<string, string> = {};
 let mockLeagueFieldsProps: any[] = [];
@@ -171,7 +200,11 @@ jest.mock('@/app/discover/components/LeagueFields', () => {
       ? props.slots.reduce((count: number, slot: any) => count + (Array.isArray(slot?.conflicts) ? slot.conflicts.length : 0), 0)
       : 0;
     return (
-      <div data-testid="league-fields" data-configuration-title={props?.configurationTitle}>
+      <div
+        data-testid="league-fields"
+        data-configuration-title={props?.configurationTitle}
+        data-timeslot-mode={props?.timeslotMode}
+      >
         {props?.showTimeslots === false ? null : (
           <span data-testid="league-conflict-count">{conflictCount}</span>
         )}
@@ -215,8 +248,20 @@ jest.mock('@/components/ui/UserCard', () => {
   return MockUserCard;
 });
 jest.mock('@/components/ui/ImageUploader', () => ({
-  ImageUploader: function MockImageUploader() {
-    return <div data-testid="image-uploader" />;
+  ImageUploader: function MockImageUploader({
+    className,
+    previewHeight,
+  }: {
+    className?: string;
+    previewHeight?: number;
+  }) {
+    return (
+      <div
+        data-testid="image-uploader"
+        data-class-name={className}
+        data-preview-height={previewHeight}
+      />
+    );
   },
 }));
 
@@ -291,6 +336,11 @@ jest.mock('@/lib/apiClient', () => ({
 describe('EventForm dirty state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(window, 'scrollTo', {
+      configurable: true,
+      writable: true,
+      value: jest.fn(),
+    });
     mockDateTimePickerValuesByLabel = {};
     mockLeagueFieldsProps = [];
     mockUseSportsState = buildMockUseSportsState();
@@ -500,6 +550,10 @@ describe('EventForm dirty state', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'Format' })).toBeInTheDocument();
+    const formatPageFrame = screen.getByRole('region', { name: 'Format' });
+    expect(formatPageFrame.parentElement).toHaveClass('overflow-hidden');
+    expect(formatPageFrame).not.toHaveClass('rounded-lg', 'border', 'shadow-sm');
+    expect(screen.getByTestId('simple-setup-format-layout')).toHaveClass('flex', 'flex-wrap');
     expect(screen.getByRole('button', { name: 'Basics: Locked' })).toBeInTheDocument();
     expect(screen.queryByText('Basic Information')).not.toBeInTheDocument();
 
@@ -507,7 +561,12 @@ describe('EventForm dirty state', () => {
 
     expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
     expect(screen.getByText('Basic Information')).toBeInTheDocument();
-    expect(screen.getByTestId('image-uploader')).toBeInTheDocument();
+    expect(screen.getByTestId('image-uploader')).toHaveAttribute(
+      'data-class-name',
+      expect.stringContaining('lg:w-80'),
+    );
+    expect(screen.getByTestId('image-uploader')).toHaveAttribute('data-preview-height', '176');
+    expect(screen.getByTestId('simple-setup-basics-layout')).toHaveClass('lg:flex-row');
     expect(screen.getByPlaceholderText('Enter event name')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Event Details' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Divisions' })).not.toBeInTheDocument();
@@ -531,10 +590,130 @@ describe('EventForm dirty state', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('heading', { name: 'Divisions' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Division configuration' })).toBeInTheDocument();
+    expect(screen.queryByTestId('division-mode-switches')).not.toBeInTheDocument();
+    expect(screen.getByTestId('division-field-row')).toHaveClass('flex', 'flex-wrap');
+    expect(screen.queryByTestId('cents-input')).not.toBeInTheDocument();
+    expect(screen.queryByText('Payment Plans')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Basic Information' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Event Details' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Staff' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Schedule' })).not.toBeInTheDocument();
+  });
+
+  it('uses descriptive schedule choices without duplicate resource planning inputs', async () => {
+    renderForm(jest.fn(), undefined, {}, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    for (const pageName of ['Basics', 'Participation Plan', 'Divisions', 'Schedule Plan']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(await screen.findByRole('heading', { name: pageName })).toBeInTheDocument();
+    }
+
+    expect(screen.getByRole('radiogroup', { name: 'Schedule style' })).toBeInTheDocument();
+    expect(screen.getByText('Use one non-repeating timeslot that always matches the event start and end.')).toBeInTheDocument();
+    expect(screen.getByText('Use the same selected weekdays and times each week during the event.')).toBeInTheDocument();
+    expect(screen.getByText('Add individual dates and times that do not repeat.')).toBeInTheDocument();
+    expect(screen.getByText('Combine weekly availability with one-time dates or exceptions.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Resource source')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Custom resource count')).not.toBeInTheDocument();
+    expect(screen.queryByText('Division assignment')).not.toBeInTheDocument();
+  });
+
+  it('applies the fixed event window choice to Schedule and Location', async () => {
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const formRef = React.createRef<EventFormHandle>();
+    renderForm(jest.fn(), formRef, {
+      eventType: 'WEEKLY_EVENT',
+      start: '2026-03-12T10:00:00',
+      end: '2026-03-12T12:00:00',
+      leagueSlots: [{
+        key: 'weekly-slot',
+        repeating: true,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+        daysOfWeek: [3],
+        dayOfWeek: 3,
+        divisions: ['open'],
+        startTimeMinutes: 600,
+        endTimeMinutes: 720,
+        conflicts: [],
+        checking: false,
+      }],
+    }, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    for (const pageName of ['Basics', 'Participation Plan', 'Divisions', 'Schedule Plan']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(await screen.findByRole('heading', { name: pageName })).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByText('Fixed event window'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Schedule & Location' })).toBeInTheDocument();
+    await waitFor(() => {
+      const latestScheduleProps = mockLeagueFieldsProps.at(-1);
+      expect(latestScheduleProps?.timeslotMode).toBe('FIXED_WINDOW');
+      expect(latestScheduleProps?.unstyled).toBe(true);
+      expect(latestScheduleProps?.slots).toEqual([
+        expect.objectContaining({
+          repeating: false,
+          startDate: '2026-03-12T10:00:00',
+          endDate: '2026-03-12T12:00:00',
+        }),
+      ]);
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it('keeps bracket teams empty and shows the field error until at least two teams are entered', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+    renderForm(jest.fn(), formRef, {
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teamSignup: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: false,
+        playoffTeamCount: undefined,
+      },
+    }, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    for (const pageName of ['Basics', 'Participation Plan']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      expect(await screen.findByRole('heading', { name: pageName })).toBeInTheDocument();
+    }
+
+    fireEvent.click(screen.getByLabelText('League playoffs'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Divisions' })).toBeInTheDocument();
+
+    const bracketTeams = screen.getByLabelText('Playoff Team Count') as HTMLInputElement;
+    expect(bracketTeams).toHaveValue('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => {
+      expect(screen.getByText('At least 2 teams need to be in the bracket.')).toBeInTheDocument();
+    });
+
+    fireEvent.change(bracketTeams, { target: { value: '1' } });
+    fireEvent.blur(bracketTeams);
+    expect(formRef.current?.getDraft().includePlayoffs).toBe(true);
+    const invalidBracketTeams = await screen.findByLabelText('Playoff Team Count') as HTMLInputElement;
+    expect(invalidBracketTeams).toHaveValue('1');
+    expect(formRef.current?.getDraft().playoffTeamCount).toBe(1);
+    expect(screen.getByText('At least 2 teams need to be in the bracket.')).toBeInTheDocument();
+
+    fireEvent.change(invalidBracketTeams, { target: { value: '2' } });
+    fireEvent.blur(invalidBracketTeams);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('heading', { name: 'Schedule Plan' })).toBeInTheDocument();
   });
 
   it('keeps the external registration URL on the Simple Setup Basics page', async () => {
@@ -565,6 +744,131 @@ describe('EventForm dirty state', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Enter event name')).toHaveValue('Shared draft event');
     });
+  });
+
+  it('reveals and focuses an invalid manual payment in Advanced Setup', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+    const onDirtyStateChange = jest.fn();
+    const scrollToSpy = jest.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+    renderForm(onDirtyStateChange, formRef, {
+      registrationPaymentMode: 'MANUAL',
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: 'https://cash.app/$camka14',
+      }],
+      manualPaymentInstructions: 'Include the team name.',
+    }, null, {
+      isCreateMode: true,
+      initialSetupMode: 'ADVANCED',
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+    const eventNameInput = screen.getByPlaceholderText('Enter event name');
+    const cashAppInput = await screen.findByLabelText('Cash App username');
+    fireEvent.change(eventNameInput, { target: { value: '' } });
+    fireEvent.blur(eventNameInput);
+    fireEvent.change(cashAppInput, { target: { value: '$' } });
+    fireEvent.blur(cashAppInput);
+    await waitFor(() => {
+      expect(screen.getByLabelText('Cash App username')).toHaveValue('$');
+    });
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(false);
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('Basic Information: 1 error')).toHaveLength(3);
+      expect(screen.getByPlaceholderText('Enter event name')).toHaveFocus();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Enter event name'), {
+      target: { value: 'Fixed event name' },
+    });
+    fireEvent.blur(screen.getByPlaceholderText('Enter event name'));
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(false);
+    await waitFor(() => {
+      expect(screen.getAllByText('Enter a valid Cash App username or HTTPS link.').length).toBeGreaterThan(0);
+      expect(screen.getAllByLabelText('Manual Payments: 1 error')).toHaveLength(3);
+      expect(screen.getByLabelText('Cash App username')).toHaveFocus();
+    });
+    scrollToSpy.mockRestore();
+  });
+
+  it('disables Simple Setup creation when the review draft becomes invalid', async () => {
+    const onDirtyStateChange = jest.fn();
+    renderForm(onDirtyStateChange, undefined, {
+      registrationPaymentMode: 'MANUAL',
+      price: 2500,
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: 'https://cash.app/$camka14',
+      }],
+    }, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+    for (let step = 0; step < 12 && !screen.queryByRole('region', { name: 'Review & Publish' }); step += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => {
+        expect(screen.queryByText('Loading event setup...')).not.toBeInTheDocument();
+      });
+    }
+    expect(screen.getByRole('region', { name: 'Review & Publish' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Advanced Setup'));
+    const cashAppInput = await screen.findByLabelText('Cash App username');
+    fireEvent.change(cashAppInput, { target: { value: '$' } });
+    await waitFor(() => expect(screen.getByLabelText('Cash App username')).toHaveValue('$'));
+    fireEvent.click(screen.getByLabelText('Simple Setup'));
+    expect(screen.queryByRole('button', { name: 'Review event' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Event' })).toBeDisabled();
+  });
+
+  it('renders the current draft in the full review and edits the owning page', async () => {
+    renderForm(jest.fn(), undefined, {}, null, {
+      isCreateMode: true,
+      initialSetupMode: 'SIMPLE',
+    });
+
+    for (let step = 0; step < 12 && !screen.queryByRole('region', { name: 'Review & Publish' }); step += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => {
+        expect(screen.queryByText('Loading event setup...')).not.toBeInTheDocument();
+      });
+    }
+
+    expect(screen.getByRole('region', { name: 'Review & Publish' })).toBeInTheDocument();
+    expect(screen.getByTestId('simple-review-section-format')).toBeInTheDocument();
+    expect(screen.getByTestId('simple-review-section-basics')).toHaveTextContent('Test Event');
+    expect(screen.getByTestId('simple-review-section-schedule-location')).toBeInTheDocument();
+    expect(screen.getByTestId('simple-review-section-pricing-registration')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Basics' }));
+    expect(await screen.findByRole('heading', { name: 'Basics' })).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Enter event name'), {
+      target: { value: 'Updated Review Event' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Review & Publish:/ }));
+    expect(await screen.findByRole('heading', { name: 'Review & Publish' })).toBeInTheDocument();
+    expect(screen.getByTestId('simple-review-section-basics')).toHaveTextContent('Updated Review Event');
   });
 
   it('keeps organization Tryout division settings read only while editing the Tryout price', async () => {
@@ -691,6 +995,26 @@ describe('EventForm dirty state', () => {
     });
 
     expect(screen.getAllByTestId('price-preview')).toHaveLength(2);
+  });
+
+  it('shows plain registration price without online fees or plans in Advanced manual mode', () => {
+    renderForm(jest.fn(), undefined, {
+      registrationPaymentMode: 'MANUAL',
+      price: 5000,
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: 'https://cash.app/$camka14',
+      }],
+      allowPaymentPlans: false,
+      installmentCount: 0,
+      installmentAmounts: [],
+    });
+
+    expect(screen.getByLabelText('Registration price')).toBeInTheDocument();
+    expect(screen.queryByTestId('price-preview')).not.toBeInTheDocument();
+    expect(screen.queryByText('Payment Plans')).not.toBeInTheDocument();
   });
 
   it('warns when payment plans make the event unavailable for mobile editing', async () => {
@@ -2164,7 +2488,7 @@ describe('EventForm dirty state', () => {
     const mapSideControls = screen.getByTestId('event-details-map-side-controls');
     const maxParticipantsInput = screen.getByLabelText('Max Participants');
     const divisionModeSwitches = screen.getByTestId('division-mode-switches');
-    const divisionPriceInput = within(divisionSettingsSection as HTMLElement).getByLabelText('Division price');
+    const divisionPriceInput = within(divisionSettingsSection as HTMLElement).getByLabelText('Registration price');
 
     expect(eventDetailsSection).not.toBeNull();
     expect(divisionSettingsSection).not.toBeNull();
@@ -2555,7 +2879,8 @@ describe('EventForm dirty state', () => {
     expect(screen.getByText('New Division')).toBeInTheDocument();
     expect(screen.queryByText('League Divisions')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Division Type')).toHaveValue('LEAGUE');
-    expect(screen.getByLabelText('Placement #1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Division Playoff Team Count')).toHaveValue('');
+    expect(screen.queryByLabelText('Placement #1')).not.toBeInTheDocument();
     expect(document.querySelector('.responsive-card-grid')).not.toBeNull();
     expect(screen.getByText('Division Type: League')).toBeInTheDocument();
     expect(screen.getAllByText('Division Type: Playoff')).toHaveLength(2);

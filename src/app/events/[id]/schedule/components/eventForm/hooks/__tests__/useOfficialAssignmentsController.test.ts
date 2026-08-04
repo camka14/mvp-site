@@ -48,6 +48,7 @@ const buildEventData = (overrides: Partial<EventFormValues> = {}): EventFormValu
 type HarnessProps = {
     allowedOfficials?: UserData[];
     eventData: EventFormValues;
+    isCreateMode?: boolean;
     isOrganizationHostedEvent?: boolean;
     sport?: Sport | null;
 };
@@ -55,6 +56,7 @@ type HarnessProps = {
 const useOfficialHarness = ({
     allowedOfficials = [],
     eventData,
+    isCreateMode = false,
     isOrganizationHostedEvent = false,
     sport = null,
 }: HarnessProps) => {
@@ -80,6 +82,7 @@ const useOfficialHarness = ({
     const controller = useOfficialAssignmentsController({
         eventData: formValues,
         fields: [FIELD],
+        isCreateMode,
         isOrganizationHostedEvent,
         organizationAllowedOfficialIdSet: new Set(allowedOfficialMap.keys()),
         organizationOfficialsById: allowedOfficialMap,
@@ -174,6 +177,27 @@ describe('useOfficialAssignmentsController', () => {
             expect.objectContaining({ name: 'Head Referee', count: 1, order: 0 }),
             expect.objectContaining({ name: 'Line Judge', count: 2, order: 1 }),
         ]));
+    });
+
+    it('loads sport position templates by default for a new event', async () => {
+        const sport = {
+            $id: 'sport_1',
+            officialPositionTemplates: [
+                { name: 'Head Referee', count: 1 },
+                { name: 'Line Judge', count: 2 },
+            ],
+        } as Sport;
+        const { result } = renderHook(() => useOfficialHarness({
+            eventData: buildEventData({ officialPositions: [] }),
+            isCreateMode: true,
+            sport,
+        }));
+
+        await waitFor(() => expect(result.current.formValues.officialPositions).toEqual([
+            expect.objectContaining({ name: 'Head Referee', count: 1, order: 0 }),
+            expect.objectContaining({ name: 'Line Judge', count: 2, order: 1 }),
+        ]));
+        expect(result.current.formState.isDirty).toBe(false);
     });
 
     it('sanitizes organization officials and rejects assignments outside the allowed roster', async () => {

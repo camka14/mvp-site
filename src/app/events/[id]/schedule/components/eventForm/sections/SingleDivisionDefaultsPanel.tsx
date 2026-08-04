@@ -13,9 +13,17 @@ import {
     type Control,
 } from 'react-hook-form';
 
-import type { Event, LeagueConfig, TournamentConfig } from '@/types';
+import type {
+    DivisionCompetitionPhase,
+    DivisionPhaseSettings,
+    DivisionPhaseSettingsMap,
+    Event,
+    LeagueConfig,
+    TournamentConfig,
+} from '@/types';
 
 import { DIVISION_LAYOUT_TRANSITION } from '../constants';
+import { DIVISION_FIELD_ROW_CLASS } from '../divisionLayout';
 import type { EventFormValues } from '../formTypes';
 import { SingleDivisionCapacityControls } from './SingleDivisionCapacityControls';
 import { SingleDivisionPaymentPlanControls } from './SingleDivisionPaymentPlanControls';
@@ -29,6 +37,7 @@ type SingleDivisionDefaultsPanelProps = {
     playoffData: TournamentConfig;
     tournamentData: TournamentConfig;
     poolDefaults: ComponentProps<typeof SingleDivisionScheduleControls>['poolDefaults'];
+    phaseSettings?: DivisionPhaseSettingsMap;
     eventTaxableForPreview: boolean;
     maxStandardNumber: number;
     maxPriceCents: number;
@@ -53,6 +62,7 @@ type SingleDivisionDefaultsPanelProps = {
     setPlayoffData: Dispatch<SetStateAction<TournamentConfig>>;
     setTournamentData: Dispatch<SetStateAction<TournamentConfig>>;
     onPoolDefaultsChange: ComponentProps<typeof SingleDivisionScheduleControls>['onPoolDefaultsChange'];
+    onPhaseSettingsChange?: (phase: DivisionCompetitionPhase, settings: DivisionPhaseSettings) => void;
     onConnectStripe: () => void;
     syncInstallmentCount: (count: number) => void;
     onAllowPaymentPlansChange: ComponentProps<typeof SingleDivisionPaymentPlanControls>['onAllowPaymentPlansChange'];
@@ -70,6 +80,7 @@ export const SingleDivisionDefaultsPanel = ({
     playoffData,
     tournamentData,
     poolDefaults,
+    phaseSettings = {},
     eventTaxableForPreview,
     maxStandardNumber,
     maxPriceCents,
@@ -94,6 +105,7 @@ export const SingleDivisionDefaultsPanel = ({
     setPlayoffData,
     setTournamentData,
     onPoolDefaultsChange,
+    onPhaseSettingsChange = () => undefined,
     onConnectStripe,
     syncInstallmentCount,
     onAllowPaymentPlansChange,
@@ -113,8 +125,9 @@ export const SingleDivisionDefaultsPanel = ({
             </div>
             <motion.div
                 id="division-defaults-content"
+                data-testid="division-field-row"
                 layout
-                className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
+                className={DIVISION_FIELD_ROW_CLASS}
                 transition={DIVISION_LAYOUT_TRANSITION}
             >
                 {showCapacityControls ? <SingleDivisionCapacityControls
@@ -146,15 +159,21 @@ export const SingleDivisionDefaultsPanel = ({
                         playoffData={playoffData}
                         tournamentData={tournamentData}
                         sport={eventData.sportConfig ?? undefined}
+                        phaseSettings={phaseSettings}
+                        eventMatchRulesOverride={eventData.matchRulesOverride}
+                        officialPositions={eventData.officialPositions}
+                        autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
                         participantCount={eventData.maxParticipants ?? undefined}
                         poolDefaults={poolDefaults}
                         maxStandardNumber={maxStandardNumber}
                         numberInputStyles={numberInputStyles}
                         disabled={isImmutableField('divisions')}
+                        playoffTeamCountError={playoffTeamCountError}
                         onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
                         onPlayoffDataChange={setPlayoffData}
                         onTournamentDataChange={setTournamentData}
                         onPoolDefaultsChange={onPoolDefaultsChange}
+                        onPhaseSettingsChange={onPhaseSettingsChange}
                     />
                 ) : null}
                 {showPricingControls ? <SingleDivisionPricingControls

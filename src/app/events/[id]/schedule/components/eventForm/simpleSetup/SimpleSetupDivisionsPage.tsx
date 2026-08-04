@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, type ComponentProps } from 'react';
 import { Stack, Text, Title } from '@mantine/core';
+import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 
 import {
     buildDivisionTypeSelectOptions,
@@ -14,13 +15,13 @@ import {
     buildTournamentConfig,
     derivePoolTeamCount,
 } from '../configDefaults';
+import { BRACKET_TEAM_COUNT_ERROR } from '../divisionMessages';
 import { sumInstallmentAmounts } from '../paymentPlanHelpers';
 import { TryoutDivisionSelector } from '../components/TryoutDivisionSelector';
 import { DivisionEditorActionsAndErrors } from '../sections/DivisionEditorActionsAndErrors';
 import { DivisionEditorHeader } from '../sections/DivisionEditorHeader';
 import { DivisionEditorLeaguePanel } from '../sections/DivisionEditorLeaguePanel';
 import { DivisionEditorPlayoffDivisionControls } from '../sections/DivisionEditorPlayoffDivisionControls';
-import { DivisionModeControls } from '../sections/DivisionModeControls';
 import { DivisionSummaryList } from '../sections/DivisionSummaryList';
 import type { EventFormSectionsProps } from '../sections/EventFormSections';
 import { SingleDivisionDefaultsPanel } from '../sections/SingleDivisionDefaultsPanel';
@@ -48,6 +49,7 @@ export const SimpleSetupDivisionsPage = ({
 }: SimpleSetupDivisionsPageProps) => {
     const {
         control,
+        configurationActions,
         divisionController,
         divisionTypeOptions,
         errors,
@@ -107,15 +109,7 @@ export const SimpleSetupDivisionsPage = ({
         setPlayoffData,
         setTournamentData,
     } = fieldWriters;
-    const {
-        hasExternalRentalField,
-        isOrganizationHostedEvent,
-    } = resourceController;
-    const {
-        showsFixedTeamEventToggle,
-        supportsEditableTeamSignup,
-    } = sectionsController;
-
+    const { isOrganizationHostedEvent } = resourceController;
     const skillDivisionTypeSelectOptions = useMemo(
         () => buildDivisionTypeSelectOptions(divisionTypeOptions, 'SKILL'),
         [divisionTypeOptions],
@@ -144,13 +138,31 @@ export const SimpleSetupDivisionsPage = ({
             eventData.splitLeaguePlayoffDivisions,
         ],
     );
+    const singleDivisionPlayoffTeamCountError = eventData.eventType === 'TOURNAMENT'
+        ? errors.divisionDetails?.[0]?.playoffTeamCount?.message as string | undefined
+        : errors.leagueData?.playoffTeamCount?.message as string | undefined;
+    const divisionEditorPlayoffTeamCountError = divisionEditor.error === BRACKET_TEAM_COUNT_ERROR
+        ? BRACKET_TEAM_COUNT_ERROR
+        : undefined;
+    const singleDivisionPhaseSettings = eventData.divisionDetails?.[0]?.phaseSettings ?? {};
+    const handleSingleDivisionPhaseSettingsChange = useCallback<
+        NonNullable<ComponentProps<typeof SingleDivisionDefaultsPanel>['onPhaseSettingsChange']>
+    >((phase, settings) => {
+        setValue('divisionDetails', (eventData.divisionDetails ?? []).map((division) => ({
+            ...division,
+            phaseSettings: {
+                ...(division.phaseSettings ?? {}),
+                [phase]: settings,
+            },
+        })), { shouldDirty: true, shouldValidate: true });
+    }, [eventData.divisionDetails, setValue]);
 
     return (
         <Stack gap="lg">
             <div>
                 <Title order={4}>Division configuration</Title>
                 <Text size="sm" c="dimmed">
-                    Configure capacity, classification, pricing, and division-owned competition settings.
+                    Configure capacity, classification, and division-owned competition settings.
                 </Text>
             </div>
 
@@ -167,21 +179,6 @@ export const SimpleSetupDivisionsPage = ({
                 />
             ) : (
                 <>
-                    <DivisionModeControls
-                        control={control}
-                        supportsEditableTeamSignup={supportsEditableTeamSignup}
-                        showsFixedTeamEventToggle={showsFixedTeamEventToggle}
-                        singleDivisionOnly={isAffiliateEvent}
-                        eventType={eventData.eventType}
-                        singleDivision={eventData.singleDivision}
-                        leagueIncludesPlayoffs={Boolean(eventData.leagueData.includePlayoffs)}
-                        splitLeaguePlayoffDivisionsLocked={
-                            isImmutableField('splitLeaguePlayoffDivisions')
-                            && !hasExternalRentalField
-                        }
-                        hasExternalRentalField={hasExternalRentalField}
-                        isImmutableField={isImmutableField}
-                    />
                     {!isAffiliateEvent && eventData.singleDivision ? (
                         <SingleDivisionDefaultsPanel
                             control={control}
@@ -190,6 +187,7 @@ export const SimpleSetupDivisionsPage = ({
                             playoffData={eventData.playoffData}
                             tournamentData={eventData.tournamentData}
                             poolDefaults={singleDivisionPoolPlayDefaults}
+                            phaseSettings={singleDivisionPhaseSettings}
                             eventTaxableForPreview={eventTaxableForPreview}
                             maxStandardNumber={MAX_STANDARD_NUMBER}
                             maxPriceCents={MAX_PRICE_CENTS}
@@ -203,14 +201,16 @@ export const SimpleSetupDivisionsPage = ({
                             organizerManualTaxSelected={organizerManualTaxSelected}
                             organizationDefaultEventTaxHandling={organizationDefaultEventTaxHandling}
                             connectingStripe={connectingStripe}
+                            showPricingControls={false}
+                            showPaymentPlanControls={false}
+                            description="Capacity and competition settings apply to every selected division."
                             isImmutableField={isImmutableField}
-                            playoffTeamCountError={
-                                errors.leagueData?.playoffTeamCount?.message as string | undefined
-                            }
+                            playoffTeamCountError={singleDivisionPlayoffTeamCountError}
                             setLeagueData={setLeagueData}
                             setPlayoffData={setPlayoffData}
                             setTournamentData={setTournamentData}
                             onPoolDefaultsChange={updateSingleDivisionTournamentPoolDefaults}
+                            onPhaseSettingsChange={handleSingleDivisionPhaseSettingsChange}
                             onConnectStripe={connectStripe}
                             syncInstallmentCount={syncInstallmentCount}
                             onAllowPaymentPlansChange={(next) => {
@@ -268,9 +268,11 @@ export const SimpleSetupDivisionsPage = ({
                         simplePriceInput={isAffiliateEvent}
                         showCapacityForSingleDivision={isAffiliateEvent}
                         showPriceForSingleDivision={isAffiliateEvent}
-                        showPaymentPlanControls={!isAffiliateEvent}
+                        hidePrice={!isAffiliateEvent}
+                        showPaymentPlanControls={false}
                         showOperationalControls={!isAffiliateEvent}
                         showSingleDivisionNotice={!isAffiliateEvent}
+                        playoffTeamCountError={divisionEditorPlayoffTeamCountError}
                         genderOptions={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
                         skillDivisionTypeOptions={skillDivisionTypeSelectOptions}
                         ageDivisionTypeOptions={ageDivisionTypeSelectOptions}
@@ -298,6 +300,10 @@ export const SimpleSetupDivisionsPage = ({
                                 maxParticipants={divisionEditor.maxParticipants}
                                 teamSignup={eventData.teamSignup}
                                 playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                phaseSettings={divisionEditor.phaseSettings}
+                                eventMatchRulesOverride={eventData.matchRulesOverride}
+                                officialPositions={eventData.officialPositions}
+                                autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
                                 sport={eventData.sportConfig ?? undefined}
                                 maxStandardNumber={MAX_STANDARD_NUMBER}
                                 maxMediumTextLength={MAX_MEDIUM_TEXT_LENGTH}
@@ -318,6 +324,14 @@ export const SimpleSetupDivisionsPage = ({
                                     }));
                                 }}
                                 onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
+                                onPhaseSettingsChange={(settings) => setDivisionEditor((previous) => ({
+                                    ...previous,
+                                    phaseSettings: {
+                                        ...previous.phaseSettings,
+                                        PLAYOFF: settings,
+                                    },
+                                    error: null,
+                                }))}
                             />
                             <DivisionEditorActionsAndErrors
                                 isEditing={Boolean(divisionEditor.editingId)}
@@ -353,6 +367,8 @@ export const SimpleSetupDivisionsPage = ({
                                 leaguePlayoffTeamCount={eventData.leagueData.playoffTeamCount}
                                 disabled={isImmutableField('divisions')}
                                 playoffDivisionCapacityWarnings={playoffDivisionCapacityWarnings}
+                                hidePricing
+                                hidePaymentPlanDetails
                                 derivePoolTeamCount={derivePoolTeamCount}
                                 buildTournamentConfig={buildTournamentConfig}
                                 onEditDivision={handleEditDivisionDetail}
@@ -405,6 +421,17 @@ export const SimpleSetupDivisionsPage = ({
                     )}
                 </>
             )}
+            {!isAffiliateEvent && sectionsController.showScoringConfigSection ? (
+                <div>
+                    <Title order={5} mb="sm">{sectionsController.scoringConfigSectionLabel}</Title>
+                    <LeagueScoringConfigPanel
+                        value={eventData.leagueScoringConfig}
+                        sport={eventData.sportConfig ?? undefined}
+                        editable={!isImmutableField('leagueScoringConfig')}
+                        onChange={configurationActions.handleLeagueScoringConfigChange}
+                    />
+                </div>
+            ) : null}
         </Stack>
     );
 };

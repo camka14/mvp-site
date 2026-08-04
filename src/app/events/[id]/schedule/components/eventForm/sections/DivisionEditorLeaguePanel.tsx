@@ -13,6 +13,7 @@ import {
     derivePoolTeamCount,
 } from '../configDefaults';
 import { DIVISION_LAYOUT_TRANSITION } from '../constants';
+import { DIVISION_FIELD_ROW_CLASS } from '../divisionLayout';
 import type { DivisionEditorState } from '../divisionForm';
 import {
     normalizeDivisionKeys,
@@ -50,6 +51,7 @@ type DivisionEditorLeaguePanelProps = {
     showPaymentPlanControls?: boolean;
     showOperationalControls?: boolean;
     showSingleDivisionNotice?: boolean;
+    playoffTeamCountError?: string;
     genderOptions: ComponentProps<typeof DivisionEditorCoreControls>['genderOptions'];
     skillDivisionTypeOptions: ComponentProps<typeof DivisionEditorCoreControls>['skillDivisionTypeOptions'];
     ageDivisionTypeOptions: ComponentProps<typeof DivisionEditorCoreControls>['ageDivisionTypeOptions'];
@@ -90,6 +92,7 @@ export const DivisionEditorLeaguePanel = ({
     showPaymentPlanControls = true,
     showOperationalControls = true,
     showSingleDivisionNotice = true,
+    playoffTeamCountError,
     genderOptions,
     skillDivisionTypeOptions,
     ageDivisionTypeOptions,
@@ -105,11 +108,26 @@ export const DivisionEditorLeaguePanel = ({
     onInstallmentDueDateChange,
     onInstallmentAmountChange,
     onRemoveInstallment,
-}: DivisionEditorLeaguePanelProps) => (
+}: DivisionEditorLeaguePanelProps) => {
+    const handlePhaseSettingsChange: ComponentProps<typeof DivisionEditorLeagueConfigControls>['onPhaseSettingsChange'] = (
+        phase,
+        settings,
+    ) => {
+        setDivisionEditor((previous) => ({
+            ...previous,
+            phaseSettings: {
+                ...previous.phaseSettings,
+                [phase]: settings,
+            },
+            error: null,
+        }));
+    };
+
+    return (
     <AnimatedSection in={!splitDivisionEditorEnabled || divisionEditor.divisionKind === 'LEAGUE'}>
         <motion.div
             layout
-            className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
+            className={DIVISION_FIELD_ROW_CLASS}
             transition={DIVISION_LAYOUT_TRANSITION}
         >
             <DivisionEditorCoreControls
@@ -221,9 +239,15 @@ export const DivisionEditorLeaguePanel = ({
                 participantCount={divisionEditor.maxParticipants ?? undefined}
                 playoffTeamCount={divisionEditor.playoffTeamCount}
                 playoffConfig={buildTournamentConfig(divisionEditor.playoffConfig)}
+                divisionName={divisionEditor.name}
+                phaseSettings={divisionEditor.phaseSettings}
+                eventMatchRulesOverride={eventData.matchRulesOverride}
+                officialPositions={eventData.officialPositions}
+                autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
                 maxStandardNumber={maxStandardNumber}
                 numberInputStyles={numberInputStyles}
                 disabled={isImmutableField('divisions') || !divisionEditorReady}
+                playoffTeamCountError={playoffTeamCountError}
                 onLeagueDataChange={setDivisionEditorLeagueConfig}
                 onPlayoffTeamCountChange={(playoffTeamCount) => {
                     setDivisionEditor((prev) => ({
@@ -233,6 +257,7 @@ export const DivisionEditorLeaguePanel = ({
                     }));
                 }}
                 onPlayoffConfigChange={setDivisionEditorPlayoffConfig}
+                onPhaseSettingsChange={handlePhaseSettingsChange}
             />
             <DivisionEditorPlayoffPlacementControls
                 visible={showOperationalControls && splitDivisionEditorEnabled && typeof divisionEditor.playoffTeamCount === 'number' && divisionEditor.playoffTeamCount > 0}
@@ -270,6 +295,7 @@ export const DivisionEditorLeaguePanel = ({
                 maxStandardNumber={maxStandardNumber}
                 numberInputStyles={numberInputStyles}
                 disabled={isImmutableField('divisions') || !divisionEditorReady}
+                playoffTeamCountError={playoffTeamCountError}
                 onPlayoffTeamCountChange={(playoffTeamCount) => {
                     setDivisionEditor((prev) => ({
                         ...prev,
@@ -292,8 +318,15 @@ export const DivisionEditorLeaguePanel = ({
                 tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
                 sport={eventData.sportConfig ?? undefined}
                 participantCount={divisionEditor.maxParticipants ?? undefined}
+                divisionName={divisionEditor.name}
+                phaseSettings={divisionEditor.phaseSettings}
+                eventMatchRulesOverride={eventData.matchRulesOverride}
+                officialPositions={eventData.officialPositions}
+                autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
+                disabled={isImmutableField('divisions') || !divisionEditorReady}
                 onLeagueDataChange={setDivisionEditorLeagueConfig}
                 onTournamentDataChange={setDivisionEditorPlayoffConfig}
+                onPhaseSettingsChange={handlePhaseSettingsChange}
             />
         </motion.div>
         <SingleDivisionEditorNotice
@@ -301,4 +334,5 @@ export const DivisionEditorLeaguePanel = ({
             eventType={eventData.eventType}
         />
     </AnimatedSection>
-);
+    );
+};

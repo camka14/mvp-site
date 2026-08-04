@@ -122,7 +122,6 @@ export const useDivisionEditorController = ({
         currentSportRequiresSets,
         defaultDivisionTypeSelections,
         eventData,
-        firstDivisionDetailForDefaults,
         hasStripeAccount,
         isCreateMode,
         leagueData,
@@ -209,7 +208,7 @@ export const useDivisionEditorController = ({
             : singleDivisionPoolPlayDefaults.poolCount;
         const normalizedMaxParticipants = Math.max(2, Math.trunc(eventData.maxParticipants || 2));
         const normalizedPlayoffTeamCount = typeof nextPlayoffTeamCount === 'number'
-            ? Math.max(2, Math.trunc(nextPlayoffTeamCount))
+            ? Math.trunc(nextPlayoffTeamCount)
             : undefined;
         const normalizedPoolCount = typeof nextPoolCount === 'number'
             ? Math.max(1, Math.trunc(nextPoolCount))
@@ -262,9 +261,7 @@ export const useDivisionEditorController = ({
                 : eventData.eventType === 'TOURNAMENT'
                     && typeof firstDivisionDetailForDefaults?.playoffTeamCount === 'number'
                     ? firstDivisionDetailForDefaults.playoffTeamCount
-                    : typeof eventData.maxParticipants === 'number'
-                        ? eventData.maxParticipants
-                        : undefined,
+                    : undefined,
             includeTournamentPoolPlay: eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs,
             defaultPoolCount: eventData.eventType === 'TOURNAMENT'
                 ? firstDivisionDetailForDefaults?.poolCount ?? singleDivisionPoolPlayDefaults.poolCount

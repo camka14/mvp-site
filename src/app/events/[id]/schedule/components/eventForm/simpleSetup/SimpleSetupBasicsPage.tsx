@@ -51,59 +51,62 @@ export const SimpleSetupBasicsPage = ({
                 </Text>
             </div>
 
-            <div>
-                <Text size="sm" fw={500} mb={8}>Event Image</Text>
-                <ImageUploader
-                    currentImageUrl={presentation.selectedImageUrl}
-                    className="w-full max-w-md"
-                    placeholder="Select event image"
-                    onChange={presentation.allowImageEdit
-                        ? (fileId) => setValue('imageId', fileId, {
-                            shouldDirty: true,
-                            shouldValidate: true,
-                        })
-                        : undefined}
-                    readOnly={!presentation.allowImageEdit}
-                />
-                {errors.imageId ? (
-                    <Text c="red" size="sm" mt={4}>{errors.imageId.message as string}</Text>
-                ) : null}
-            </div>
+            <div
+                data-testid="simple-setup-basics-layout"
+                className="flex flex-col gap-6 lg:flex-row lg:items-start"
+            >
+                <div className="lg:flex-none">
+                    <Text size="sm" fw={500} mb={8}>Event Image</Text>
+                    <ImageUploader
+                        currentImageUrl={presentation.selectedImageUrl}
+                        className="w-full max-w-[20rem] lg:w-80 lg:max-w-none"
+                        previewHeight={176}
+                        placeholder="Select event image"
+                        onChange={presentation.allowImageEdit
+                            ? (fileId) => setValue('imageId', fileId, {
+                                shouldDirty: true,
+                                shouldValidate: true,
+                            })
+                            : undefined}
+                        readOnly={!presentation.allowImageEdit}
+                    />
+                    {errors.imageId ? (
+                        <Text c="red" size="sm" mt={4}>{errors.imageId.message as string}</Text>
+                    ) : null}
+                </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
-                <Controller
-                    name="name"
-                    control={control}
-                    rules={{ required: 'Event name is required' }}
-                    render={({ field, fieldState }) => (
-                        <TextInput
-                            label="Event Name"
-                            withAsterisk
-                            disabled={isImmutableField('name')}
-                            placeholder="Enter event name"
-                            error={fieldState.error?.message as string | undefined}
-                            maxLength={MAX_EVENT_NAME_LENGTH}
-                            className="md:col-span-4"
-                            value={field.value ?? ''}
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            ref={field.ref}
-                            onChange={(event) => {
-                                if (isImmutableField('name')) return;
-                                setValue('name', event.currentTarget.value, {
-                                    shouldDirty: true,
-                                    shouldValidate: true,
-                                });
-                            }}
-                        />
-                    )}
-                />
+                <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <Controller
+                        name="name"
+                        control={control}
+                        rules={{ required: 'Event name is required' }}
+                        render={({ field, fieldState }) => (
+                            <TextInput
+                                label="Event Name"
+                                withAsterisk
+                                disabled={isImmutableField('name')}
+                                placeholder="Enter event name"
+                                error={fieldState.error?.message as string | undefined}
+                                maxLength={MAX_EVENT_NAME_LENGTH}
+                                value={field.value ?? ''}
+                                name={field.name}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                onChange={(event) => {
+                                    if (isImmutableField('name')) return;
+                                    setValue('name', event.currentTarget.value, {
+                                        shouldDirty: true,
+                                        shouldValidate: true,
+                                    });
+                                }}
+                            />
+                        )}
+                    />
 
-                <Controller
-                    name="tags"
-                    control={control}
-                    render={({ field, fieldState }) => (
-                        <div className="md:col-span-4">
+                    <Controller
+                        name="tags"
+                        control={control}
+                        render={({ field, fieldState }) => (
                             <EventTagsInput
                                 value={Array.isArray(field.value) ? field.value : []}
                                 options={catalog.eventTagOptions}
@@ -117,11 +120,9 @@ export const SimpleSetupBasicsPage = ({
                                     });
                                 }}
                             />
-                        </div>
-                    )}
-                />
+                        )}
+                    />
 
-                <div className="md:col-span-4">
                     <Controller
                         name="sportId"
                         control={control}
@@ -157,64 +158,66 @@ export const SimpleSetupBasicsPage = ({
                             />
                         )}
                     />
+
+                    {catalog.sportsError ? (
+                        <Alert className="sm:col-span-2 xl:col-span-3" color="red" radius="md">
+                            Unable to load sports at the moment. Please refresh the page and try again.
+                        </Alert>
+                    ) : null}
+
+                    {model.isAffiliateEvent ? (
+                        <Controller
+                            name="affiliateUrl"
+                            control={control}
+                            render={({ field, fieldState }) => (
+                                <TextInput
+                                    className="sm:col-span-2 xl:col-span-3"
+                                    label="External registration link"
+                                    withAsterisk
+                                    disabled={isImmutableField('affiliateUrl')}
+                                    placeholder="https://example.com/event"
+                                    value={field.value ?? ''}
+                                    name={field.name}
+                                    onBlur={field.onBlur}
+                                    ref={field.ref}
+                                    error={fieldState.error?.message as string | undefined}
+                                    onChange={(event) => {
+                                        if (isImmutableField('affiliateUrl')) return;
+                                        field.onChange(event.currentTarget.value);
+                                    }}
+                                />
+                            )}
+                        />
+                    ) : null}
+
+                    <Controller
+                        name="description"
+                        control={control}
+                        render={({ field }) => (
+                            <Textarea
+                                className="sm:col-span-2 xl:col-span-3"
+                                label="Description"
+                                disabled={isImmutableField('description')}
+                                placeholder="Describe your event..."
+                                autosize
+                                minRows={3}
+                                maxLength={MAX_DESCRIPTION_LENGTH}
+                                value={field.value ?? ''}
+                                name={field.name}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                onChange={(event) => {
+                                    if (isImmutableField('description')) return;
+                                    setValue('description', event.currentTarget.value, {
+                                        shouldDirty: true,
+                                        shouldValidate: false,
+                                    });
+                                }}
+                            />
+                        )}
+                    />
                 </div>
             </div>
-
-            {catalog.sportsError ? (
-                <Alert color="red" radius="md">
-                    Unable to load sports at the moment. Please refresh the page and try again.
-                </Alert>
-            ) : null}
-
-            {model.isAffiliateEvent ? (
-                <Controller
-                    name="affiliateUrl"
-                    control={control}
-                    render={({ field, fieldState }) => (
-                        <TextInput
-                            label="External registration link"
-                            withAsterisk
-                            disabled={isImmutableField('affiliateUrl')}
-                            placeholder="https://example.com/event"
-                            value={field.value ?? ''}
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            ref={field.ref}
-                            error={fieldState.error?.message as string | undefined}
-                            onChange={(event) => {
-                                if (isImmutableField('affiliateUrl')) return;
-                                field.onChange(event.currentTarget.value);
-                            }}
-                        />
-                    )}
-                />
-            ) : null}
-
-            <Controller
-                name="description"
-                control={control}
-                render={({ field }) => (
-                    <Textarea
-                        label="Description"
-                        disabled={isImmutableField('description')}
-                        placeholder="Describe your event..."
-                        autosize
-                        minRows={3}
-                        maxLength={MAX_DESCRIPTION_LENGTH}
-                        value={field.value ?? ''}
-                        name={field.name}
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                        onChange={(event) => {
-                            if (isImmutableField('description')) return;
-                            setValue('description', event.currentTarget.value, {
-                                shouldDirty: true,
-                                shouldValidate: false,
-                            });
-                        }}
-                    />
-                )}
-            />
         </Stack>
     );
 };

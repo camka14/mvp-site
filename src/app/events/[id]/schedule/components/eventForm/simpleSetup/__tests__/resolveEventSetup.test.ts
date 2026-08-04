@@ -18,15 +18,13 @@ const input = (overrides: Partial<EventSetupResolverInput> = {}): EventSetupReso
     organizationFeatures: [],
     choices: {
         scheduleStyle: 'FIXED_WINDOW',
-        resourceSource: 'CUSTOM',
-        customizeMatchRules: false,
-        customizeScoring: false,
         paidRegistration: false,
         useRequiredDocuments: false,
         useRegistrationQuestions: false,
         useStaffAssignments: false,
         useDedicatedOfficials: false,
         useCustomOfficialPositions: false,
+        useTeamCheckInAndRosterOperations: false,
     },
     ...overrides,
 });
@@ -94,7 +92,8 @@ describe('resolveEventSetupPages', () => {
 
         expect(pages[0].status).toBe('current');
         expect(pages.find((page) => page.id === 'basics')?.status).toBe('locked');
-        expect(pages.find((page) => page.id === 'competition-rules')?.status).toBe('not-used');
+        expect(pages.map((page) => page.id)).not.toContain('competition-plan');
+        expect(pages.map((page) => page.id)).not.toContain('competition-rules');
     });
 
     it('makes enabled document and staff pages available in order', () => {
@@ -113,8 +112,6 @@ describe('resolveEventSetupPages', () => {
                 'divisions',
                 'schedule-plan',
                 'schedule-location',
-                'competition-plan',
-                'competition-rules',
                 'registration-plan',
                 'pricing-registration',
             ],
@@ -126,24 +123,42 @@ describe('resolveEventSetupPages', () => {
         expect(pages.find((page) => page.id === 'staff-operations')?.used).toBe(true);
     });
 
+    it('uses the Staff and Operations page only for explicit operations choices', () => {
+        const teamEventWithoutOperations = resolveEventSetupPages(input({
+            eventType: 'LEAGUE',
+            teamSignup: true,
+        }));
+        expect(teamEventWithoutOperations.find((page) => page.id === 'staff-operations')?.used).toBe(false);
+
+        const teamEventWithOperations = resolveEventSetupPages(input({
+            eventType: 'LEAGUE',
+            teamSignup: true,
+            choices: {
+                ...input().choices,
+                useTeamCheckInAndRosterOperations: true,
+            },
+        }));
+        expect(teamEventWithOperations.find((page) => page.id === 'staff-operations')?.used).toBe(true);
+    });
+
     it.each([
-        ['EVENT', false, false, true],
-        ['WEEKLY_EVENT', false, false, true],
-        ['LEAGUE', false, true, true],
-        ['TOURNAMENT', false, true, true],
-        ['TRYOUT', false, false, false],
-        ['LEAGUE', true, false, false],
+        ['EVENT', false, true],
+        ['WEEKLY_EVENT', false, true],
+        ['LEAGUE', false, true],
+        ['TOURNAMENT', false, true],
+        ['TRYOUT', false, false],
+        ['LEAGUE', true, false],
     ] as const)(
         'uses the expected optional pages for %s external=%s',
-        (eventType, isExternalRegistration, competitionUsed, operationsUsed) => {
+        (eventType, isExternalRegistration, operationsUsed) => {
             const pages = resolveEventSetupPages(input({
                 eventType,
                 isExternalRegistration,
                 organizationFeatures: eventType === 'TRYOUT' ? ['CLUB_TEAMS'] : [],
             }));
 
-            expect(pages.find((page) => page.id === 'competition-plan')?.used).toBe(competitionUsed);
-            expect(pages.find((page) => page.id === 'competition-rules')?.used).toBe(competitionUsed);
+            expect(pages.map((page) => page.id)).not.toContain('competition-plan');
+            expect(pages.map((page) => page.id)).not.toContain('competition-rules');
             expect(pages.find((page) => page.id === 'operations-plan')?.used).toBe(operationsUsed);
         },
     );
@@ -153,8 +168,10 @@ describe('resolveValidationPage', () => {
     it.each([
         ['sportId', 'basics'],
         ['divisionDetails.0.maxParticipants', 'divisions'],
+        ['divisionDetails.0.price', 'pricing-registration'],
+        ['divisionDetails[1].installmentAmounts[0]', 'pricing-registration'],
         ['leagueSlots[0].scheduledFieldIds', 'schedule-location'],
-        ['tournamentData.winnerSetCount', 'competition-rules'],
+        ['tournamentData.winnerSetCount', 'divisions'],
         ['installmentAmounts.1', 'pricing-registration'],
         ['officialPositions.0.name', 'staff-operations'],
     ])('maps %s to %s', (fieldPath, pageId) => {
@@ -169,7 +186,7 @@ describe('describeEventSetupTransition', () => {
             input({ eventType: 'LEAGUE', isExternalRegistration: true }),
         );
 
-        expect(impact.pageIds).toContain('competition-rules');
+        expect(impact.pageIds).toContain('divisions');
         expect(impact.pageIds).toContain('staff-operations');
         expect(impact.categories).toContain('BracketIQ payments and registration requirements');
     });
@@ -183,7 +200,6 @@ describe('describeEventSetupTransition', () => {
         expect(impact.pageIds).toEqual([
             'divisions',
             'schedule-location',
-            'competition-rules',
             'pricing-registration',
         ]);
         expect(impact.categories).toContain('division-owned capacity, price, schedule, and competition settings');

@@ -88,7 +88,7 @@ describe('useEventPaymentController', () => {
         mockedConnectStripeAccount.mockResolvedValue({ onboardingUrl: '' });
     });
 
-    it('clears paid event and division settings for an online create flow without Stripe', () => {
+    it('defaults an online create flow without Stripe to manual payment without clearing prices', () => {
         const paidDivision = {
             id: 'division_paid',
             price: 3_000,
@@ -111,23 +111,14 @@ describe('useEventPaymentController', () => {
 
         const { setValue } = renderController({ eventData, isCreateMode: true });
 
-        const resetOptions = { shouldDirty: false, shouldValidate: true };
-        expect(setValue).toHaveBeenCalledWith('price', 0, resetOptions);
-        expect(setValue).toHaveBeenCalledWith('allowPaymentPlans', false, resetOptions);
-        expect(setValue).toHaveBeenCalledWith('installmentCount', 0, resetOptions);
-        expect(setValue).toHaveBeenCalledWith('installmentAmounts', [], resetOptions);
-        expect(setValue).toHaveBeenCalledWith('installmentDueDates', [], resetOptions);
-        expect(setValue).toHaveBeenCalledWith('installmentDueRelativeDays', [], resetOptions);
-        expect(setValue).toHaveBeenCalledWith('divisionDetails', [
-            expect.objectContaining({
-                id: 'division_paid',
-                price: 0,
-                allowPaymentPlans: false,
-                installmentCount: 0,
-                installmentAmounts: [],
-            }),
-            freeDivision,
-        ], resetOptions);
+        expect(setValue).toHaveBeenCalledTimes(1);
+        expect(setValue).toHaveBeenCalledWith(
+            'registrationPaymentMode',
+            'MANUAL',
+            { shouldDirty: false, shouldValidate: true },
+        );
+        expect(setValue).not.toHaveBeenCalledWith('price', 0, expect.anything());
+        expect(eventData.divisionDetails).toEqual([paidDivision, freeDivision]);
     });
 
     it('preserves manual-payment pricing without enabling automatic refunds', () => {
@@ -150,6 +141,43 @@ describe('useEventPaymentController', () => {
         expect(result.current.hasStripeAccount).toBe(false);
         expect(result.current.automaticRefundsAvailable).toBe(false);
         expect(result.current.manualPaymentLinks).toHaveLength(1);
+    });
+
+    it('clears BracketIQ payment plans when manual payment becomes active', () => {
+        const eventData = buildEventData({
+            registrationPaymentMode: 'MANUAL',
+            price: 5_000,
+            cancellationRefundHours: 24,
+            allowPaymentPlans: true,
+            installmentCount: 2,
+            installmentAmounts: [2_500, 2_500],
+            installmentDueDates: ['2026-07-15', '2026-07-20'],
+            divisionDetails: [{
+                id: 'division_paid',
+                price: 4_000,
+                allowPaymentPlans: true,
+                installmentCount: 2,
+                installmentAmounts: [2_000, 2_000],
+                installmentDueDates: ['2026-07-15', '2026-07-20'],
+            } as EventFormValues['divisionDetails'][number]],
+        });
+
+        const { setValue } = renderController({ eventData });
+        const resetOptions = { shouldDirty: false, shouldValidate: true };
+
+        expect(setValue).toHaveBeenCalledWith('cancellationRefundHours', null, resetOptions);
+        expect(setValue).toHaveBeenCalledWith('allowPaymentPlans', false, resetOptions);
+        expect(setValue).toHaveBeenCalledWith('installmentCount', 0, resetOptions);
+        expect(setValue).toHaveBeenCalledWith('installmentAmounts', [], resetOptions);
+        expect(setValue).toHaveBeenCalledWith('installmentDueDates', [], resetOptions);
+        expect(setValue).toHaveBeenCalledWith('divisionDetails', [expect.objectContaining({
+            id: 'division_paid',
+            price: 4_000,
+            allowPaymentPlans: false,
+            installmentCount: 0,
+            installmentAmounts: [],
+        })], resetOptions);
+        expect(setValue).not.toHaveBeenCalledWith('price', expect.anything(), expect.anything());
     });
 
     it('uses organization billing eligibility for paid controls and automatic refunds', () => {

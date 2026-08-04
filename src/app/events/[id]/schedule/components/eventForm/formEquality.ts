@@ -76,6 +76,7 @@ export const leagueSlotsEqual = (left: LeagueSlotForm[], right: LeagueSlotForm[]
             || first.endDate !== second.endDate
             || first.startTimeMinutes !== second.startTimeMinutes
             || first.endTimeMinutes !== second.endTimeMinutes
+            || first.timeZone !== second.timeZone
             || Boolean(first.repeating) !== Boolean(second.repeating)
             || Boolean(first.checking) !== Boolean(second.checking)
             || (first.error ?? '') !== (second.error ?? '')

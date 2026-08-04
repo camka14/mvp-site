@@ -1508,6 +1508,7 @@ export default function MatchEditModal({
             timerMode: policySource.timekeeping?.timerMode ?? (policyScoringModel === 'PERIODS' ? 'COUNT_UP' : 'NONE'),
             segmentDurationMinutes:
               policyScoringModel === 'SETS' ? null : (policySegmentMinutes ?? policySource.timekeeping?.segmentDurationMinutes ?? null),
+            segmentBreakDurationMinutes: policySource.timekeeping?.segmentBreakDurationMinutes ?? 0,
             segmentDurationMinutesBySequence: policySegmentMinutesTouched
               ? []
               : (policySource.timekeeping?.segmentDurationMinutesBySequence ?? []),

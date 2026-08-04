@@ -50,6 +50,7 @@ type EventScheduleHeaderProps = {
   showSaveAction: boolean;
   createButtonLabel: string;
   isCreateMode: boolean;
+  formIsValid: boolean;
   onSave: () => void;
   publishing: boolean;
   hasNetworkActionInFlight: boolean;
@@ -124,6 +125,7 @@ export default function EventScheduleHeader({
   showSaveAction,
   createButtonLabel,
   isCreateMode,
+  formIsValid,
   onSave,
   publishing,
   hasNetworkActionInFlight,
@@ -199,7 +201,7 @@ export default function EventScheduleHeader({
         </div>
 
         {showActions && (
-          <div className="ml-auto flex shrink-0 flex-wrap items-start justify-end gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-start justify-end gap-2 sm:ml-auto sm:w-auto sm:shrink-0">
             {showNotificationAction && (
               <ActionIcon
                 variant="subtle"
@@ -213,7 +215,7 @@ export default function EventScheduleHeader({
             )}
 
             {showActionButtons && (
-              <Group gap="sm" wrap="wrap" justify="flex-end">
+              <Group className="min-w-0 flex-1 sm:flex-initial" gap="sm" wrap="wrap" justify="flex-end">
                 {showReportAction && (
                   <Button
                     variant="light"
@@ -271,6 +273,7 @@ export default function EventScheduleHeader({
                         loading={publishing}
                         disabled={
                           (hasNetworkActionInFlight && !publishing)
+                          || (isCreateMode && !formIsValid)
                           || (!isCreateMode && !hasPendingUnsavedChanges)
                           || hasSplitDivisionUnassignedTeams
                         }

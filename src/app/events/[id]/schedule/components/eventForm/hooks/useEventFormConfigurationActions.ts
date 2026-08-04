@@ -148,17 +148,14 @@ export const useEventFormConfigurationActions = ({
             return;
         }
 
-        const fallback = typeof leagueData.playoffTeamCount === 'number'
-            ? leagueData.playoffTeamCount
-            : eventData.maxParticipants || 2;
         setLeagueData((previous) => ({
             ...previous,
             includePlayoffs: true,
             playoffTeamCount: typeof previous.playoffTeamCount === 'number'
-                ? Math.max(2, Math.trunc(previous.playoffTeamCount))
-                : Math.max(2, Math.trunc(fallback)),
+                ? Math.trunc(previous.playoffTeamCount)
+                : undefined,
         }));
-    }, [eventData.maxParticipants, leagueData.playoffTeamCount, setLeagueData, setValue]);
+    }, [setLeagueData, setValue]);
 
     const handleEventTypeChange = useCallback((
         nextType: Event['eventType'],

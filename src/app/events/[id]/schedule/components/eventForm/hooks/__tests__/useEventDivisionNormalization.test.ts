@@ -216,7 +216,7 @@ describe('useEventDivisionNormalization', () => {
         });
     });
 
-    it('defaults multi-division playoff counts and sizes placement mappings', async () => {
+    it('keeps multi-division playoff counts empty and clears stale placement mappings', async () => {
         const leagueData = buildLeagueData({ includePlayoffs: true });
         const { result } = renderHook(() => useEventDivisionNormalizationHarness({
             eventData: buildEventData({
@@ -233,17 +233,12 @@ describe('useEventDivisionNormalization', () => {
         }));
 
         await waitFor(() => {
-            expect(result.current.formValues.divisionDetails[0]?.playoffTeamCount).toBe(4);
-            expect(result.current.formValues.divisionDetails[0]?.playoffPlacementDivisionIds).toEqual([
-                'stale_playoff',
-                '',
-                '',
-                '',
-            ]);
+            expect(result.current.formValues.divisionDetails[0]?.playoffTeamCount).toBeUndefined();
+            expect(result.current.formValues.divisionDetails[0]?.playoffPlacementDivisionIds).toEqual([]);
         });
     });
 
-    it('keeps single-division playoff count ownership in leagueData and disables split mode', async () => {
+    it('keeps an unset single-division playoff count empty and disables split mode', async () => {
         const leagueData = buildLeagueData({ includePlayoffs: true });
         const { result } = renderHook(() => useEventDivisionNormalizationHarness({
             eventData: buildEventData({
@@ -259,7 +254,7 @@ describe('useEventDivisionNormalization', () => {
         }));
 
         await waitFor(() => {
-            expect(result.current.formValues.leagueData.playoffTeamCount).toBe(6);
+            expect(result.current.formValues.leagueData.playoffTeamCount).toBeUndefined();
             expect(result.current.formValues.splitLeaguePlayoffDivisions).toBe(false);
         });
         expect(result.current.formValues.divisionDetails[0]?.playoffTeamCount).toBeUndefined();

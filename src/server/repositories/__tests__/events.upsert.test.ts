@@ -1113,6 +1113,13 @@ describe('upsertEventFromPayload', () => {
           price: 2500,
           maxParticipants: 12,
           playoffTeamCount: 8,
+          phaseSettings: {
+            LEAGUE: {
+              matchRulesOverride: { segmentCount: 4 },
+              segmentLengthMinutes: 12,
+              segmentBreakMinutes: 2,
+            },
+          },
           allowPaymentPlans: true,
           installmentCount: 2,
           installmentAmounts: [1500, 1000],
@@ -1133,6 +1140,13 @@ describe('upsertEventFromPayload', () => {
           price: 2500,
           maxParticipants: 12,
           playoffTeamCount: 8,
+          phaseSettings: {
+            LEAGUE: {
+              matchRulesOverride: { segmentCount: 4 },
+              segmentLengthMinutes: 12,
+              segmentBreakMinutes: 2,
+            },
+          },
           allowPaymentPlans: true,
           installmentCount: 2,
           installmentAmounts: [1500, 1000],
@@ -1145,6 +1159,13 @@ describe('upsertEventFromPayload', () => {
           price: 2500,
           maxParticipants: 12,
           playoffTeamCount: 8,
+          phaseSettings: {
+            LEAGUE: {
+              matchRulesOverride: { segmentCount: 4 },
+              segmentLengthMinutes: 12,
+              segmentBreakMinutes: 2,
+            },
+          },
           allowPaymentPlans: true,
           installmentCount: 2,
           installmentAmounts: [1500, 1000],
@@ -1155,6 +1176,80 @@ describe('upsertEventFromPayload', () => {
         }),
       }),
     );
+  });
+
+  it('preserves manual prices while clearing Stripe-only refund and payment-plan fields', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const payload = {
+      ...baseEventPayload(),
+      registrationPaymentMode: 'MANUAL',
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: '$camka14',
+      }],
+      price: 5000,
+      cancellationRefundHours: 24,
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [2500, 2500],
+      installmentDueDates: [
+        '2026-01-09T09:00:00.000Z',
+        '2026-01-16T09:00:00.000Z',
+      ],
+      divisions: ['OPEN'],
+      divisionDetails: [{
+        id: openDivisionId,
+        key: 'open',
+        name: 'Open',
+        divisionTypeId: 'open',
+        divisionTypeName: 'Open',
+        ratingType: 'SKILL',
+        gender: 'C',
+        price: 4000,
+        allowPaymentPlans: true,
+        installmentCount: 2,
+        installmentAmounts: [2000, 2000],
+        installmentDueDates: [
+          '2026-01-09T09:00:00.000Z',
+          '2026-01-16T09:00:00.000Z',
+        ],
+      }],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create).toEqual(expect.objectContaining({
+      registrationPaymentMode: 'MANUAL',
+      price: 5000,
+      cancellationRefundHours: null,
+      allowPaymentPlans: false,
+      installmentCount: 0,
+      installmentAmounts: [],
+      installmentDueDates: [],
+      manualPaymentLinks: [expect.objectContaining({
+        provider: 'CASH_APP',
+        url: 'https://cash.app/$camka14',
+      })],
+    }));
+    expect(client.divisions.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: openDivisionId },
+      create: expect.objectContaining({
+        price: 4000,
+        allowPaymentPlans: false,
+        installmentAmounts: [],
+        installmentDueDates: [],
+      }),
+      update: expect.objectContaining({
+        price: 4000,
+        allowPaymentPlans: false,
+        installmentAmounts: [],
+        installmentDueDates: [],
+      }),
+    }));
   });
 
   it('rejects split-division payloads that assign a team to multiple league divisions', async () => {

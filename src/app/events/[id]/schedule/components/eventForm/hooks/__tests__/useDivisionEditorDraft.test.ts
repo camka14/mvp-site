@@ -136,6 +136,7 @@ describe('useDivisionEditorDraft', () => {
             ageDivisionTypeId: 'adult',
             price: 3_000,
             maxParticipants: 8,
+            playoffTeamCount: null,
         }));
         expect(result.current.divisionEditor.playoffConfig).toEqual(expect.objectContaining({
             doubleElimination: false,
@@ -163,6 +164,16 @@ describe('useDivisionEditorDraft', () => {
             winnerSetCount: 5,
             loserSetCount: 3,
         }));
+    });
+
+    it('keeps an unset persisted bracket count empty while editing', () => {
+        const detail = buildDivisionDetail({ playoffTeamCount: undefined });
+        const eventData = buildEventData({ divisionDetails: [detail] });
+        const { result } = renderHook(() => useDraftHarness({ eventData }));
+
+        act(() => result.current.handleEditDivisionDetail(detail.id));
+
+        expect(result.current.divisionEditor.playoffTeamCount).toBeNull();
     });
 
     it('normalizes installment commands and clears paid settings when Stripe becomes unavailable', async () => {

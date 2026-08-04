@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import {
   Paper,
   Title,
-  Grid,
   Select,
   NumberInput,
   TextInput,
@@ -96,14 +95,6 @@ const titleCase = (value: string): string => (
     .replace(/\b\w/g, (character) => character.toUpperCase())
 );
 
-const pluralizeSegmentLabel = (label: string, count: number): string => {
-  const normalized = titleCase(label);
-  if (count === 1) {
-    return normalized;
-  }
-  return normalized === 'Half' ? 'Halves' : `${normalized}s`;
-};
-
 const resolveSportSegmentRules = (
   sport: Sport | undefined,
   fallbackModel: ScoringModel,
@@ -174,11 +165,6 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   const requiresSets = hasSportScoringRules ? sportRequiresSets : hasSetBasedSignals(tournamentData);
   const sportSegmentRules = resolveSportSegmentRules(sport, requiresSets ? 'SETS' : sportScoringModel);
   const setSegmentLabel = sportSegmentRules.scoringModel === 'SETS' ? sportSegmentRules.segmentLabel : 'Set';
-  const periodSegmentSummary = !requiresSets && (
-    sportSegmentRules.scoringModel === 'PERIODS' || sportSegmentRules.scoringModel === 'INNINGS'
-  )
-    ? sportSegmentRules
-    : null;
 
   useEffect(() => {
     if (requiresSets) {
@@ -279,8 +265,8 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
           {title}
         </Title>
       ) : null}
-      <Grid gutter="md" align="flex-end">
-        <Grid.Col span={{ base: 12, md: 6 }}>
+      <Flex gap="md" align="flex-start" wrap="wrap">
+        <div className="w-full sm:w-64 sm:flex-none">
           <Select
             label="Tournament Format"
             value={tournamentData.doubleElimination ? 'double' : 'single'}
@@ -297,11 +283,12 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
             comboboxProps={comboboxProps}
             maw={320}
           />
-        </Grid.Col>
+        </div>
 
-        <Grid.Col span={{ base: 12, md: 6 }}>
+        <div className="w-full sm:w-56 sm:flex-none">
           <NumberInput
-            label="Rest Time Between Matches (minutes)"
+            label="Rest between matches"
+            suffix=" min"
             min={0}
             max={MAX_STANDARD_NUMBER}
             step={5}
@@ -315,61 +302,39 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
             clampBehavior="strict"
             maw={220}
           />
-        </Grid.Col>
+        </div>
 
-        {showDurationControls && (
-          <Grid.Col span={{ base: 12, md: 6 }}>
+        {showDurationControls && requiresSets && (
+          <div className="w-full sm:w-56 sm:flex-none">
             <NumberInput
-              label={requiresSets ? `${setSegmentLabel} Duration (minutes)` : 'Match Duration (minutes)'}
+              label={`${setSegmentLabel} duration`}
+              suffix=" min"
               min={0}
               max={MAX_STANDARD_NUMBER}
               step={5}
-              value={(requiresSets ? tournamentData.setDurationMinutes : tournamentData.matchDurationMinutes) ?? ''}
+              value={tournamentData.setDurationMinutes ?? ''}
               onChange={(value) =>
                 setTournamentData((prev) => {
                   const duration = parseOptionalDurationMinutes(value);
-                  if (requiresSets) {
-                    return {
-                      ...prev,
-                      setDurationMinutes: duration,
-                    };
-                  }
                   return {
                     ...prev,
-                    matchDurationMinutes: duration,
+                    setDurationMinutes: duration,
                   };
                 })
               }
               clampBehavior="none"
               maw={220}
             />
-            {durationNeedsWarning(requiresSets ? tournamentData.setDurationMinutes : tournamentData.matchDurationMinutes) ? (
+            {durationNeedsWarning(tournamentData.setDurationMinutes) ? (
               <Text size="xs" c="orange" mt={4}>
-                {requiresSets ? `${setSegmentLabel} duration` : 'Match duration'} should be greater than 0 before scheduling.
+                {`${setSegmentLabel} duration`} should be greater than 0 before scheduling.
               </Text>
             ) : null}
-          </Grid.Col>
-        )}
-
-        {periodSegmentSummary && (
-          <Grid.Col span={{ base: 12, md: 6 }}>
-            <Box
-              className="rounded-md border border-gray-200 bg-white px-3 py-2"
-              style={{ maxWidth: 260 }}
-            >
-              <Text size="sm" fw={500}>{`${periodSegmentSummary.segmentLabel} Count`}</Text>
-              <Text size="sm" c="dimmed">
-                {`${periodSegmentSummary.segmentCount} ${pluralizeSegmentLabel(
-                  periodSegmentSummary.segmentLabel,
-                  periodSegmentSummary.segmentCount,
-                )} from sport rules`}
-              </Text>
-            </Box>
-          </Grid.Col>
+          </div>
         )}
 
         {requiresSets && (
-          <Grid.Col span={{ base: 12, md: 6 }}>
+          <div className="w-full sm:w-56 sm:flex-none">
             <Select
               label={`Winner ${setSegmentLabel} Count`}
               value={String(tournamentData.winnerSetCount)}
@@ -390,11 +355,11 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
               comboboxProps={comboboxProps}
               maw={220}
             />
-          </Grid.Col>
+          </div>
         )}
 
         {requiresSets && tournamentData.doubleElimination && (
-          <Grid.Col span={{ base: 12, md: 6 }}>
+          <div className="w-full sm:w-56 sm:flex-none">
             <Select
               label={`Loser ${setSegmentLabel} Count`}
               value={String(tournamentData.loserSetCount)}
@@ -415,9 +380,9 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
               comboboxProps={comboboxProps}
               maw={220}
             />
-          </Grid.Col>
+          </div>
         )}
-      </Grid>
+      </Flex>
 
       {requiresSets && (
         <Flex mt="md" gap="lg" align="start" direction={{ base: 'column', md: 'row' }}>

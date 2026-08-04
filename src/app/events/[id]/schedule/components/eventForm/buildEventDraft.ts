@@ -11,7 +11,7 @@ import { normalizePriceCents } from '@/lib/priceUtils';
 import { normalizeOrganizerManualTaxRateBps, normalizeEventTaxHandling } from '@/lib/taxPolicy';
 import {
     normalizeManualPaymentInstructions,
-    normalizeManualPaymentLinks,
+    normalizeManualPaymentLinksForDraft,
     normalizeRegistrationPaymentMode,
 } from '@/lib/manualRegistrationPayments';
 import {
@@ -158,7 +158,9 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             : normalizeRegistrationPaymentMode(source.registrationPaymentMode);
         const manualPaymentEnabled = registrationPaymentMode === 'MANUAL';
         const pricingEnabled = hasStripeAccount || manualPaymentEnabled || isAffiliateEvent;
-        const eventAllowPaymentPlans = !isAffiliateEvent && pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
+        const eventAllowPaymentPlans = !isAffiliateEvent && pricingEnabled && !manualPaymentEnabled
+            ? Boolean(source.allowPaymentPlans)
+            : false;
         const installmentAmountsCents = eventAllowPaymentPlans
             ? normalizeInstallmentAmounts(source.installmentAmounts)
             : [];
@@ -232,7 +234,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                     price: eventPriceCents,
                     maxParticipants: Math.max(2, Math.trunc(source.maxParticipants || 2)),
                     playoffTeamCount: Number.isFinite(source.leagueData?.playoffTeamCount)
-                        ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
+                        ? Math.trunc(source.leagueData.playoffTeamCount as number)
                         : undefined,
                     playoffPlacementDivisionIds: [],
                     allowPaymentPlans: eventAllowPaymentPlans,
@@ -306,7 +308,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                     kind: 'PLAYOFF' as const,
                     maxParticipants,
                     playoffTeamCount: Number.isFinite(detail.playoffTeamCount)
-                        ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+                        ? Math.trunc(detail.playoffTeamCount as number)
                         : undefined,
                     poolCount,
                     poolTeamCount: derivePoolTeamCount(maxParticipants, poolCount),
@@ -345,7 +347,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 ? (
                     useEventLevelDivisionDefaults
                         ? eventPriceCents
-                        : Boolean(detail.allowPaymentPlans)
+                        : !manualPaymentEnabled && Boolean(detail.allowPaymentPlans)
                             ? sumInstallmentAmounts(detail.installmentAmounts)
                             : normalizePriceCents(detail.price)
                 )
@@ -359,11 +361,11 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 }
                 if (singleDivisionEnabled && !splitLeaguePlayoffDivisions) {
                     return Number.isFinite(source.leagueData.playoffTeamCount)
-                        ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
+                        ? Math.trunc(source.leagueData.playoffTeamCount as number)
                         : undefined;
                 }
                 return Number.isFinite(detail.playoffTeamCount)
-                    ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+                    ? Math.trunc(detail.playoffTeamCount as number)
                     : undefined;
             })(),
             playoffPlacementDivisionIds: (() => {
@@ -415,11 +417,11 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 ? (
                     useEventLevelDivisionDefaults
                         ? eventAllowPaymentPlans
-                        : !isAffiliateEvent && Boolean(detail.allowPaymentPlans)
+                        : !isAffiliateEvent && !manualPaymentEnabled && Boolean(detail.allowPaymentPlans)
                 )
                 : false,
             installmentCount: (() => {
-                if (!pricingEnabled) {
+                if (!pricingEnabled || manualPaymentEnabled) {
                     return 0;
                 }
                 if (useEventLevelDivisionDefaults) {
@@ -433,7 +435,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 return detail.installmentCount || detail.installmentAmounts.length || 0;
             })(),
             installmentAmounts: (() => {
-                if (!pricingEnabled) {
+                if (!pricingEnabled || manualPaymentEnabled) {
                     return [];
                 }
                 if (useEventLevelDivisionDefaults) {
@@ -447,7 +449,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 return normalizeInstallmentAmounts(detail.installmentAmounts);
             })(),
             installmentDueDates: (() => {
-                if (!pricingEnabled) {
+                if (!pricingEnabled || manualPaymentEnabled) {
                     return [];
                 }
                 if (useEventLevelDivisionDefaults) {
@@ -545,7 +547,9 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             sportId: sportId || undefined,
             price: eventPriceCents,
             registrationPaymentMode,
-            manualPaymentLinks: manualPaymentEnabled ? normalizeManualPaymentLinks(source.manualPaymentLinks) : [],
+            manualPaymentLinks: manualPaymentEnabled
+                ? normalizeManualPaymentLinksForDraft(source.manualPaymentLinks)
+                : [],
             manualPaymentInstructions: manualPaymentEnabled
                 ? normalizeManualPaymentInstructions(source.manualPaymentInstructions) ?? null
                 : null,
@@ -572,7 +576,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 price: normalizePriceCents(detail.price),
                 maxParticipants: Math.max(2, Math.trunc(detail.maxParticipants || 2)),
                 playoffTeamCount: Number.isFinite(detail.playoffTeamCount)
-                    ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+                    ? Math.trunc(detail.playoffTeamCount as number)
                     : undefined,
                 allowPaymentPlans: Boolean(detail.allowPaymentPlans),
                 installmentCount: detail.allowPaymentPlans
@@ -602,7 +606,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                     : undefined,
                 maxParticipants: normalizePlayoffDivisionParticipantCount(division.maxParticipants) ?? undefined,
                 playoffTeamCount: Number.isFinite(division.playoffTeamCount)
-                    ? Math.max(2, Math.trunc(division.playoffTeamCount as number))
+                    ? Math.trunc(division.playoffTeamCount as number)
                     : undefined,
                 poolCount: Number.isFinite(division.poolCount)
                     ? Math.max(1, Math.trunc(division.poolCount as number))
@@ -610,19 +614,33 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 poolTeamCount: Number.isFinite(division.poolTeamCount)
                     ? Math.max(1, Math.trunc(division.poolTeamCount as number))
                     : undefined,
-                allowPaymentPlans: Boolean(division.allowPaymentPlans),
-                installmentCount: division.allowPaymentPlans
+                phaseSettings: division.phaseSettings ?? {},
+                allowPaymentPlans: !manualPaymentEnabled && Boolean(division.allowPaymentPlans),
+                installmentCount: !manualPaymentEnabled && division.allowPaymentPlans
                     ? (division.installmentCount || division.installmentAmounts?.length || 0)
                     : 0,
-                installmentAmounts: division.allowPaymentPlans
+                installmentAmounts: !manualPaymentEnabled && division.allowPaymentPlans
                     ? normalizeInstallmentAmounts(division.installmentAmounts)
                     : [],
-                installmentDueDates: division.allowPaymentPlans && Array.isArray(division.installmentDueDates)
+                installmentDueDates: !manualPaymentEnabled && division.allowPaymentPlans && Array.isArray(division.installmentDueDates)
                     ? division.installmentDueDates
                     : [],
-                installmentDueRelativeDays: division.allowPaymentPlans
+                installmentDueRelativeDays: !manualPaymentEnabled && division.allowPaymentPlans
                     ? normalizeInstallmentRelativeDays(division.installmentDueRelativeDays)
                     : [],
+                ...leagueConfigToDivisionFields(
+                    singleDivisionEnabled
+                        ? normalizeLeagueConfigForSetMode(source.leagueData, sportRequiresSets)
+                        : buildDivisionLeagueConfig({
+                            gamesPerOpponent: division.gamesPerOpponent,
+                            restTimeMinutes: division.restTimeMinutes,
+                            usesSets: division.usesSets,
+                            matchDurationMinutes: division.matchDurationMinutes,
+                            setDurationMinutes: division.setDurationMinutes,
+                            setsPerMatch: division.setsPerMatch,
+                            pointsToVictory: division.pointsToVictory,
+                        }, source.leagueData, sportRequiresSets),
+                ),
                 playoffConfig: normalizeTournamentConfigForSetMode(
                     division.playoffConfig,
                     resolveTournamentSetMode(
@@ -631,7 +649,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                     ),
                 ),
             })),
-            cancellationRefundHours: source.cancellationRefundHours,
+            cancellationRefundHours: manualPaymentEnabled ? null : source.cancellationRefundHours,
             registrationCutoffHours: source.registrationCutoffHours,
             requiredTemplateIds: isAffiliateEvent ? [] : source.requiredTemplateIds,
             imageId: finalImageId,
@@ -816,7 +834,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
             (draft as any).includePlayoffsOrPools = source.leagueData.includePlayoffs;
             draft.playoffTeamCount = source.leagueData.includePlayoffs
                 ? (Number.isFinite(source.leagueData.playoffTeamCount)
-                    ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
+                    ? Math.trunc(source.leagueData.playoffTeamCount as number)
                     : undefined)
                 : undefined;
 

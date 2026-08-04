@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { parseLocalDateTime } from '@/lib/dateUtils';
+import { getManualPaymentLinkError } from '@/lib/manualRegistrationPayments';
 import type { Field } from '@/types';
 
 import { requiresOrganizationEventFieldSelection } from '../eventFieldSelection';
@@ -12,6 +13,7 @@ import {
     normalizeSlotDivisionKeysWithLookup,
 } from './divisionForm';
 import { hasAffiliateUrl, isTournamentPoolPlayFormEnabled, supportsScheduleSlotsForEvent } from './eventRules';
+import { BRACKET_TEAM_COUNT_ERROR } from './divisionMessages';
 import { coordinatesAreSet } from './locationHelpers';
 import { isEventLocalField } from './resourceGroups';
 import { stringSetsEqual } from './shared';
@@ -48,6 +50,7 @@ const RENTAL_SLOT_MISMATCH_ERROR_PREFIX = 'This rental resource is only availabl
 
 const matchRulesConfigSchema = z.object({
     scoringModel: z.enum(['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY']).optional(),
+    segmentCount: z.number().int().positive().optional(),
     segmentLabel: z.string().trim().optional(),
     supportsDraw: z.boolean().optional(),
     supportsOvertime: z.boolean().optional(),
@@ -77,6 +80,25 @@ const matchRulesConfigSchema = z.object({
         stopAtRegulationEnd: z.boolean().optional(),
     }).optional(),
 }).nullable().optional();
+
+const divisionPhaseSchema = z.object({
+        matchRulesOverride: matchRulesConfigSchema,
+        autoCreatePointMatchIncidents: z.boolean().optional(),
+        segmentLengthMinutes: z.number()
+            .int()
+            .min(1, 'Enter at least 1 minute.')
+            .nullable()
+            .optional()
+            .refine((value) => value !== null, 'Enter at least 1 minute.'),
+        segmentBreakMinutes: z.number().int().nonnegative().nullable().optional(),
+    });
+
+const divisionPhaseSettingsSchema = z.object({
+    LEAGUE: divisionPhaseSchema.optional(),
+    POOL: divisionPhaseSchema.optional(),
+    BRACKET: divisionPhaseSchema.optional(),
+    PLAYOFF: divisionPhaseSchema.optional(),
+}).default({});
 
 const tournamentConfigSchema = z.object({
     doubleElimination: z.boolean(),
@@ -109,7 +131,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
             id: z.string().optional(),
             provider: z.enum(['CASH_APP', 'VENMO', 'PAYPAL', 'STRIPE', 'ZELLE', 'OTHER']),
             label: z.string().trim().optional(),
-            url: z.string().trim().url('Enter a valid payment link'),
+            url: z.string().trim(),
         })).default([]),
         manualPaymentInstructions: z.string().trim().default(''),
         tags: z.array(z.object({
@@ -169,6 +191,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 playoffTeamCount: z.number().optional(),
                 poolCount: z.number().int().min(1).optional(),
                 poolTeamCount: z.number().int().min(1).optional(),
+                phaseSettings: divisionPhaseSettingsSchema,
                 playoffPlacementDivisionIds: z.array(z.string()).optional(),
                 gamesPerOpponent: z.number().min(1).optional(),
                 restTimeMinutes: z.number().min(0).optional(),
@@ -198,6 +221,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                 name: z.string().trim().min(1),
                 maxParticipants: z.number().int().nullable(),
                 playoffConfig: z.any(),
+                phaseSettings: divisionPhaseSettingsSchema,
             }),
         ).default([]),
         divisionFieldIds: z.record(z.string(), z.array(z.string())).default({}),
@@ -281,6 +305,19 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         joinAsParticipant: z.boolean(),
     })
     .superRefine((values, ctx) => {
+        if (!values.isAffiliateEvent && values.registrationPaymentMode === 'MANUAL') {
+            values.manualPaymentLinks.forEach((link, index) => {
+                const message = getManualPaymentLinkError(link.provider, link.url);
+                if (message) {
+                    ctx.addIssue({
+                        code: 'custom',
+                        message,
+                        path: ['manualPaymentLinks', index, 'url'],
+                    });
+                }
+            });
+        }
+
         const isAffiliateEvent = Boolean(values.isAffiliateEvent || hasAffiliateUrl(values.affiliateUrl));
 
         if (!isAffiliateEvent && values.singleDivision && values.maxParticipants == null) {
@@ -530,7 +567,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                         if (!(typeof detail.playoffTeamCount === 'number' && detail.playoffTeamCount >= 2)) {
                             ctx.addIssue({
                                 code: "custom",
-                                message: 'Division playoff team count is required when playoffs are enabled',
+                                message: BRACKET_TEAM_COUNT_ERROR,
                                 path: ['divisionDetails', index, 'playoffTeamCount'],
                             });
                             return;
@@ -590,7 +627,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                     if (!(typeof values.leagueData.playoffTeamCount === 'number' && values.leagueData.playoffTeamCount >= 2)) {
                         ctx.addIssue({
                             code: "custom",
-                            message: 'Playoff team count is required when playoffs are enabled',
+                            message: BRACKET_TEAM_COUNT_ERROR,
                             path: ['leagueData', 'playoffTeamCount'],
                         });
                     }
@@ -599,7 +636,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                         if (!(typeof detail.playoffTeamCount === 'number' && detail.playoffTeamCount >= 2)) {
                             ctx.addIssue({
                                 code: "custom",
-                                message: 'Division playoff team count is required when playoffs are enabled',
+                                message: BRACKET_TEAM_COUNT_ERROR,
                                 path: ['divisionDetails', index, 'playoffTeamCount'],
                             });
                         }
@@ -616,7 +653,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                         ? Math.max(1, Math.trunc(detail.poolCount as number))
                         : null;
                     const bracketTeams = Number.isFinite(detail.playoffTeamCount)
-                        ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+                        ? Math.trunc(detail.playoffTeamCount as number)
                         : null;
                     if (!poolCount) {
                         ctx.addIssue({
@@ -626,10 +663,10 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
                         });
                         return;
                     }
-                    if (!bracketTeams) {
+                    if (bracketTeams === null || bracketTeams < 2) {
                         ctx.addIssue({
                             code: "custom",
-                            message: 'Bracket team count is required when pool play is enabled.',
+                            message: BRACKET_TEAM_COUNT_ERROR,
                             path: ['divisionDetails', index, 'playoffTeamCount'],
                         });
                     }

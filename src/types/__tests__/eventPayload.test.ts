@@ -84,4 +84,52 @@ describe('toEventPayload division teamIds serialization', () => {
     expect(payload.id).toBe('event_1');
     expect(Object.prototype.hasOwnProperty.call(payload, '$id')).toBe(false);
   });
+
+  it('preserves pool and phase settings on tournament playoff division payloads', () => {
+    const event = {
+      ...baseEvent(),
+      eventType: 'TOURNAMENT',
+      playoffDivisionDetails: [{
+        id: 'event_1__division__open',
+        key: 'open',
+        name: 'Open',
+        kind: 'PLAYOFF',
+        gamesPerOpponent: 1,
+        usesSets: true,
+        setDurationMinutes: 20,
+        setsPerMatch: 1,
+        pointsToVictory: [21],
+        phaseSettings: {
+          POOL: { autoCreatePointMatchIncidents: true },
+        },
+        playoffConfig: {
+          doubleElimination: false,
+          winnerSetCount: 1,
+          loserSetCount: 1,
+          winnerBracketPointsToVictory: [21],
+          loserBracketPointsToVictory: [21],
+          prize: '',
+          fieldCount: 1,
+          restTimeMinutes: 0,
+          usesSets: true,
+          setDurationMinutes: 20,
+        },
+      }],
+    } as unknown as Event;
+
+    expect(toEventPayload(event).playoffDivisionDetails?.[0]).toEqual(expect.objectContaining({
+      gamesPerOpponent: 1,
+      usesSets: true,
+      setDurationMinutes: 20,
+      setsPerMatch: 1,
+      pointsToVictory: [21],
+      phaseSettings: {
+        POOL: { autoCreatePointMatchIncidents: true },
+      },
+      playoffConfig: expect.objectContaining({
+        usesSets: true,
+        setDurationMinutes: 20,
+      }),
+    }));
+  });
 });

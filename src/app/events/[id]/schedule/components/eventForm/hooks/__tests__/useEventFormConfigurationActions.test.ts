@@ -227,4 +227,18 @@ describe('useEventFormConfigurationActions', () => {
             }));
         });
     });
+
+    it('enables league playoffs without filling a bracket team count', async () => {
+        const { result } = renderHook(() => useConfigurationActionsHarness(buildEventData({
+            eventType: 'LEAGUE',
+            leagueData: buildLeagueData({ includePlayoffs: false, playoffTeamCount: undefined }),
+        }), jest.fn()));
+
+        act(() => result.current.actions.handleIncludePlayoffsToggle(true));
+
+        await waitFor(() => {
+            expect(result.current.eventData.leagueData.includePlayoffs).toBe(true);
+        });
+        expect(result.current.eventData.leagueData.playoffTeamCount).toBeUndefined();
+    });
 });

@@ -20,8 +20,13 @@ import { canUseAutomaticRefunds, sumInstallmentAmounts } from '../paymentPlanHel
 type SetEventFormValue = (
     name: string,
     value: unknown,
-    options?: { shouldDirty?: boolean; shouldValidate?: boolean },
+    options?: PaymentFieldOptions,
 ) => void;
+
+type PaymentFieldOptions = {
+    shouldDirty?: boolean;
+    shouldValidate?: boolean;
+};
 
 type UseEventPaymentControllerOptions = {
     currentUser: UserData;
@@ -32,8 +37,8 @@ type UseEventPaymentControllerOptions = {
     setValue: SetEventFormValue;
 };
 
-const PAYMENT_FIELD_OPTIONS = { shouldDirty: true, shouldValidate: true } as const;
-const PAYMENT_RESET_OPTIONS = { shouldDirty: false, shouldValidate: true } as const;
+const PAYMENT_FIELD_OPTIONS: PaymentFieldOptions = { shouldDirty: true, shouldValidate: true };
+const PAYMENT_RESET_OPTIONS: PaymentFieldOptions = { shouldDirty: false, shouldValidate: true };
 const EMPTY_MANUAL_PAYMENT_LINKS: ManualPaymentLink[] = [];
 
 export const useEventPaymentController = ({
@@ -106,86 +111,81 @@ export const useEventPaymentController = ({
     const organizerManualTaxSelected = organizerTaxCollectionAllowed
         && eventTaxPolicyForPreview.collectionStrategy === 'ORGANIZER_MANUAL_TAX';
 
-    useEffect(() => {
-        if (!isCreateMode || hasStripeAccount || manualPaymentsEnabled) {
-            return;
-        }
-
-        const currentPrice = Number.isFinite(Number(eventData.price))
-            ? Number(eventData.price)
-            : 0;
-        if (currentPrice !== 0) {
-            setValue('price', 0, PAYMENT_RESET_OPTIONS);
+    const clearPaymentPlanFields = useCallback((options: PaymentFieldOptions = PAYMENT_FIELD_OPTIONS) => {
+        if (eventData.cancellationRefundHours != null) {
+            setValue('cancellationRefundHours', null, options);
         }
         if (eventData.allowPaymentPlans) {
-            setValue('allowPaymentPlans', false, PAYMENT_RESET_OPTIONS);
+            setValue('allowPaymentPlans', false, options);
+        }
+        if (Number(eventData.installmentCount) !== 0) {
+            setValue('installmentCount', 0, options);
+        }
+        if (eventData.installmentAmounts?.length) {
+            setValue('installmentAmounts', [], options);
+        }
+        if (eventData.installmentDueDates?.length) {
+            setValue('installmentDueDates', [], options);
+        }
+        if (eventData.installmentDueRelativeDays?.length) {
+            setValue('installmentDueRelativeDays', [], options);
         }
 
-        const currentInstallmentCount = Number.isFinite(Number(eventData.installmentCount))
-            ? Number(eventData.installmentCount)
-            : 0;
-        if (currentInstallmentCount !== 0) {
-            setValue('installmentCount', 0, PAYMENT_RESET_OPTIONS);
-        }
-        if (Array.isArray(eventData.installmentAmounts) && eventData.installmentAmounts.length > 0) {
-            setValue('installmentAmounts', [], PAYMENT_RESET_OPTIONS);
-        }
-        if (Array.isArray(eventData.installmentDueDates) && eventData.installmentDueDates.length > 0) {
-            setValue('installmentDueDates', [], PAYMENT_RESET_OPTIONS);
-        }
-        if (
-            Array.isArray(eventData.installmentDueRelativeDays)
-            && eventData.installmentDueRelativeDays.length > 0
-        ) {
-            setValue('installmentDueRelativeDays', [], PAYMENT_RESET_OPTIONS);
-        }
-
-        const currentDivisionDetails = Array.isArray(eventData.divisionDetails)
-            ? eventData.divisionDetails
-            : [];
+        const currentDivisionDetails = eventData.divisionDetails ?? [];
         const nextDivisionDetails = currentDivisionDetails.map((detail) => {
-            const detailPrice = Number.isFinite(Number(detail.price)) ? Number(detail.price) : 0;
-            const detailInstallmentCount = Number.isFinite(Number(detail.installmentCount))
-                ? Number(detail.installmentCount)
-                : 0;
-            const hasPaidSettings = detailPrice !== 0
-                || Boolean(detail.allowPaymentPlans)
-                || detailInstallmentCount !== 0
-                || (Array.isArray(detail.installmentAmounts) && detail.installmentAmounts.length > 0)
-                || (Array.isArray(detail.installmentDueDates) && detail.installmentDueDates.length > 0)
-                || (
-                    Array.isArray(detail.installmentDueRelativeDays)
-                    && detail.installmentDueRelativeDays.length > 0
-                );
-            if (!hasPaidSettings) {
-                return detail;
-            }
-            return {
-                ...detail,
-                price: 0,
-                allowPaymentPlans: false,
-                installmentCount: 0,
-                installmentAmounts: [],
-                installmentDueDates: [],
-                installmentDueRelativeDays: [],
-            };
+            const hasPaymentPlan = Boolean(detail.allowPaymentPlans)
+                || Number(detail.installmentCount) !== 0
+                || Boolean(detail.installmentAmounts?.length)
+                || Boolean(detail.installmentDueDates?.length)
+                || Boolean(detail.installmentDueRelativeDays?.length);
+            return hasPaymentPlan
+                ? {
+                    ...detail,
+                    allowPaymentPlans: false,
+                    installmentCount: 0,
+                    installmentAmounts: [],
+                    installmentDueDates: [],
+                    installmentDueRelativeDays: [],
+                }
+                : detail;
         });
         if (nextDivisionDetails.some((detail, index) => detail !== currentDivisionDetails[index])) {
-            setValue('divisionDetails', nextDivisionDetails, PAYMENT_RESET_OPTIONS);
+            setValue('divisionDetails', nextDivisionDetails, options);
         }
     }, [
         eventData.allowPaymentPlans,
+        eventData.cancellationRefundHours,
         eventData.divisionDetails,
         eventData.installmentAmounts,
         eventData.installmentCount,
         eventData.installmentDueDates,
         eventData.installmentDueRelativeDays,
-        eventData.price,
+        setValue,
+    ]);
+
+    useEffect(() => {
+        if (
+            !isCreateMode
+            || eventData.isAffiliateEvent
+            || hasStripeAccount
+            || manualPaymentsEnabled
+        ) {
+            return;
+        }
+        setValue('registrationPaymentMode', 'MANUAL', PAYMENT_RESET_OPTIONS);
+    }, [
+        eventData.isAffiliateEvent,
         hasStripeAccount,
         isCreateMode,
         manualPaymentsEnabled,
         setValue,
     ]);
+
+    useEffect(() => {
+        if (manualPaymentsEnabled) {
+            clearPaymentPlanFields(PAYMENT_RESET_OPTIONS);
+        }
+    }, [clearPaymentPlanFields, manualPaymentsEnabled]);
 
     const syncInstallmentCount = useCallback((count: number) => {
         const safeCount = Math.max(1, Math.floor(Number(count) || 0));
@@ -269,7 +269,7 @@ export const useEventPaymentController = ({
         field: 'provider' | 'label' | 'url',
         value: string,
     ) => {
-        const nextLinks = [...manualPaymentLinks];
+        const nextLinks = [...(getValues('manualPaymentLinks') || [])];
         const current = nextLinks[index];
         if (!current) return;
         nextLinks[index] = {
@@ -277,11 +277,12 @@ export const useEventPaymentController = ({
             [field]: field === 'provider' ? normalizeManualPaymentProvider(value) : value,
         };
         setValue('manualPaymentLinks', nextLinks, PAYMENT_FIELD_OPTIONS);
-    }, [manualPaymentLinks, setValue]);
+    }, [getValues, setValue]);
 
     const addManualPaymentLink = useCallback(() => {
+        const currentLinks = getValues('manualPaymentLinks') || [];
         setValue('manualPaymentLinks', [
-            ...manualPaymentLinks,
+            ...currentLinks,
             {
                 id: createClientId(),
                 provider: 'VENMO',
@@ -289,25 +290,26 @@ export const useEventPaymentController = ({
                 url: '',
             },
         ], PAYMENT_FIELD_OPTIONS);
-    }, [manualPaymentLinks, setValue]);
+    }, [getValues, setValue]);
 
     const removeManualPaymentLink = useCallback((index: number) => {
+        const currentLinks = getValues('manualPaymentLinks') || [];
         setValue(
             'manualPaymentLinks',
-            manualPaymentLinks.filter((_, linkIndex) => linkIndex !== index),
+            currentLinks.filter((_, linkIndex) => linkIndex !== index),
             PAYMENT_FIELD_OPTIONS,
         );
-    }, [manualPaymentLinks, setValue]);
+    }, [getValues, setValue]);
 
     const setManualPaymentsEnabled = useCallback((enabled: boolean) => {
         setValue('registrationPaymentMode', enabled ? 'MANUAL' : 'ONLINE', PAYMENT_FIELD_OPTIONS);
         if (enabled) {
-            setValue('cancellationRefundHours', null, PAYMENT_FIELD_OPTIONS);
+            clearPaymentPlanFields();
             return;
         }
         setValue('manualPaymentLinks', [], PAYMENT_FIELD_OPTIONS);
         setValue('manualPaymentInstructions', '', PAYMENT_FIELD_OPTIONS);
-    }, [setValue]);
+    }, [clearPaymentPlanFields, setValue]);
 
     const connectStripe = useCallback(async () => {
         if (!currentUser || typeof window === 'undefined') return;

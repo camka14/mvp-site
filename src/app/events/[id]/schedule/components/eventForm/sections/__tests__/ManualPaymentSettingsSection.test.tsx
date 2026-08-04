@@ -26,11 +26,14 @@ type HarnessProps = {
 const Harness = ({
     visible = true,
     onAddLink = jest.fn(),
-    onLinkChange = jest.fn(),
+    onLinkChange,
     onRemoveLink = jest.fn(),
 }: HarnessProps) => {
-    const { control } = useForm<EventFormValues>({
-        defaultValues: { manualPaymentInstructions: 'Include the team name.' },
+    const { control, setValue } = useForm<EventFormValues>({
+        defaultValues: {
+            manualPaymentInstructions: 'Include the team name.',
+            manualPaymentLinks: links,
+        },
     });
     return (
         <MantineProvider>
@@ -41,7 +44,11 @@ const Harness = ({
                 links={links}
                 onToggle={jest.fn()}
                 onAddLink={onAddLink}
-                onLinkChange={onLinkChange}
+                onLinkChange={onLinkChange ?? ((index, field, value) => setValue(
+                    `manualPaymentLinks.${index}.${field}`,
+                    value,
+                    { shouldDirty: true, shouldValidate: true },
+                ))}
                 onRemoveLink={onRemoveLink}
             />
         </MantineProvider>
@@ -51,23 +58,21 @@ const Harness = ({
 describe('ManualPaymentSettingsSection', () => {
     it('renders payment-link fields and forwards edits and actions', () => {
         const onAddLink = jest.fn();
-        const onLinkChange = jest.fn();
         const onRemoveLink = jest.fn();
         render(
             <Harness
                 onAddLink={onAddLink}
-                onLinkChange={onLinkChange}
                 onRemoveLink={onRemoveLink}
             />,
         );
 
-        fireEvent.change(screen.getByRole('textbox', { name: 'Label' }), {
+        fireEvent.change(screen.getByRole('textbox', { name: 'Public label' }), {
             target: { value: 'Summit United' },
         });
-        fireEvent.click(screen.getByRole('button', { name: 'Add payment link' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Add payment destination' }));
         fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
 
-        expect(onLinkChange).toHaveBeenCalledWith(0, 'label', 'Summit United');
+        expect(screen.getByRole('textbox', { name: 'Public label' })).toHaveValue('Summit United');
         expect(onAddLink).toHaveBeenCalledTimes(1);
         expect(onRemoveLink).toHaveBeenCalledWith(0);
         expect(screen.getByRole('textbox', { name: 'Manual payment instructions' })).toHaveValue('Include the team name.');

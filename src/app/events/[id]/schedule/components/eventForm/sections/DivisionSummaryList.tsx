@@ -38,6 +38,7 @@ type DivisionSummaryListProps = {
     useDivisionPriceForSingleDivision?: boolean;
     useDivisionCapacityForSingleDivision?: boolean;
     hidePricingAndCapacity?: boolean;
+    hidePricing?: boolean;
     hideCapacity?: boolean;
     hidePaymentPlanDetails?: boolean;
     hideOperationalDetails?: boolean;
@@ -68,6 +69,7 @@ export const DivisionSummaryList = ({
     useDivisionPriceForSingleDivision = false,
     useDivisionCapacityForSingleDivision = false,
     hidePricingAndCapacity = false,
+    hidePricing = false,
     hideCapacity = false,
     hidePaymentPlanDetails = false,
     hideOperationalDetails = false,
@@ -80,6 +82,15 @@ export const DivisionSummaryList = ({
 }: DivisionSummaryListProps) => {
     const hasNoDivisions = divisionDetails.length === 0
         && (!splitDivisionEditorEnabled || playoffDivisionDetails.length === 0);
+    const primaryDivisionTypeLabel = eventType === 'WEEKLY_EVENT'
+        ? 'Weekly event'
+        : eventType === 'TRYOUT'
+            ? 'Tryout'
+            : eventType === 'TOURNAMENT'
+                ? 'Tournament'
+                : eventType === 'EVENT'
+                    ? 'Event'
+                    : 'League';
 
     return (
         <div className="space-y-3">
@@ -99,14 +110,14 @@ export const DivisionSummaryList = ({
                             : Math.max(2, Math.trunc(detail.maxParticipants || eventMaxParticipants || 2));
                         const effectiveDivisionPlayoffTeamCount = eventType === 'TOURNAMENT'
                             ? (typeof detail.playoffTeamCount === 'number'
-                                ? Math.max(2, Math.trunc(detail.playoffTeamCount))
+                                ? Math.trunc(detail.playoffTeamCount)
                                 : undefined)
                             : singleDivision
                                 ? (typeof leaguePlayoffTeamCount === 'number'
-                                    ? Math.max(2, Math.trunc(leaguePlayoffTeamCount))
+                                    ? Math.trunc(leaguePlayoffTeamCount)
                                     : undefined)
                                 : (typeof detail.playoffTeamCount === 'number'
-                                    ? Math.max(2, Math.trunc(detail.playoffTeamCount))
+                                    ? Math.trunc(detail.playoffTeamCount)
                                     : undefined);
                         const effectivePoolCount = typeof detail.poolCount === 'number'
                             ? Math.max(1, Math.trunc(detail.poolCount))
@@ -150,24 +161,24 @@ export const DivisionSummaryList = ({
                                         <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
                                             <Text fw={700} size="sm" lineClamp={2}>{detail.name}</Text>
                                             {!hideOperationalDetails ? (
-                                                <Badge size="sm" radius="sm" variant="light">League</Badge>
+                                                <Badge size="sm" radius="sm" variant="light">{primaryDivisionTypeLabel}</Badge>
                                             ) : null}
                                         </Group>
                                         {!hideOperationalDetails ? (
-                                            <Text size="xs" c="dimmed">Division Type: League</Text>
+                                            <Text size="xs" c="dimmed">Division Type: {primaryDivisionTypeLabel}</Text>
                                         ) : null}
                                         <Text size="xs" c="dimmed">{divisionTypeSummary}</Text>
                                         {!hidePricingAndCapacity ? (
                                             <>
                                                 <Text size="xs" c="dimmed">
                                                     {[
-                                                        `Price: ${formatPrice(effectiveDivisionPrice)}`,
+                                                        hidePricing ? null : `Price: ${formatPrice(effectiveDivisionPrice)}`,
                                                         hideCapacity
                                                             ? null
                                                             : `${teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`,
                                                     ].filter(Boolean).join(' • ')}
                                                 </Text>
-                                                {!hidePaymentPlanDetails ? (
+                                                {!hidePricing && !hidePaymentPlanDetails ? (
                                                     <Text size="xs" c="dimmed">
                                                         {effectiveDivisionAllowPaymentPlans
                                                             ? `Payment plan: ${effectiveDivisionInstallmentCount || effectiveDivisionInstallmentAmounts.length || 0} installment(s) totaling ${formatBillAmount(effectiveDivisionInstallmentAmounts.reduce((sum, value) => sum + (Number(value) || 0), 0))}`

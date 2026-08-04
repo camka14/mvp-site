@@ -9,8 +9,6 @@ export const EVENT_SETUP_PAGE_IDS = [
     'divisions',
     'schedule-plan',
     'schedule-location',
-    'competition-plan',
-    'competition-rules',
     'registration-plan',
     'pricing-registration',
     'documents-questions',
@@ -36,23 +34,15 @@ export type EventSetupScheduleStyle =
     | 'FIXED_SLOTS'
     | 'MIXED_SLOTS';
 
-export type EventSetupResourceSource =
-    | 'ORGANIZATION'
-    | 'CUSTOM'
-    | 'RENTAL_LOCKED'
-    | 'LOCATION_ONLY';
-
 export interface EventSetupChoices {
     scheduleStyle: EventSetupScheduleStyle;
-    resourceSource: EventSetupResourceSource;
-    customizeMatchRules: boolean;
-    customizeScoring: boolean;
     paidRegistration: boolean;
     useRequiredDocuments: boolean;
     useRegistrationQuestions: boolean;
     useStaffAssignments: boolean;
     useDedicatedOfficials: boolean;
     useCustomOfficialPositions: boolean;
+    useTeamCheckInAndRosterOperations: boolean;
 }
 
 export interface EventSetupResolverInput {

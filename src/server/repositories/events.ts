@@ -7,6 +7,7 @@ import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps, normaliz
 import {
   normalizeManualPaymentInstructions,
   normalizeManualPaymentLinks,
+  normalizeManualPaymentLinksForPersistence,
   normalizeRegistrationPaymentMode,
 } from '@/lib/manualRegistrationPayments';
 import {
@@ -61,6 +62,7 @@ import {
 import {
   buildLegacySegments,
   resolveMatchRules,
+  resolveMatchRulesForDivisionPhase,
   resolveMatchRulesForContext,
   serializeMatchIncidentRow,
   serializeMatchSegmentRow,
@@ -87,6 +89,11 @@ import {
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
 import { syncEventTags, syncEventTypeTagsForEvent } from '@/server/eventTags';
+import {
+  normalizeDivisionPhaseSettingsMap,
+  resolveDivisionCompetitionPhase,
+} from '@/lib/divisionPhaseSettings';
+import type { DivisionPhaseSettingsMap } from '@/types';
 
 type PrismaLike = PrismaClient | any;
 
@@ -1151,6 +1158,7 @@ type DivisionDetailPayload = {
   playoffTeamCount?: number | null;
   poolCount?: number | null;
   poolTeamCount?: number | null;
+  phaseSettings?: DivisionPhaseSettingsMap;
   playoffPlacementDivisionIds?: string[];
   standingsOverrides?: Record<string, number> | null;
   playoffConfig?: PlayoffDivisionConfigPayload | null;
@@ -1253,6 +1261,10 @@ const normalizeDivisionDetailsPayload = (
           )
         : rawExplicitPlayoffConfig;
       const rawLeagueConfig = normalizeLeagueDivisionConfig(row);
+      const hasPhaseSettingsInput = Object.prototype.hasOwnProperty.call(row, 'phaseSettings');
+      const rawPhaseSettings = hasPhaseSettingsInput
+        ? normalizeDivisionPhaseSettingsMap(row.phaseSettings)
+        : undefined;
       const rawStandingsConfirmedAt = normalizeIsoDateString(row.standingsConfirmedAt);
       const rawStandingsConfirmedBy = typeof row.standingsConfirmedBy === 'string'
         ? row.standingsConfirmedBy.trim() || null
@@ -1307,6 +1319,7 @@ const normalizeDivisionDetailsPayload = (
           : rawPoolCount === null
             ? null
             : Math.max(0, Math.trunc(rawPoolCount)),
+        ...(rawPhaseSettings !== undefined ? { phaseSettings: rawPhaseSettings } : {}),
         ...(rawPlayoffPlacementDivisionIds !== undefined
           ? { playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds }
           : {}),
@@ -1805,6 +1818,7 @@ const buildDivisions = (
     standingsConfirmedAt?: Date | null;
     standingsConfirmedBy?: string | null;
     teamIds?: string[] | null;
+    phaseSettings?: unknown;
   }>,
   sportId?: string | null,
   options?: { allowFallback?: boolean; fallbackKind?: 'LEAGUE' | 'PLAYOFF' },
@@ -1879,6 +1893,7 @@ const buildDivisions = (
       playoffConfig,
       teamIds,
       leagueConfig,
+      normalizeDivisionPhaseSettingsMap(matchedRow?.phaseSettings),
     );
     result.push(division);
 
@@ -1919,6 +1934,7 @@ const serializeDivisionDetailsForTemplate = (divisionRows: any[]): Array<Record<
     playoffTeamCount: row.playoffTeamCount ?? null,
     playoffPlacementDivisionIds: ensureStringArray(row.playoffPlacementDivisionIds),
     standingsOverrides: row.standingsOverrides ?? null,
+    phaseSettings: normalizeDivisionPhaseSettingsMap(row.phaseSettings),
     gamesPerOpponent: row.gamesPerOpponent ?? null,
     restTimeMinutes: row.restTimeMinutes ?? null,
     usesSets: row.usesSets ?? null,
@@ -2848,14 +2864,46 @@ const buildMatches = (
         })
       : [];
     const segments = shouldHydrateSegments ? (persistedSegments.length ? persistedSegments : legacySegments) : [];
+    const hasBracketLinks = Boolean(
+      row.losersBracket
+      || row.previousLeftId
+      || row.previousRightId
+      || row.winnerNextMatchId
+      || row.loserNextMatchId
+    );
+    const competitionPhase = resolveDivisionCompetitionPhase({
+      eventType: event.eventType,
+      divisionKind: division.kind,
+      hasBracketLinks,
+    });
+    const phaseUsesSets = division.kind === 'LEAGUE'
+      ? division.leagueConfig?.usesSets ?? event.usesSets
+      : event.usesSets;
+    const phaseSetsPerMatch = division.leagueConfig?.setsPerMatch ?? (event as any).setsPerMatch ?? null;
+    const phaseWinnerSetCount = division.playoffConfig?.winnerSetCount ?? (event as any).winnerSetCount ?? null;
+    const phaseLoserSetCount = division.playoffConfig?.loserSetCount ?? (event as any).loserSetCount ?? null;
+    const phaseMatchDurationMinutes = competitionPhase === 'LEAGUE' || competitionPhase === 'POOL'
+      ? division.leagueConfig?.matchDurationMinutes ?? event.matchDurationMinutes
+      : division.playoffConfig?.matchDurationMinutes ?? event.matchDurationMinutes;
+    const phaseResolvedMatchRules = resolveMatchRulesForDivisionPhase({
+      phase: competitionPhase,
+      phaseSettings: division.phaseSettings,
+      sportTemplate: resolvedMatchRules ?? (event as any).resolvedMatchRules,
+      autoCreatePointMatchIncidents: (event as any).autoCreatePointMatchIncidents,
+      usesSets: phaseUsesSets,
+      setsPerMatch: phaseSetsPerMatch,
+      winnerSetCount: phaseWinnerSetCount,
+      matchDurationMinutes: phaseMatchDurationMinutes,
+      officialPositions: event.officialPositions,
+    });
     const contextualResolvedMatchRules = row.matchRulesSnapshot
       ?? resolveMatchRulesForContext({
-        baseRules: resolvedMatchRules,
+        baseRules: phaseResolvedMatchRules,
         eventType: event.eventType,
-        usesSets: event.usesSets,
-        setsPerMatch: (event as any).setsPerMatch ?? null,
-        winnerSetCount: (event as any).winnerSetCount ?? null,
-        loserSetCount: (event as any).loserSetCount ?? null,
+        usesSets: phaseUsesSets,
+        setsPerMatch: phaseSetsPerMatch,
+        winnerSetCount: phaseWinnerSetCount,
+        loserSetCount: phaseLoserSetCount,
         losersBracket: Boolean(row.losersBracket),
         previousLeftId: row.previousLeftId ?? null,
         previousRightId: row.previousRightId ?? null,
@@ -3503,8 +3551,8 @@ export const saveMatches = async (
       actualEnd: match.actualEnd ?? null,
       statusReason: match.statusReason ?? null,
       winnerEventTeamId: match.winnerEventTeamId ?? null,
-      matchRulesSnapshot: match.matchRulesSnapshot
-        ? (match.matchRulesSnapshot as unknown as Record<string, unknown>)
+      matchRulesSnapshot: match.matchRulesSnapshot || match.resolvedMatchRules
+        ? ((match.matchRulesSnapshot ?? match.resolvedMatchRules) as unknown as Record<string, unknown>)
         : null,
       side: match.side ?? null,
       losersBracket: Boolean(match.losersBracket),
@@ -3997,6 +4045,7 @@ export const syncEventDivisions = async (
       sortOrder: true,
       playoffPlacementDivisionIds: true,
       standingsOverrides: true,
+      phaseSettings: true,
       gamesPerOpponent: true,
       restTimeMinutes: true,
       usesSets: true,
@@ -4344,6 +4393,11 @@ export const syncEventDivisions = async (
           normalizeStandingsOverrides(existing?.standingsOverrides),
           null,
         ) ?? null;
+    const phaseSettings = resolveDivisionValue(
+      detail?.phaseSettings,
+      normalizeDivisionPhaseSettingsMap(existing?.phaseSettings),
+      {},
+    ) ?? {};
     const standingsConfirmedAt = kind === 'PLAYOFF'
       ? null
       : (
@@ -4431,6 +4485,7 @@ export const syncEventDivisions = async (
       playoffTeamCount,
       playoffPlacementDivisionIds,
       standingsOverrides,
+      phaseSettings,
       ...playoffConfigToDivisionFields(kind === 'LEAGUE' ? playoffConfig : null),
       gamesPerOpponent: leagueConfig?.gamesPerOpponent ?? null,
       restTimeMinutes: leagueConfig?.restTimeMinutes ?? null,
@@ -4522,6 +4577,7 @@ export const syncEventDivisions = async (
         playoffTeamCount: entry.playoffTeamCount,
         playoffPlacementDivisionIds: entry.playoffPlacementDivisionIds,
         standingsOverrides: entry.standingsOverrides,
+        phaseSettings: entry.phaseSettings,
         gamesPerOpponent: entry.gamesPerOpponent,
         restTimeMinutes: entry.restTimeMinutes,
         usesSets: entry.usesSets,
@@ -4579,6 +4635,7 @@ export const syncEventDivisions = async (
         playoffTeamCount: entry.playoffTeamCount,
         playoffPlacementDivisionIds: entry.playoffPlacementDivisionIds,
         standingsOverrides: entry.standingsOverrides,
+        phaseSettings: entry.phaseSettings,
         gamesPerOpponent: entry.gamesPerOpponent,
         restTimeMinutes: entry.restTimeMinutes,
         usesSets: entry.usesSets,
@@ -4751,7 +4808,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : (existingEvent as any)?.registrationPaymentMode,
   );
   const isManualRegistrationPayment = normalizedRegistrationPaymentMode === 'MANUAL';
-  const normalizedManualPaymentLinks = normalizeManualPaymentLinks(
+  const normalizedManualPaymentLinks = normalizeManualPaymentLinksForPersistence(
     Object.prototype.hasOwnProperty.call(payload, 'manualPaymentLinks')
       ? payload.manualPaymentLinks
       : (existingEvent as any)?.manualPaymentLinks,
@@ -4820,15 +4877,16 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     };
   });
   const normalizeDivisionBilling = (detail: DivisionDetailPayload): DivisionDetailPayload => {
-    if (canPersistEventPricing) {
+    if (canPersistEventPricing && !isManualRegistrationPayment) {
       return detail;
     }
     return {
       ...detail,
-      price: detail.kind === 'PLAYOFF' ? null : 0,
+      price: canPersistEventPricing ? detail.price : detail.kind === 'PLAYOFF' ? null : 0,
       allowPaymentPlans: false,
       installmentCount: 0,
       installmentDueDates: [],
+      installmentDueRelativeDays: [],
       installmentAmounts: [],
     };
   };
@@ -5127,19 +5185,19 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     }
     return 0;
   })();
-  const normalizedEventAllowPaymentPlans = canPersistEventPricing && !isAffiliateExternalEvent
+  const normalizedEventAllowPaymentPlans = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment
     ? (payload.allowPaymentPlans ?? null)
     : false;
-  const normalizedEventInstallmentCount = canPersistEventPricing && !isAffiliateExternalEvent
+  const normalizedEventInstallmentCount = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment
     ? (payload.installmentCount ?? null)
     : 0;
-  const normalizedEventInstallmentDueDates = canPersistEventPricing && !isAffiliateExternalEvent
+  const normalizedEventInstallmentDueDates = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment
     ? (isWeeklyParent ? [] : (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value, eventTimeZone)).filter(Boolean) as Date[]))
     : [];
-  const normalizedEventInstallmentDueRelativeDays = canPersistEventPricing && !isAffiliateExternalEvent && isWeeklyParent
+  const normalizedEventInstallmentDueRelativeDays = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment && isWeeklyParent
     ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
     : [];
-  const normalizedEventInstallmentAmounts = canPersistEventPricing && !isAffiliateExternalEvent
+  const normalizedEventInstallmentAmounts = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment
     ? ensureNumberArray(payload.installmentAmounts)
     : [];
   const officialSchedulingMode = isAffiliateExternalEvent
@@ -5244,7 +5302,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     organizerManualTaxRateBps: normalizedOrganizerManualTaxRateBps,
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
-    cancellationRefundHours: payload.cancellationRefundHours ?? null,
+    cancellationRefundHours: isManualRegistrationPayment ? null : payload.cancellationRefundHours ?? null,
     teamSignup: normalizedTeamSignup,
     prize: payload.prize ?? null,
     registrationCutoffHours: payload.registrationCutoffHours ?? null,
@@ -5317,7 +5375,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionAllowPaymentPlans = (() => {
-    if (!canPersistEventPricing || isAffiliateExternalEvent) {
+    if (!canPersistEventPricing || isAffiliateExternalEvent || isManualRegistrationPayment) {
       return false;
     }
     const parsed = coerceNullableBoolean(payload.allowPaymentPlans);
@@ -5327,7 +5385,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionInstallmentCount = (() => {
-    if (!canPersistEventPricing || isAffiliateExternalEvent) {
+    if (!canPersistEventPricing || isAffiliateExternalEvent || isManualRegistrationPayment) {
       return 0;
     }
     const parsed = coerceNullableNumber(payload.installmentCount);
@@ -5336,13 +5394,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     }
     return parsed ?? null;
   })();
-  const defaultDivisionInstallmentDueDates = canPersistEventPricing && !isAffiliateExternalEvent
+  const defaultDivisionInstallmentDueDates = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment
     ? (isWeeklyParent ? [] : normalizeInstallmentDateList(payload.installmentDueDates))
     : [];
-  const defaultDivisionInstallmentDueRelativeDays = canPersistEventPricing && !isAffiliateExternalEvent && isWeeklyParent
+  const defaultDivisionInstallmentDueRelativeDays = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment && isWeeklyParent
     ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
     : [];
-  const defaultDivisionInstallmentAmounts = canPersistEventPricing && !isAffiliateExternalEvent
+  const defaultDivisionInstallmentAmounts = canPersistEventPricing && !isAffiliateExternalEvent && !isManualRegistrationPayment
     ? normalizeInstallmentAmountList(payload.installmentAmounts)
     : [];
 

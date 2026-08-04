@@ -26,7 +26,6 @@ import {
     type DivisionTypeSelections,
 } from '../divisionEditorDraftState';
 import {
-    type DivisionDetailForm,
     type DivisionEditorKind,
     type DivisionEditorState,
     type PlayoffDivisionDetailForm,
@@ -43,7 +42,6 @@ type UseDivisionEditorDraftParams = {
     currentSportRequiresSets: boolean;
     defaultDivisionTypeSelections: DivisionTypeSelections;
     eventData: EventFormValues;
-    firstDivisionDetailForDefaults?: DivisionDetailForm;
     hasStripeAccount: boolean;
     isCreateMode: boolean;
     leagueData: LeagueConfig;
@@ -56,7 +54,6 @@ export const useDivisionEditorDraft = ({
     currentSportRequiresSets,
     defaultDivisionTypeSelections,
     eventData,
-    firstDivisionDetailForDefaults,
     hasStripeAccount,
     isCreateMode,
     leagueData,
@@ -133,7 +130,6 @@ export const useDivisionEditorDraft = ({
             currentSportRequiresSets,
             defaultDivisionTypeSelections,
             eventData: divisionEditorEventValues,
-            firstDivisionDetailForDefaults,
             leagueData,
             playoffData,
         }));
@@ -141,7 +137,6 @@ export const useDivisionEditorDraft = ({
         currentSportRequiresSets,
         defaultDivisionTypeSelections,
         divisionEditorEventValues,
-        firstDivisionDetailForDefaults,
         leagueData,
         playoffData,
     ]);

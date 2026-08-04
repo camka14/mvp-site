@@ -46,6 +46,8 @@ type StaffOrganizationRosterPickerProps = {
     onAddOfficial: (user: UserData) => void;
     onAddAssistantHost: (user: UserData) => void;
     onSetHost: (userId: string | null) => void;
+    showOfficialAssignments?: boolean;
+    showHostAssignments?: boolean;
 };
 
 const ORGANIZATION_STAFF_TYPE_OPTIONS = [
@@ -83,6 +85,8 @@ export const StaffOrganizationRosterPicker = ({
     onAddOfficial,
     onAddAssistantHost,
     onSetHost,
+    showOfficialAssignments = true,
+    showHostAssignments = true,
 }: StaffOrganizationRosterPickerProps) => (
     <Paper withBorder radius="md" p="md" bg="white">
         <Stack gap="sm">
@@ -150,15 +154,15 @@ export const StaffOrganizationRosterPicker = ({
                                     </Badge>
                                 </Group>
                                 <Group gap="xs" wrap="wrap">
-                                    <Button
+                                    {showOfficialAssignments ? <Button
                                         type="button"
                                         size="xs"
                                         disabled={assignmentsDisabled || !canAssignOfficial || isOfficialAssigned || eventOfficialsDisabled}
                                         onClick={() => onAddOfficial(assignableUser)}
                                     >
                                         Add as official
-                                    </Button>
-                                    <Button
+                                    </Button> : null}
+                                    {showHostAssignments ? <Button
                                         type="button"
                                         size="xs"
                                         variant="default"
@@ -166,8 +170,8 @@ export const StaffOrganizationRosterPicker = ({
                                         onClick={() => onAddAssistantHost(assignableUser)}
                                     >
                                         Add as assistant
-                                    </Button>
-                                    <Button
+                                    </Button> : null}
+                                    {showHostAssignments ? <Button
                                         type="button"
                                         size="xs"
                                         variant="light"
@@ -175,7 +179,7 @@ export const StaffOrganizationRosterPicker = ({
                                         onClick={() => onSetHost(userId)}
                                     >
                                         Set as host
-                                    </Button>
+                                    </Button> : null}
                                 </Group>
                             </Stack>
                         </Paper>

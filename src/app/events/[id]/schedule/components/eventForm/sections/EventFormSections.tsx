@@ -5,6 +5,7 @@ import type { Division, Event, EventTag, RegistrationQuestionDraft } from '@/typ
 
 import { deriveScheduleParticipantCount } from '../divisionForm';
 import type { EventFormValues } from '../formTypes';
+import type { EventFormErrorIndex, EventFormAdvancedSectionId } from '../errorOwnership';
 import { coordinatesAreSet } from '../locationHelpers';
 import { normalizeNumber } from '../configDefaults';
 import type { useDivisionCommitController } from '../hooks/useDivisionCommitController';
@@ -113,6 +114,13 @@ export type EventFormSectionsProps = {
     slotDivisionKeys: string[];
     staffController: ReturnType<typeof useStaffOfficialController>;
     templates: TemplateModel;
+    validationErrorIndex?: EventFormErrorIndex;
+};
+
+const EMPTY_ERROR_INDEX: EventFormErrorIndex = {
+    ordered: [],
+    bySimplePage: {},
+    byAdvancedSection: {},
 };
 
 export const EventFormSections = ({
@@ -146,6 +154,7 @@ export const EventFormSections = ({
     slotDivisionKeys,
     staffController,
     templates,
+    validationErrorIndex = EMPTY_ERROR_INDEX,
 }: EventFormSectionsProps) => {
     const leagueData = eventData.leagueData;
     const tournamentData = eventData.tournamentData;
@@ -174,7 +183,6 @@ export const EventFormSections = ({
         activeSectionId,
         collapsedSections,
         fieldNamesCollapsed,
-        handleManualPaymentsChange,
         isSchedulableEventType,
         isWeeklyChildEvent,
         questionActions,
@@ -254,6 +262,17 @@ export const EventFormSections = ({
             onRemoveQuestion={questionActions.removeQuestion}
         />
     );
+    const getSectionErrors = (sectionId: EventFormAdvancedSectionId) => (
+        validationErrorIndex.byAdvancedSection[sectionId] ?? []
+    );
+    const basicInformationErrors = getSectionErrors('section-basic-information');
+    const eventDetailsErrors = getSectionErrors('section-event-details');
+    const manualPaymentErrors = getSectionErrors('section-manual-payments');
+    const matchRulesErrors = getSectionErrors('section-match-rules');
+    const staffErrors = getSectionErrors('section-officials');
+    const divisionErrors = getSectionErrors('section-division-settings');
+    const scoringErrors = getSectionErrors('section-league-scoring-config');
+    const scheduleErrors = getSectionErrors('section-schedule-config');
 
     return (
         <EventFormShell
@@ -265,6 +284,8 @@ export const EventFormSections = ({
             leagueError={leagueError}
             onSelectSection={scrollToSection}
             hideSectionNavigation={hideSectionNavigation}
+            validationErrorCount={validationErrorIndex.ordered.length}
+            firstValidationError={validationErrorIndex.ordered[0]?.message}
         >
             <BasicInformationSection
                 collapsed={collapsedSections['section-basic-information']}
@@ -285,6 +306,8 @@ export const EventFormSections = ({
                 setValue={setValue}
                 onToggle={() => toggleSectionCollapse('section-basic-information')}
                 onImageChange={(fileId) => setValue('imageId', fileId, { shouldDirty: true, shouldValidate: true })}
+                errorCount={basicInformationErrors.length}
+                firstErrorMessage={basicInformationErrors[0]?.message}
             />
 
             <EventDetailsPanel
@@ -316,7 +339,6 @@ export const EventFormSections = ({
                 onStartChange={handleStartChange}
                 onEndChange={handleEndChange}
                 onNoFixedEndDateTimeChange={handleNoFixedEndDateTimeChange}
-                onManualPaymentsChange={handleManualPaymentsChange}
                 coordinatesSelected={coordinatesAreSet(eventData.coordinates)}
                 defaultCoordinates={defaultCoordinates}
                 onSelectedAddressChange={handleSelectedAddressChange}
@@ -341,6 +363,8 @@ export const EventFormSections = ({
                 fieldNamesCollapsed={fieldNamesCollapsed}
                 setFieldNamesCollapsed={setFieldNamesCollapsed}
                 onLocalFieldNameChange={handleLocalFieldNameChange}
+                errorCount={eventDetailsErrors.length}
+                firstErrorMessage={eventDetailsErrors[0]?.message}
             />
 
             <ManualPaymentSettingsSection
@@ -352,6 +376,8 @@ export const EventFormSections = ({
                 onAddLink={addManualPaymentLink}
                 onLinkChange={setManualPaymentLinkValue}
                 onRemoveLink={removeManualPaymentLink}
+                errorCount={manualPaymentErrors.length}
+                firstErrorMessage={manualPaymentErrors[0]?.message}
             />
 
             <MatchRulesConfigSection
@@ -374,6 +400,8 @@ export const EventFormSections = ({
                 incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
                 comboboxProps={sharedComboboxProps}
                 onToggle={() => toggleSectionCollapse('section-match-rules')}
+                errorCount={matchRulesErrors.length}
+                firstErrorMessage={matchRulesErrors[0]?.message}
             />
 
             <EventFormStaffSection
@@ -389,6 +417,8 @@ export const EventFormSections = ({
                 setValue={setValue}
                 staffController={staffController}
                 onToggle={() => toggleSectionCollapse('section-officials')}
+                errorCount={staffErrors.length}
+                firstErrorMessage={staffErrors[0]?.message}
             />
 
             <EventFormDivisionSection
@@ -422,6 +452,8 @@ export const EventFormSections = ({
                 splitLeaguePlayoffDivisionsLocked={isImmutableField('splitLeaguePlayoffDivisions') && !hasExternalRentalField}
                 supportsEditableTeamSignup={supportsEditableTeamSignup}
                 tournamentData={tournamentData}
+                errorCount={divisionErrors.length}
+                firstErrorMessage={divisionErrors[0]?.message}
             />
 
             <LeagueScoringConfigSection
@@ -433,12 +465,16 @@ export const EventFormSections = ({
                 editable={!isImmutableField('leagueScoringConfig')}
                 onToggle={() => toggleSectionCollapse('section-league-scoring-config')}
                 onChange={handleLeagueScoringConfigChange}
+                errorCount={scoringErrors.length}
+                firstErrorMessage={scoringErrors[0]?.message}
             />
 
             <ScheduleConfigSection
                 visible={showScheduleConfig}
                 collapsed={collapsedSections['section-schedule-config']}
                 onToggle={() => toggleSectionCollapse('section-schedule-config')}
+                errorCount={scheduleErrors.length}
+                firstErrorMessage={scheduleErrors[0]?.message}
             >
                 <ScheduleConfigBody
                     control={control}

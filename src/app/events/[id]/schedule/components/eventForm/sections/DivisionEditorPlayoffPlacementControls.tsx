@@ -5,6 +5,7 @@ import {
 } from '@mantine/core';
 
 import { AnimatedLayoutSection } from '../components/AnimatedSection';
+import { DIVISION_FULL_WIDTH_CLASS } from '../divisionLayout';
 
 type DivisionEditorPlayoffPlacementControlsProps = {
     visible: boolean;
@@ -25,7 +26,7 @@ export const DivisionEditorPlayoffPlacementControls = ({
     disabled,
     onPlacementDivisionChange,
 }: DivisionEditorPlayoffPlacementControlsProps) => (
-    <AnimatedLayoutSection in={visible} className="md:col-span-9">
+    <AnimatedLayoutSection in={visible} className={DIVISION_FULL_WIDTH_CLASS}>
         <div className="space-y-2">
             <Text size="sm" fw={600}>Playoff Placement Mapping</Text>
             {playoffDivisionOptions.length === 0 ? (

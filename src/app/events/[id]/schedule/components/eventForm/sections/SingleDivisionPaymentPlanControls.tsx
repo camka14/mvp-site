@@ -10,6 +10,7 @@ import { parseLocalDateTime } from '@/lib/dateUtils';
 
 import { AnimatedSection } from '../components/AnimatedSection';
 import { DIVISION_LAYOUT_TRANSITION } from '../constants';
+import { DIVISION_FULL_WIDTH_CLASS } from '../divisionLayout';
 
 type SingleDivisionPaymentPlanControlsProps = {
     allowPaymentPlans: boolean;
@@ -66,7 +67,7 @@ export const SingleDivisionPaymentPlanControls = ({
 }: SingleDivisionPaymentPlanControlsProps) => (
     <motion.div
         layout
-        className={allowPaymentPlans ? 'md:col-span-12 md:col-start-1' : 'md:col-span-9'}
+        className={DIVISION_FULL_WIDTH_CLASS}
         transition={DIVISION_LAYOUT_TRANSITION}
     >
         <div className="rounded-lg border border-gray-200 bg-white p-4">

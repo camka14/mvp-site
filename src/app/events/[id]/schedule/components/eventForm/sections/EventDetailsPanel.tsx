@@ -49,7 +49,6 @@ type EventDetailsPanelProps = {
     onStartChange: (value: Date) => void;
     onEndChange: (value: Date) => void;
     onNoFixedEndDateTimeChange: (checked: boolean) => void;
-    onManualPaymentsChange: (checked: boolean) => void;
     coordinatesSelected: boolean;
     defaultCoordinates?: [number, number];
     onSelectedAddressChange: (coordinates: [number, number], address: string) => void;
@@ -81,6 +80,8 @@ type EventDetailsPanelProps = {
     showAgeControls?: boolean;
     showRegistrationQuestions?: boolean;
     showCapacityWarning?: boolean;
+    errorCount?: number;
+    firstErrorMessage?: string;
 };
 
 export const EventDetailsPanel = ({
@@ -113,7 +114,6 @@ export const EventDetailsPanel = ({
     onStartChange,
     onEndChange,
     onNoFixedEndDateTimeChange,
-    onManualPaymentsChange,
     coordinatesSelected,
     defaultCoordinates,
     onSelectedAddressChange,
@@ -145,13 +145,17 @@ export const EventDetailsPanel = ({
     showAgeControls = true,
     showRegistrationQuestions = true,
     showCapacityWarning = true,
+    errorCount,
+    firstErrorMessage,
 }: EventDetailsPanelProps) => (
     <EventDetailsSection
         title={title}
         collapsed={collapsed}
         onToggle={onToggle}
+        errorCount={errorCount}
+        firstErrorMessage={firstErrorMessage}
     >
-        <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
             {showTypeControls ? <EventDetailsTypeControls
                 control={control}
                 eventType={eventData.eventType}
@@ -187,7 +191,6 @@ export const EventDetailsPanel = ({
                 onStartChange={onStartChange}
                 onEndChange={onEndChange}
                 onNoFixedEndDateTimeChange={onNoFixedEndDateTimeChange}
-                onManualPaymentsChange={onManualPaymentsChange}
                 showScheduleControls={showScheduleTimingControls}
                 showRegistrationControls={showRegistrationTimingControls}
             /> : null}

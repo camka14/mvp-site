@@ -88,10 +88,15 @@ import {
     describeEventSetupTransition,
     resolveEventSetupCapabilities,
     resolveEventSetupPages,
-    resolveValidationPage,
 } from './eventForm/simpleSetup/resolveEventSetup';
 import { SimpleSetupPlanningPage } from './eventForm/simpleSetup/SimpleSetupPlanningPage';
 import { SimpleSetupFormPage } from './eventForm/simpleSetup/SimpleSetupFormPage';
+import { SimpleSetupReviewPage } from './eventForm/simpleSetup/SimpleSetupReviewPage';
+import { buildSimpleSetupReviewModel } from './eventForm/simpleSetup/reviewModel';
+import {
+    inferEventSetupScheduleStyle,
+    scheduleStyleChangeDiscardsConfiguredSlots,
+} from './eventForm/simpleSetup/scheduleStyle';
 import type {
     EventSetupChoices,
     EventSetupMode,
@@ -99,6 +104,16 @@ import type {
     EventSetupResolverInput,
 } from './eventForm/simpleSetup/types';
 import type { EventFormHandle, EventFormProps } from './eventForm/types';
+import {
+    buildEventFormErrorIndex,
+    type EventFormErrorLocation,
+} from './eventForm/errorOwnership';
+import {
+    dedupeValidationErrors,
+    flattenFormErrors,
+    flattenZodIssues,
+    type FlattenedFormError,
+} from './eventForm/validationErrors';
 
 const SECTION_SCROLL_OFFSET = 80;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
@@ -116,29 +131,52 @@ const SIMPLE_PLANNING_PAGE_IDS = new Set<EventSetupPageId>([
     'format',
     'participation-plan',
     'schedule-plan',
-    'competition-plan',
     'registration-plan',
     'operations-plan',
-    'review-publish',
 ]);
 
-const buildDefaultSetupChoices = (values?: Partial<EventFormValues>): EventSetupChoices => {
+const normalizedOfficialPositionSignature = (positions: Array<{ name: string; count: number }> | undefined): string[] => (
+    (positions ?? [])
+        .map((position) => `${position.name.trim().toLocaleLowerCase()}:${Number(position.count)}`)
+        .sort()
+);
+
+export const buildDefaultSetupChoices = (values?: Partial<EventFormValues>): EventSetupChoices => {
     const isExternal = Boolean(values?.isAffiliateEvent || hasAffiliateUrl(values?.affiliateUrl));
     const hasDivisionPrice = Array.isArray(values?.divisionDetails)
         && values.divisionDetails.some((division) => Number(division.price) > 0);
+    const configuredOfficialPositions = normalizedOfficialPositionSignature(values?.officialPositions);
+    const defaultOfficialPositions = normalizedOfficialPositionSignature(values?.sportConfig?.officialPositionTemplates);
+    const hasCustomOfficialPositions = configuredOfficialPositions.length > 0
+        && (
+            defaultOfficialPositions.length === 0
+            || configuredOfficialPositions.join('|') !== defaultOfficialPositions.join('|')
+        );
     return {
-        scheduleStyle: values?.eventType === 'EVENT' || isExternal ? 'FIXED_WINDOW' : 'WEEKLY_SLOTS',
-        resourceSource: isExternal
-            ? 'LOCATION_ONLY'
-            : values?.selectedFieldIds?.length ? 'ORGANIZATION' : 'CUSTOM',
-        customizeMatchRules: Boolean(values?.matchRulesOverride),
-        customizeScoring: Boolean(values?.leagueScoringConfig),
+        scheduleStyle: isExternal
+            ? 'FIXED_WINDOW'
+            : inferEventSetupScheduleStyle({
+                eventType: values?.eventType,
+                slots: values?.leagueSlots,
+                eventStart: values?.start,
+                eventEnd: values?.end,
+            }),
         paidRegistration: Number(values?.price) > 0 || hasDivisionPrice,
         useRequiredDocuments: Boolean(values?.requiredTemplateIds?.length),
         useRegistrationQuestions: false,
         useStaffAssignments: Boolean(values?.hostId || values?.assistantHostIds?.length || values?.pendingStaffInvites?.length),
-        useDedicatedOfficials: Boolean(values?.officialIds?.length || values?.eventOfficials?.length),
-        useCustomOfficialPositions: Boolean(values?.officialPositions?.length),
+        useDedicatedOfficials: Boolean(
+            values?.officialIds?.length
+            || values?.eventOfficials?.length
+            || hasCustomOfficialPositions
+            || values?.doTeamsOfficiate,
+        ),
+        useCustomOfficialPositions: hasCustomOfficialPositions,
+        useTeamCheckInAndRosterOperations: Boolean(
+            values?.teamCheckInMode && values.teamCheckInMode !== 'OFF'
+            || values?.allowMatchRosterEdits
+            || values?.allowTemporaryMatchPlayers,
+        ),
     };
 };
 export type { EventFormHandle, EventFormProps, RentalPurchaseContext } from './eventForm/types';
@@ -157,6 +195,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     templateOrganizationId: templateOrganizationIdProp,
     onDirtyStateChange,
     onDraftStateChange,
+    onValidityChange,
+    onSubmitRequest,
 }, ref) => {
     const open = isOpen ?? true;
     const {
@@ -264,6 +304,65 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [simpleSetupChoices, setSimpleSetupChoices] = useState<EventSetupChoices>(
         () => buildDefaultSetupChoices(formValues),
     );
+    const [reportedFormValidationErrors, setReportedFormValidationErrors] = useState<FlattenedFormError[]>([]);
+    const [externalValidationErrors, setExternalValidationErrors] = useState<FlattenedFormError[]>([]);
+    const [pendingValidationRecovery, setPendingValidationRecovery] = useState<EventFormErrorLocation | null>(null);
+    const schemaValidationResult = useMemo(
+        () => eventValidationSchema.safeParse(formValues),
+        [eventValidationSchema, formValues],
+    );
+    const reviewSchemaValidationErrors = useMemo(
+        () => currentSimplePageId === 'review-publish' && !schemaValidationResult.success
+            ? flattenZodIssues(schemaValidationResult.error.issues)
+            : [],
+        [currentSimplePageId, schemaValidationResult],
+    );
+    const liveFormValidationErrors = useMemo(
+        () => dedupeValidationErrors(flattenFormErrors(errors)),
+        [errors],
+    );
+
+    useEffect(() => {
+        setReportedFormValidationErrors(liveFormValidationErrors);
+    }, [liveFormValidationErrors]);
+
+    const reportValidationResult = useCallback((
+        validationErrors: FlattenedFormError[],
+        source: 'FORM' | 'EXTERNAL' | 'CLEAR',
+    ) => {
+        if (source === 'CLEAR') {
+            setReportedFormValidationErrors([]);
+            setExternalValidationErrors([]);
+            setPendingValidationRecovery(null);
+            return;
+        }
+        const normalizedErrors = dedupeValidationErrors(validationErrors);
+        const nextIndex = buildEventFormErrorIndex(normalizedErrors);
+        if (source === 'FORM') {
+            setReportedFormValidationErrors(normalizedErrors);
+            setExternalValidationErrors([]);
+        } else {
+            setReportedFormValidationErrors([]);
+            setExternalValidationErrors(normalizedErrors);
+        }
+        setPendingValidationRecovery(nextIndex.ordered[0] ?? null);
+    }, []);
+    const displayedFormValidationErrors = schemaValidationResult.success
+        ? []
+        : currentSimplePageId === 'review-publish'
+            ? reviewSchemaValidationErrors
+            : reportedFormValidationErrors;
+    const validationErrorIndex = useMemo(
+        () => buildEventFormErrorIndex(dedupeValidationErrors([
+            ...displayedFormValidationErrors,
+            ...externalValidationErrors,
+        ])),
+        [displayedFormValidationErrors, externalValidationErrors],
+    );
+    const sectionErrorCounts = useMemo(() => Object.fromEntries(
+        Object.entries(validationErrorIndex.byAdvancedSection)
+            .map(([sectionId, sectionErrors]) => [sectionId, sectionErrors?.length ?? 0]),
+    ), [validationErrorIndex.byAdvancedSection]);
     const setupSourceKey = open
         ? `${isCreateMode ? 'create' : `event:${activeEditingEvent?.$id ?? ''}`}:${defaultSetupMode}`
         : 'closed';
@@ -425,10 +524,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         rentalLockedSlotsForDraft,
         selectedFieldIds,
         selectedRentedFieldIds,
+        showLocalFieldCreationControls,
+        showOrganizationFieldsInEventDetails,
         shouldManageLocalFields,
         shouldProvisionFields,
         usesRentalSlots,
     } = resourceController;
+    const simpleFixedWindowFieldIds = useMemo(() => {
+        if (showOrganizationFieldsInEventDetails) {
+            return selectedFieldIds;
+        }
+        if (showLocalFieldCreationControls) {
+            return fields.map((field) => field.$id);
+        }
+        return undefined;
+    }, [
+        fields,
+        selectedFieldIds,
+        showLocalFieldCreationControls,
+        showOrganizationFieldsInEventDetails,
+    ]);
     const slotController = useEventSlotController({
         activeEditingEvent,
         clearErrors,
@@ -450,6 +565,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         parentEvent: eventData.parentEvent,
         rentalLockedSlotsForDraft,
         resolvedOrganizationId,
+        simpleScheduleStyle: setupMode === 'SIMPLE' ? simpleSetupChoices.scheduleStyle : undefined,
+        fixedWindowFieldIds: simpleFixedWindowFieldIds,
         setLeagueData,
         setPlayoffData,
         setValue,
@@ -540,6 +657,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         currentUser,
         resolvedOrganization,
         isOrganizationHostedEvent,
+        isCreateMode,
         selectedSportForOfficials,
         fields,
         selectedFieldIds,
@@ -557,6 +675,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         requiredOfficialSlotsPerMatch,
         validatePendingStaffAssignments,
     } = staffController;
+    const canSubmitEvent = useMemo(
+        () => schemaValidationResult.success && !officialStaffingCoverageError,
+        [officialStaffingCoverageError, schemaValidationResult.success],
+    );
+
+    useEffect(() => {
+        onValidityChange?.(canSubmitEvent);
+    }, [canSubmitEvent, onValidityChange]);
 
     const clearLeagueSlotErrors = useCallback(() => {
         clearErrors('leagueSlots');
@@ -667,6 +793,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         sportsById,
         trigger,
         validatePendingStaffAssignments,
+        onValidationResult: reportValidationResult,
     });
     useEventFormLifecycleStabilization({
         buildDraftEvent,
@@ -689,7 +816,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setManualPaymentsEnabled: paymentController.setManualPaymentsEnabled,
         setRegistrationQuestionDrafts,
         usesRentalSlots,
+        sectionErrorCounts,
     });
+    const scrollToAdvancedSection = sectionsController.scrollToSection;
+
+    useEffect(() => {
+        if (!pendingValidationRecovery || typeof document === 'undefined') return;
+        if (setupMode === 'SIMPLE') {
+            setCurrentSimplePageId(pendingValidationRecovery.simplePageId);
+        } else {
+            scrollToAdvancedSection(pendingValidationRecovery.advancedSectionId);
+        }
+
+        const focusTimer = window.setTimeout(() => {
+            const fieldName = pendingValidationRecovery.focusFieldName;
+            const field = fieldName ? document.getElementsByName(fieldName)[0] : null;
+            if (field instanceof HTMLElement) {
+                field.focus({ preventScroll: true });
+            }
+            setPendingValidationRecovery((current) => (
+                current === pendingValidationRecovery ? null : current
+            ));
+        }, setupMode === 'ADVANCED' ? 250 : 0);
+        return () => window.clearTimeout(focusTimer);
+    }, [pendingValidationRecovery, scrollToAdvancedSection, setupMode]);
 
     const setupResolverInput = useMemo<EventSetupResolverInput>(() => ({
         eventType: eventData.eventType,
@@ -796,20 +946,41 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [confirmSimpleSetupTransition, invalidateSimpleSetupPages, setupResolverInput]);
 
     const updateSimpleSetupChoices = useCallback((updates: Partial<EventSetupChoices>) => {
+        const resolvedUpdates = updates.useDedicatedOfficials === false
+            ? { ...updates, useCustomOfficialPositions: false }
+            : updates;
+        const nextScheduleStyle = resolvedUpdates.scheduleStyle;
+        if (
+            nextScheduleStyle
+            && nextScheduleStyle !== simpleSetupChoices.scheduleStyle
+            && scheduleStyleChangeDiscardsConfiguredSlots(eventData.leagueSlots ?? [], nextScheduleStyle)
+            && typeof window !== 'undefined'
+            && !window.confirm('Changing the schedule style removes timeslots that do not match the new style. Continue?')
+        ) {
+            return;
+        }
         const turningOffConfiguredData = (
-            updates.paidRegistration === false && (
+            resolvedUpdates.paidRegistration === false && (
                 Number(eventData.price) > 0
                 || (eventData.divisionDetails ?? []).some((division) => Number(division.price) > 0)
             )
-        ) || (updates.useRequiredDocuments === false && Boolean(eventData.requiredTemplateIds?.length))
-            || (updates.useRegistrationQuestions === false && registrationQuestionDrafts.length > 0)
-            || (updates.customizeMatchRules === false && Boolean(eventData.matchRulesOverride))
-            || (updates.customizeScoring === false && Boolean(eventData.leagueScoringConfig))
-            || (updates.useStaffAssignments === false && Boolean(
-                eventData.assistantHostIds?.length || eventData.pendingStaffInvites?.length,
+        ) || (resolvedUpdates.useRequiredDocuments === false && Boolean(eventData.requiredTemplateIds?.length))
+            || (resolvedUpdates.useRegistrationQuestions === false && registrationQuestionDrafts.length > 0)
+            || (resolvedUpdates.useStaffAssignments === false && Boolean(
+                eventData.assistantHostIds?.length
+                || eventData.pendingStaffInvites?.some((invite) => invite.roles.includes('ASSISTANT_HOST')),
             ))
-            || (updates.useDedicatedOfficials === false && Boolean(
-                eventData.officialIds?.length || eventData.eventOfficials?.length,
+            || (resolvedUpdates.useDedicatedOfficials === false && Boolean(
+                eventData.officialIds?.length
+                || eventData.eventOfficials?.length
+                || eventData.officialPositions?.length
+                || eventData.doTeamsOfficiate
+                || eventData.pendingStaffInvites?.some((invite) => invite.roles.includes('OFFICIAL')),
+            ))
+            || (resolvedUpdates.useTeamCheckInAndRosterOperations === false && Boolean(
+                eventData.teamCheckInMode !== 'OFF'
+                || eventData.allowMatchRosterEdits
+                || eventData.allowTemporaryMatchPlayers,
             ));
         if (
             turningOffConfiguredData
@@ -818,8 +989,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ) {
             return;
         }
-        if (updates.paidRegistration === false) {
+        if (resolvedUpdates.paidRegistration === false) {
             setValue('price', 0, { shouldDirty: true, shouldValidate: true });
+            setValue('registrationPaymentMode', 'ONLINE', { shouldDirty: true, shouldValidate: true });
+            setValue('manualPaymentLinks', [], { shouldDirty: true, shouldValidate: true });
+            setValue('manualPaymentInstructions', '', { shouldDirty: true, shouldValidate: true });
+            setValue('cancellationRefundHours', null, { shouldDirty: true, shouldValidate: true });
             setValue('allowPaymentPlans', false, { shouldDirty: true, shouldValidate: true });
             setValue('installmentCount', 0, { shouldDirty: true, shouldValidate: true });
             setValue('installmentAmounts', [], { shouldDirty: true, shouldValidate: true });
@@ -835,31 +1010,70 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 installmentDueRelativeDays: [],
             })), { shouldDirty: true, shouldValidate: true });
         }
-        if (updates.useRequiredDocuments === false) {
+        if (resolvedUpdates.scheduleStyle === 'FIXED_WINDOW' && !isImmutableField('noFixedEndDateTime')) {
+            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+        }
+        if (resolvedUpdates.useRequiredDocuments === false) {
             setValue('requiredTemplateIds', [], { shouldDirty: true, shouldValidate: true });
         }
-        if (updates.useRegistrationQuestions === false) setRegistrationQuestionDrafts([]);
-        if (updates.customizeMatchRules === false) {
-            setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: true });
-            setValue('autoCreatePointMatchIncidents', false, { shouldDirty: true, shouldValidate: true });
-        }
-        if (updates.customizeScoring === false) {
-            setValue('leagueScoringConfig', null, { shouldDirty: true, shouldValidate: true });
-        }
-        if (updates.useStaffAssignments === false) {
+        if (resolvedUpdates.useRegistrationQuestions === false) setRegistrationQuestionDrafts([]);
+        if (resolvedUpdates.useStaffAssignments === false) {
             setValue('assistantHostIds', [], { shouldDirty: true, shouldValidate: true });
-            setValue('pendingStaffInvites', [], { shouldDirty: true, shouldValidate: true });
+            setValue('pendingStaffInvites', (eventData.pendingStaffInvites ?? []).flatMap((invite) => {
+                const roles = invite.roles.filter((role) => role !== 'ASSISTANT_HOST');
+                return roles.length ? [{ ...invite, roles }] : [];
+            }), { shouldDirty: true, shouldValidate: true });
         }
-        if (updates.useDedicatedOfficials === false) {
+        if (resolvedUpdates.useDedicatedOfficials === false) {
             setValue('officialIds', [], { shouldDirty: true, shouldValidate: true });
             setValue('eventOfficials', [], { shouldDirty: true, shouldValidate: true });
             setValue('officialSchedulingMode', 'OFF', { shouldDirty: true, shouldValidate: true });
+            setValue('doTeamsOfficiate', false, { shouldDirty: true, shouldValidate: true });
+            setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+            setValue('officialPositions', [], { shouldDirty: true, shouldValidate: true });
+            setValue('pendingStaffInvites', (eventData.pendingStaffInvites ?? []).flatMap((invite) => {
+                const roles = invite.roles.filter((role) => role !== 'OFFICIAL');
+                return roles.length ? [{ ...invite, roles }] : [];
+            }), { shouldDirty: true, shouldValidate: true });
         }
-        if (updates.useCustomOfficialPositions === false) {
+        if (resolvedUpdates.useCustomOfficialPositions === false) {
             setValue('officialPositions', [], { shouldDirty: true, shouldValidate: true });
         }
-        setSimpleSetupChoices((current) => ({ ...current, ...updates }));
-    }, [eventData, registrationQuestionDrafts.length, setRegistrationQuestionDrafts, setValue]);
+        if (resolvedUpdates.useTeamCheckInAndRosterOperations === true && eventData.teamSignup && eventData.teamCheckInMode === 'OFF') {
+            setValue('teamCheckInMode', 'EVENT', { shouldDirty: true, shouldValidate: true });
+        }
+        if (resolvedUpdates.useTeamCheckInAndRosterOperations === false) {
+            setValue('teamCheckInMode', 'OFF', { shouldDirty: true, shouldValidate: true });
+            setValue('teamCheckInOpenMinutesBefore', 60, { shouldDirty: true, shouldValidate: true });
+            setValue('allowMatchRosterEdits', false, { shouldDirty: true, shouldValidate: true });
+            setValue('allowTemporaryMatchPlayers', false, { shouldDirty: true, shouldValidate: true });
+        }
+        setSimpleSetupChoices((current) => ({ ...current, ...resolvedUpdates }));
+    }, [
+        eventData,
+        isImmutableField,
+        registrationQuestionDrafts.length,
+        setRegistrationQuestionDrafts,
+        setValue,
+        simpleSetupChoices.scheduleStyle,
+    ]);
+
+    useEffect(() => {
+        if (
+            setupMode === 'SIMPLE'
+            && simpleSetupChoices.scheduleStyle === 'FIXED_WINDOW'
+            && eventData.noFixedEndDateTime
+            && !isImmutableField('noFixedEndDateTime')
+        ) {
+            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+        }
+    }, [
+        eventData.noFixedEndDateTime,
+        isImmutableField,
+        setValue,
+        setupMode,
+        simpleSetupChoices.scheduleStyle,
+    ]);
 
     const validateSimpleSetupPage = useCallback(async (pageId: EventSetupPageId): Promise<boolean> => {
         if (pageId === 'format') return trigger(['eventType', 'isAffiliateEvent']);
@@ -874,31 +1088,85 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (pageId === 'divisions') {
             return trigger(eventData.eventType === 'TRYOUT'
                 ? ['divisions', 'divisionDetails']
-                : ['divisionDetails', 'playoffDivisionDetails', 'maxParticipants']);
+                : [
+                    'divisionDetails',
+                    'playoffDivisionDetails',
+                    'maxParticipants',
+                    'leagueData',
+                    'tournamentData',
+                    'playoffData',
+                ]);
         }
         if (pageId === 'schedule-location') {
             return trigger(['start', 'end', 'location', 'coordinates', 'selectedFieldIds', 'leagueSlots']);
         }
-        if (pageId === 'competition-rules') {
-            return trigger(['leagueData', 'tournamentData', 'playoffData', 'matchRulesOverride', 'leagueScoringConfig']);
-        }
         if (pageId === 'pricing-registration') {
-            return trigger(['price', 'allowPaymentPlans', 'registrationPaymentMode', 'registrationCutoffHours', 'cancellationRefundHours']);
+            return trigger([
+                'price',
+                'allowPaymentPlans',
+                'installmentCount',
+                'installmentAmounts',
+                'installmentDueDates',
+                'installmentDueRelativeDays',
+                'divisionDetails',
+                'registrationPaymentMode',
+                ...(eventData.registrationPaymentMode === 'MANUAL'
+                    ? ['manualPaymentLinks', 'manualPaymentInstructions'] as const
+                    : []),
+                'registrationCutoffHours',
+                'cancellationRefundHours',
+            ]);
         }
         if (pageId === 'documents-questions') return trigger(['requiredTemplateIds']);
         if (pageId === 'staff-operations') {
-            return trigger(['hostId', 'assistantHostIds', 'officialIds', 'officialPositions', 'officialSchedulingMode']);
+            return trigger([
+                ...(simpleSetupChoices.useStaffAssignments
+                    ? ['hostId', 'assistantHostIds'] as const
+                    : []),
+                ...(simpleSetupChoices.useDedicatedOfficials
+                    ? ['officialIds', 'eventOfficials', 'officialSchedulingMode', 'doTeamsOfficiate', 'teamOfficialsMaySwap'] as const
+                    : []),
+                ...(simpleSetupChoices.useCustomOfficialPositions
+                    ? ['officialPositions'] as const
+                    : []),
+                ...(simpleSetupChoices.useTeamCheckInAndRosterOperations
+                    ? [
+                        'teamCheckInMode',
+                        'teamCheckInOpenMinutesBefore',
+                        'allowMatchRosterEdits',
+                        'allowTemporaryMatchPlayers',
+                    ] as const
+                    : []),
+            ]);
         }
         if (pageId === 'review-publish') {
             const valid = await trigger();
             if (!valid) {
-                const firstField = Object.keys(errors)[0];
-                if (firstField) setCurrentSimplePageId(resolveValidationPage(firstField));
+                const schemaResult = eventValidationSchema.safeParse(getValues());
+                reportValidationResult(dedupeValidationErrors([
+                    ...(schemaResult.success ? [] : flattenZodIssues(schemaResult.error.issues)),
+                    ...flattenFormErrors(errors),
+                ]), 'FORM');
+            } else {
+                reportValidationResult([], 'CLEAR');
             }
             return valid;
         }
         return true;
-    }, [errors, eventData.eventType, isAffiliateEvent, trigger]);
+    }, [
+        errors,
+        eventData.eventType,
+        eventData.registrationPaymentMode,
+        eventValidationSchema,
+        getValues,
+        isAffiliateEvent,
+        reportValidationResult,
+        simpleSetupChoices.useCustomOfficialPositions,
+        simpleSetupChoices.useDedicatedOfficials,
+        simpleSetupChoices.useStaffAssignments,
+        simpleSetupChoices.useTeamCheckInAndRosterOperations,
+        trigger,
+    ]);
 
     const selectSimpleSetupPage = useCallback((pageId: EventSetupPageId) => {
         const page = simpleSetupPages.find((candidate) => candidate.id === pageId);
@@ -974,11 +1242,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             organizationId: templateOrganizationId,
             options: templateOptions,
         },
+        validationErrorIndex,
     };
     const formSections = (
         <EventFormSections {...formSectionsModel} />
     );
-    const simplePageContent = SIMPLE_PLANNING_PAGE_IDS.has(currentSimplePageId) ? (
+    const simpleReviewModel = buildSimpleSetupReviewModel({
+        eventData,
+        choices: simpleSetupChoices,
+        eventTypeOptions,
+        selectedImageUrl,
+        fields: resourceController.fields,
+        resourceOptions: resourceController.leagueFieldOptions,
+        templateOptions,
+        registrationQuestions: registrationQuestionDrafts,
+        assignedHostCards: staffController.assignedHostCards,
+        assignedOfficialCards: staffController.assignedOfficialCards,
+        validationErrorIndex,
+    });
+    const simplePageContent = currentSimplePageId === 'review-publish' ? (
+        <SimpleSetupReviewPage model={simpleReviewModel} onEditPage={selectSimpleSetupPage} />
+    ) : SIMPLE_PLANNING_PAGE_IDS.has(currentSimplePageId) ? (
         <SimpleSetupPlanningPage
             pageId={currentSimplePageId}
             control={control}
@@ -987,8 +1271,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             capabilities={simpleSetupCapabilities}
             choices={simpleSetupChoices}
             includePlayoffs={Boolean(leagueData.includePlayoffs)}
-            fieldCount={fieldCount}
-            setFieldCount={resourceController.setFieldCount}
+            hasStripeAccount={hasStripeAccount}
+            connectingStripe={paymentController.connectingStripe}
             onChoicesChange={updateSimpleSetupChoices}
             onEventTypeChange={handleSimpleEventTypeChange}
             onExternalRegistrationChange={handleSimpleExternalRegistrationChange}
@@ -1011,6 +1295,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     includePoolPlay: setupResolverInput.includePoolPlay,
                     splitLeaguePlayoffDivisions: checked,
                 }, () => applyValue(checked));
+            }}
+            onConnectStripe={paymentController.connectStripe}
+            onRegistrationPaymentModeChange={(mode) => {
+                paymentController.setManualPaymentsEnabled(mode === 'MANUAL');
             }}
             isImmutableField={isImmutableField}
         />
@@ -1036,14 +1324,27 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     <SimpleSetupProgressRail pages={simpleSetupPages} onSelectPage={selectSimpleSetupPage} />
                 ) : null}
             </div>
-            <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                {setupMode === 'SIMPLE' && validationErrorIndex.ordered.length > 0 ? (
+                    <div
+                        role="status"
+                        aria-live="polite"
+                        className="border-b border-red-200 bg-red-50 px-6 py-3 text-sm text-red-800"
+                    >
+                        {validationErrorIndex.ordered.length} {validationErrorIndex.ordered.length === 1
+                            ? 'issue needs'
+                            : 'issues need'} attention. {validationErrorIndex.ordered[0]?.message}
+                    </div>
+                ) : null}
                 {setupMode === 'SIMPLE' ? (
                     <SimpleSetupPageFrame
                         page={currentSimplePage}
                         isFirstUsedPage={!previousUsedSimplePage}
                         isLastUsedPage={!nextUsedSimplePage}
+                        canSubmit={canSubmitEvent}
                         onBack={handleSimpleSetupBack}
                         onNext={() => { void handleSimpleSetupNext(); }}
+                        onSubmit={onSubmitRequest}
                         onOpenControllerPage={selectSimpleSetupPage}
                     >
                         {simplePageContent}

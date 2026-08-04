@@ -3,6 +3,7 @@ import { Text } from '@mantine/core';
 export type SectionNavigationItem = {
     id: string;
     label: string;
+    errorCount?: number;
 };
 
 type EventFormSectionNavigationItem = SectionNavigationItem & {
@@ -17,6 +18,7 @@ type BuildEventFormSectionNavigationItemsOptions = {
     divisionSettingsSectionLabel?: string;
     showScoringConfigSection: boolean;
     showScheduleConfig: boolean;
+    sectionErrorCounts?: Record<string, number>;
 };
 
 export const buildEventFormSectionNavigationItems = ({
@@ -27,6 +29,7 @@ export const buildEventFormSectionNavigationItems = ({
     divisionSettingsSectionLabel = 'Divisions',
     showScoringConfigSection,
     showScheduleConfig,
+    sectionErrorCounts = {},
 }: BuildEventFormSectionNavigationItemsOptions): EventFormSectionNavigationItem[] => [
     { id: 'section-basic-information', label: 'Basic Information', visible: true },
     { id: 'section-event-details', label: 'Event Details', visible: true },
@@ -36,13 +39,13 @@ export const buildEventFormSectionNavigationItems = ({
     { id: 'section-division-settings', label: divisionSettingsSectionLabel, visible: true },
     { id: 'section-league-scoring-config', label: scoringConfigSectionLabel, visible: showScoringConfigSection },
     { id: 'section-schedule-config', label: 'Schedule', visible: showScheduleConfig },
-];
+].map((item) => ({ ...item, errorCount: sectionErrorCounts[item.id] ?? 0 }));
 
 export const getVisibleSectionNavigationItems = (
     items: EventFormSectionNavigationItem[],
 ): SectionNavigationItem[] => items
     .filter((item) => item.visible)
-    .map(({ id, label }) => ({ id, label }));
+    .map(({ id, label, errorCount }) => ({ id, label, errorCount }));
 
 type SectionNavigationProps = {
     items: SectionNavigationItem[];
@@ -81,7 +84,19 @@ export const SectionNavigation = ({
                                             : 'text-gray-700 hover:bg-gray-100'
                                     }`}
                                 >
-                                    {section.label}
+                                    <span className="flex items-center justify-between gap-2">
+                                        <span>{section.label}</span>
+                                        {section.errorCount ? (
+                                            <span
+                                                aria-label={`${section.label}: ${section.errorCount} ${section.errorCount === 1 ? 'error' : 'errors'}`}
+                                                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${isActive
+                                                    ? 'bg-red-100 text-red-800'
+                                                    : 'bg-red-50 text-red-700'}`}
+                                            >
+                                                {section.errorCount}
+                                            </span>
+                                        ) : null}
+                                    </span>
                                 </button>
                             );
                         })}
@@ -107,7 +122,19 @@ export const SectionNavigation = ({
                                     : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
                             }`}
                         >
-                            {section.label}
+                            <span className="flex items-center gap-1.5">
+                                <span>{section.label}</span>
+                                {section.errorCount ? (
+                                    <span
+                                        aria-label={`${section.label}: ${section.errorCount} ${section.errorCount === 1 ? 'error' : 'errors'}`}
+                                        className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${isActive
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-red-50 text-red-700'}`}
+                                    >
+                                        {section.errorCount}
+                                    </span>
+                                ) : null}
+                            </span>
                         </button>
                     );
                 })}

@@ -35,6 +35,7 @@ import {
 } from "./apiMappers";
 import { resolveOrganizationVerificationStatus } from "@/lib/organizationVerification";
 import { normalizeBracketSeed } from "@/lib/bracketSeeds";
+import { normalizeDivisionPhaseSettingsMap } from "@/lib/divisionPhaseSettings";
 import { createSport } from "@/types/defaults";
 import {
   normalizeEventTaxHandling,
@@ -719,6 +720,7 @@ class EventService {
         "$updatedAt",
         "organizationId",
         "parentEvent",
+        "affiliateActionUrl",
         "sourceUrl",
         "organizerName",
         "scheduleText",
@@ -746,8 +748,8 @@ class EventService {
         delete payload.timeSlots;
       }
       if (hasLeagueScoringConfigOverride) {
-        payload.leagueScoringConfig = normalizePayloadIdentifiers(
-          options.leagueScoringConfig,
+        payload.leagueScoringConfig = stripDollarPrefixedPayloadFields(
+          normalizePayloadIdentifiers(options.leagueScoringConfig),
         );
       }
       if (options.omitStaffAssignments) {
@@ -1542,6 +1544,7 @@ class EventService {
                     String(divisionId ?? "").trim(),
                   )
                 : undefined,
+              phaseSettings: normalizeDivisionPhaseSettingsMap(entry?.phaseSettings),
               playoffConfig:
                 entry?.playoffConfig && typeof entry.playoffConfig === "object"
                   ? entry.playoffConfig
@@ -1681,6 +1684,7 @@ class EventService {
                     .map((teamId: string) => teamId.trim())
                     .filter((teamId: string) => teamId.length > 0)
                 : [],
+              phaseSettings: normalizeDivisionPhaseSettingsMap(entry?.phaseSettings),
               playoffConfig:
                 entry?.playoffConfig && typeof entry.playoffConfig === "object"
                   ? entry.playoffConfig

@@ -34,6 +34,14 @@ export interface UserAccount {
 export type DivisionGender = 'M' | 'F' | 'C';
 export type DivisionRatingType = 'AGE' | 'SKILL';
 export type DivisionKind = 'LEAGUE' | 'PLAYOFF';
+export type DivisionCompetitionPhase = 'LEAGUE' | 'POOL' | 'BRACKET' | 'PLAYOFF';
+export type DivisionPhaseSettings = {
+  matchRulesOverride?: MatchRulesConfig | null;
+  autoCreatePointMatchIncidents?: boolean;
+  segmentLengthMinutes?: number | null;
+  segmentBreakMinutes?: number | null;
+};
+export type DivisionPhaseSettingsMap = Partial<Record<DivisionCompetitionPhase, DivisionPhaseSettings>>;
 export type DivisionScope = 'ORGANIZATION' | 'EVENT';
 export type DivisionStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 export type OrganizationFeature = 'CLUB_TEAMS' | 'FACILITIES_RENTALS' | 'EVENT_MANAGEMENT';
@@ -61,6 +69,7 @@ export interface Division {
   playoffTeamCount?: number;
   poolCount?: number;
   poolTeamCount?: number;
+  phaseSettings?: DivisionPhaseSettingsMap;
   playoffPlacementDivisionIds?: string[];
   standingsOverrides?: Record<string, number>;
   standingsConfirmedAt?: string;
@@ -183,6 +192,7 @@ export interface MatchTimekeepingConfig {
   timerMode?: MatchTimerMode;
   segmentDurationMinutes?: number | null;
   segmentDurationMinutesBySequence?: number[];
+  segmentBreakDurationMinutes?: number | null;
   canUseAddedTime?: boolean;
   addedTimeEnabled?: boolean;
   stopAtRegulationEnd?: boolean;
@@ -192,6 +202,7 @@ export interface ResolvedMatchTimekeepingConfig {
   timerMode: MatchTimerMode;
   segmentDurationMinutes: number | null;
   segmentDurationMinutesBySequence: number[];
+  segmentBreakDurationMinutes: number;
   canUseAddedTime: boolean;
   addedTimeEnabled: boolean;
   stopAtRegulationEnd: boolean;
@@ -1887,6 +1898,49 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.poolTeamCount))
                 ? Number(division.poolTeamCount)
                 : undefined,
+          phaseSettings:
+            division.phaseSettings && typeof division.phaseSettings === 'object' && !Array.isArray(division.phaseSettings)
+              ? division.phaseSettings
+              : undefined,
+          gamesPerOpponent:
+            typeof division.gamesPerOpponent === 'number'
+              ? division.gamesPerOpponent
+              : Number.isFinite(Number(division.gamesPerOpponent))
+                ? Number(division.gamesPerOpponent)
+                : undefined,
+          restTimeMinutes:
+            typeof division.restTimeMinutes === 'number'
+              ? division.restTimeMinutes
+              : Number.isFinite(Number(division.restTimeMinutes))
+                ? Number(division.restTimeMinutes)
+                : undefined,
+          usesSets:
+            typeof division.usesSets === 'boolean'
+              ? division.usesSets
+              : undefined,
+          matchDurationMinutes:
+            typeof division.matchDurationMinutes === 'number'
+              ? division.matchDurationMinutes
+              : Number.isFinite(Number(division.matchDurationMinutes))
+                ? Number(division.matchDurationMinutes)
+                : undefined,
+          setDurationMinutes:
+            typeof division.setDurationMinutes === 'number'
+              ? division.setDurationMinutes
+              : Number.isFinite(Number(division.setDurationMinutes))
+                ? Number(division.setDurationMinutes)
+                : undefined,
+          setsPerMatch:
+            typeof division.setsPerMatch === 'number'
+              ? division.setsPerMatch
+              : Number.isFinite(Number(division.setsPerMatch))
+                ? Number(division.setsPerMatch)
+                : undefined,
+          pointsToVictory: Array.isArray(division.pointsToVictory)
+            ? division.pointsToVictory
+                .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+                .filter((entry) => Number.isFinite(entry))
+            : undefined,
           allowPaymentPlans:
             typeof division.allowPaymentPlans === 'boolean'
               ? division.allowPaymentPlans

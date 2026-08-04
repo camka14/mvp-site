@@ -67,6 +67,34 @@ describe('MatchRulesSection', () => {
     expect(handleChange).toHaveBeenLastCalledWith(null);
   });
 
+  it('edits timed segment count without showing segment length in match rules', () => {
+    const handleChange = jest.fn();
+
+    renderWithMantine(
+      <MatchRulesSection
+        sport={{
+          ...soccerSport,
+          matchRulesTemplate: {
+            ...soccerSport.matchRulesTemplate,
+            timekeeping: { timerMode: 'COUNT_UP', segmentDurationMinutes: 45 },
+          },
+        }}
+        value={{ segmentCount: 4, segmentLabel: 'Quarter' }}
+        onChange={handleChange}
+        autoCreatePointMatchIncidents={false}
+        onAutoCreatePointMatchIncidentsChange={jest.fn()}
+        showSegmentCount
+      />,
+    );
+
+    expect(screen.getByLabelText(/quarter count/i)).toHaveValue('4');
+    expect(screen.queryByLabelText(/quarter length/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/quarter count/i), { target: { value: '3' } });
+
+    expect(handleChange).toHaveBeenLastCalledWith(expect.objectContaining({ segmentCount: 3 }));
+  });
+
   it('adds custom incident types from typed tags', async () => {
     const user = userEvent.setup();
     const handleChange = jest.fn();

@@ -7,6 +7,7 @@ import type { Event, Field, TimeSlot } from '@/types';
 
 import type { SlotDivisionLookup } from '../../divisionForm';
 import type { EventFormValues } from '../../formTypes';
+import type { EventSetupScheduleStyle } from '../../simpleSetup/types';
 import { useEventSlotController } from '../useEventSlotController';
 
 jest.mock('@/lib/eventService', () => ({
@@ -103,6 +104,8 @@ type HarnessProps = {
     hasImmutableTimeSlots?: boolean;
     immutableTimeSlots?: TimeSlot[];
     rentalLockedSlotsForDraft?: TimeSlot[];
+    simpleScheduleStyle?: EventSetupScheduleStyle;
+    fixedWindowFieldIds?: string[];
 };
 
 const useSlotHarness = ({
@@ -111,6 +114,8 @@ const useSlotHarness = ({
     hasImmutableTimeSlots = false,
     immutableTimeSlots = EMPTY_TIME_SLOTS,
     rentalLockedSlotsForDraft = EMPTY_TIME_SLOTS,
+    simpleScheduleStyle,
+    fixedWindowFieldIds,
 }: HarnessProps) => {
     const form = useForm<EventFormValues>({ defaultValues: eventData });
     // eslint-disable-next-line react-hooks/incompatible-library -- exercise the production React Hook Form subscription boundary.
@@ -126,6 +131,7 @@ const useSlotHarness = ({
         eventTimeZone: formValues.timeZone,
         eventType: formValues.eventType,
         fields: formValues.fields,
+        fixedWindowFieldIds,
         getValues: form.getValues,
         hasExternalRentalField: false,
         hasImmutableTimeSlots,
@@ -137,6 +143,7 @@ const useSlotHarness = ({
         parentEvent: formValues.parentEvent,
         rentalLockedSlotsForDraft,
         resolvedOrganizationId: 'org_1',
+        simpleScheduleStyle,
         setLeagueData: jest.fn(),
         setPlayoffData: jest.fn(),
         setValue: form.setValue as unknown as (
@@ -207,6 +214,58 @@ describe('useEventSlotController', () => {
         await waitFor(() => expect(result.current.formValues.leagueSlots).toHaveLength(1));
         expect(result.current.formValues.leagueSlots[0].key).toBe('slot_new_1');
         expect(result.current.isDirty).toBe(true);
+    });
+
+    it('keeps a Simple Setup fixed window synchronized with event timing and ownership', async () => {
+        const eventData = buildEventData({
+            leagueSlots: [buildSlot(), buildSlot({ key: 'slot-2' })],
+        });
+        const { result } = renderHook(() => useSlotHarness({
+            eventData,
+            simpleScheduleStyle: 'FIXED_WINDOW',
+            fixedWindowFieldIds: [FIELD.$id],
+        }));
+
+        await waitFor(() => expect(result.current.formValues.leagueSlots).toHaveLength(1));
+        expect(result.current.formValues.leagueSlots[0]).toEqual(expect.objectContaining({
+            repeating: false,
+            startDate: '2026-07-20T09:00:00',
+            endDate: '2026-08-31T21:00:00',
+            scheduledFieldIds: [FIELD.$id],
+            divisions: ['open'],
+        }));
+        expect(result.current.isDirty).toBe(false);
+
+        act(() => result.current.setValue('start', '2026-07-21T10:30:00'));
+        await waitFor(() => expect(result.current.formValues.leagueSlots[0]).toEqual(expect.objectContaining({
+            startDate: '2026-07-21T10:30:00',
+            startTimeMinutes: 10 * 60 + 30,
+        })));
+
+        act(() => result.current.setValue('timeZone', 'America/New_York'));
+        await waitFor(() => expect(result.current.formValues.leagueSlots[0].timeZone).toBe('America/New_York'));
+    });
+
+    it('does not replace immutable rental slots for a Simple Setup schedule style', async () => {
+        const immutableSlot = {
+            ...buildSlot({ key: 'rental-slot' }),
+            $id: 'rental-slot',
+            sourceType: 'RENTAL_BOOKING',
+            rentalLocked: true,
+        } as unknown as TimeSlot;
+        const eventData = buildEventData({ leagueSlots: [buildSlot({ key: 'rental-slot' })] });
+        const { result } = renderHook(() => useSlotHarness({
+            eventData,
+            simpleScheduleStyle: 'FIXED_WINDOW',
+            hasImmutableTimeSlots: true,
+            immutableTimeSlots: [immutableSlot],
+        }));
+
+        await waitFor(() => expect(result.current.formValues.leagueSlots[0]).toEqual(expect.objectContaining({
+            key: 'rental-slot',
+            repeating: true,
+            rentalLocked: true,
+        })));
     });
 
     it('applies a successful external-conflict response and auto-resolves the slot', async () => {

@@ -56,6 +56,10 @@ type UseEventFormSubmissionControllerParams = EventDraftContext & {
     setEventData: EventFormStateSetter<EventFormValues>;
     trigger: UseFormTrigger<EventFormValues>;
     validatePendingStaffAssignments: () => Promise<void>;
+    onValidationResult?: (
+        errors: FlattenedFormError[],
+        source: 'FORM' | 'EXTERNAL' | 'CLEAR',
+    ) => void;
 };
 
 export const useEventFormSubmissionController = ({
@@ -97,6 +101,7 @@ export const useEventFormSubmissionController = ({
     sportsById,
     trigger,
     validatePendingStaffAssignments,
+    onValidationResult,
 }: UseEventFormSubmissionControllerParams) => {
     const lastValidationErrorsRef = useRef<FlattenedFormError[]>([]);
 
@@ -190,6 +195,7 @@ export const useEventFormSubmissionController = ({
                 ...flattenFormErrors(errors),
             ]);
             lastValidationErrorsRef.current = flattenedErrors;
+            onValidationResult?.(flattenedErrors, 'FORM');
             console.warn('Event form validation failed.', {
                 errorCount: flattenedErrors.length,
                 errors: flattenedErrors,
@@ -202,6 +208,7 @@ export const useEventFormSubmissionController = ({
                 path: 'officialSchedulingMode',
                 message: officialStaffingCoverageError,
             }];
+            onValidationResult?.(lastValidationErrorsRef.current, 'EXTERNAL');
             console.warn('Event form submission blocked by official staffing requirements.', {
                 requiredOfficialSlotsPerMatch,
                 assignedActiveOfficialsForStaffing,
@@ -212,10 +219,12 @@ export const useEventFormSubmissionController = ({
 
         if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
             lastValidationErrorsRef.current = [];
+            onValidationResult?.([], 'CLEAR');
             return true;
         }
 
         lastValidationErrorsRef.current = [];
+        onValidationResult?.([], 'CLEAR');
         return true;
     }, [
         assignedActiveOfficialsForStaffing,
@@ -227,6 +236,7 @@ export const useEventFormSubmissionController = ({
         getValues,
         isAffiliateEvent,
         officialStaffingCoverageError,
+        onValidationResult,
         requiredOfficialSlotsPerMatch,
         trigger,
     ]);

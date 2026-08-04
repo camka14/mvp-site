@@ -96,6 +96,7 @@ import {
   buildSlotConflictPayload,
 } from '../eventForm/slotConflictHelpers';
 import { buildEventDraft } from '../eventForm/buildEventDraft';
+import { mapEventToFormState } from '../eventForm/eventStateMapping';
 import { buildEventFormSchema } from '../eventForm/schema';
 
 const makeField = (overrides: Partial<Field> & { $id: string }): Field => ({
@@ -326,6 +327,124 @@ describe('event form payment helpers', () => {
       singleDivision: false,
       divisionDetails: [{ price: 0 }, { price: '1500' }],
     })).toBe(true);
+  });
+
+  it('validates manual payment destinations with provider-specific rules', () => {
+    const schema = buildEventFormSchema({
+      allowMissingEventImage: true,
+      allowMissingEventDivisions: true,
+    });
+    const validSource = makeAffiliateEventFormValues({
+      isAffiliateEvent: false,
+      affiliateUrl: '',
+      registrationPaymentMode: 'MANUAL',
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: '$camka14',
+      }],
+      allowPaymentPlans: false,
+      installmentCount: 0,
+      installmentAmounts: [],
+    });
+
+    const validResult = schema.safeParse(validSource);
+    expect(validResult.success).toBe(true);
+
+    const invalidResult = schema.safeParse({
+      ...validSource,
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: '$',
+      }],
+    });
+    expect(invalidResult.success).toBe(false);
+    expect(invalidResult.error?.issues).toContainEqual(expect.objectContaining({
+      path: ['manualPaymentLinks', 0, 'url'],
+      message: 'Enter a valid Cash App username or HTTPS link.',
+    }));
+  });
+
+  it('canonicalizes manual destinations on save and restores usernames for editing', () => {
+    const source = makeAffiliateEventFormValues({
+      isAffiliateEvent: false,
+      affiliateUrl: '',
+      registrationPaymentMode: 'MANUAL',
+      manualPaymentLinks: [{
+        id: 'cash_app',
+        provider: 'CASH_APP',
+        label: 'Cash App',
+        url: '$camka14',
+      }],
+      price: 5_000,
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [2_500, 2_500],
+      cancellationRefundHours: 24,
+      divisionDetails: [makeDivisionDetail({
+        id: 'open',
+        price: 4_000,
+        allowPaymentPlans: true,
+        installmentCount: 2,
+        installmentAmounts: [2_000, 2_000],
+        installmentDueDates: ['2026-06-01T10:00', '2026-06-15T10:00'],
+      })],
+      divisions: ['open'],
+    });
+    const draft = buildEventDraft({
+      activeEditingEvent: null,
+      currentUser: { $id: 'user_1' } as any,
+      fieldCount: 0,
+      fields: [],
+      fieldsReferencedInSlots: [],
+      hasImmutableTimeSlots: false,
+      hasRestrictedImmutableFields: false,
+      hasStripeAccount: false,
+      immutableFields: [],
+      immutableTimeSlots: [],
+      isEditMode: false,
+      isOrganizationHostedEvent: true,
+      isOrganizationManagedEvent: true,
+      joinAsParticipant: false,
+      organizationHostedEventId: 'org_1',
+      organizationOfficialsById: new Map(),
+      previousEventFieldLocation: '',
+      rentalLockedSlotsForDraft: [],
+      resolvedOrganization: null,
+      selectedRentedFieldIds: [],
+      shouldManageLocalFields: false,
+      shouldProvisionFields: false,
+      source: source as any,
+      sportsById: new Map(),
+    });
+
+    expect(draft.price).toBe(5_000);
+    expect(draft.registrationPaymentMode).toBe('MANUAL');
+    expect(draft.allowPaymentPlans).toBe(false);
+    expect(draft.cancellationRefundHours).toBeNull();
+    expect(draft.divisionDetails?.[0]).toEqual(expect.objectContaining({
+      id: 'open',
+      price: 4_000,
+      allowPaymentPlans: false,
+      installmentCount: 0,
+      installmentAmounts: [],
+    }));
+    expect(draft.manualPaymentLinks).toEqual([expect.objectContaining({
+      provider: 'CASH_APP',
+      url: 'https://cash.app/$camka14',
+    })]);
+
+    const editState = mapEventToFormState({
+      ...draft,
+      $id: 'event_1',
+      hostId: 'user_1',
+      eventType: 'EVENT',
+      state: 'UNPUBLISHED',
+    } as any);
+    expect(editState.manualPaymentLinks[0]?.url).toBe('$camka14');
   });
 });
 
@@ -999,6 +1118,64 @@ describe('event form slot helpers', () => {
       endDate: '2026-07-11T12:00:00',
       startTimeMinutes: 9 * 60,
       endTimeMinutes: 12 * 60,
+    }));
+  });
+
+  it('preserves tournament pool set config in playoff division payloads', () => {
+    const source = makeAffiliateEventFormValues({
+      isAffiliateEvent: false,
+      eventType: 'TOURNAMENT',
+      sportId: 'volleyball',
+      sportConfig: { $id: 'volleyball', name: 'Volleyball', usePointsPerSetWin: true },
+      singleDivision: false,
+      divisions: ['open'],
+      leagueData: { gamesPerOpponent: 1, includePlayoffs: true },
+      divisionDetails: [makeDivisionDetail({
+        id: 'open',
+        maxParticipants: 4,
+        playoffTeamCount: 2,
+        poolCount: 2,
+        gamesPerOpponent: 1,
+        restTimeMinutes: 0,
+        usesSets: true,
+        setDurationMinutes: 20,
+        setsPerMatch: 1,
+        pointsToVictory: [21],
+      })],
+    });
+
+    const draft = buildEventDraft({
+      activeEditingEvent: null,
+      currentUser: { $id: 'user_1' } as any,
+      fieldCount: 0,
+      fields: [],
+      fieldsReferencedInSlots: [],
+      hasImmutableTimeSlots: false,
+      hasRestrictedImmutableFields: false,
+      hasStripeAccount: true,
+      immutableFields: [],
+      immutableTimeSlots: [],
+      isEditMode: false,
+      isOrganizationHostedEvent: true,
+      isOrganizationManagedEvent: true,
+      joinAsParticipant: false,
+      organizationHostedEventId: 'org_1',
+      organizationOfficialsById: new Map(),
+      previousEventFieldLocation: '',
+      rentalLockedSlotsForDraft: [],
+      resolvedOrganization: null,
+      selectedRentedFieldIds: [],
+      shouldManageLocalFields: false,
+      shouldProvisionFields: false,
+      source: source as any,
+      sportsById: new Map(),
+    });
+
+    expect(draft.playoffDivisionDetails?.[0]).toEqual(expect.objectContaining({
+      usesSets: true,
+      setDurationMinutes: 20,
+      setsPerMatch: 1,
+      pointsToVictory: [21],
     }));
   });
 

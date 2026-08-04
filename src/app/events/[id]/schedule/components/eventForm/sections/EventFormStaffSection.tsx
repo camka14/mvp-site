@@ -27,6 +27,8 @@ type EventFormStaffSectionProps = {
     setValue: SetFormValue;
     staffController: ReturnType<typeof useStaffOfficialController>;
     visible: boolean;
+    errorCount?: number;
+    firstErrorMessage?: string;
 };
 
 export const EventFormStaffSection = ({
@@ -42,6 +44,8 @@ export const EventFormStaffSection = ({
     setValue,
     staffController,
     visible,
+    errorCount,
+    firstErrorMessage,
 }: EventFormStaffSectionProps) => {
     if (!visible) {
         return null;
@@ -93,7 +97,12 @@ export const EventFormStaffSection = ({
     } = staffController;
 
     return (
-        <StaffSection collapsed={collapsed} onToggle={onToggle}>
+        <StaffSection
+            collapsed={collapsed}
+            onToggle={onToggle}
+            errorCount={errorCount}
+            firstErrorMessage={firstErrorMessage}
+        >
             <StaffManagementPanel
                 control={control}
                 eventData={eventData}
