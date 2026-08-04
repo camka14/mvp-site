@@ -161,12 +161,12 @@ export const affiliateMappingProducerRepairEligibility = (input: {
       structuredReasonCodes.length ? structuredReasonCodes : ['OTHER_PRODUCER_DEFECT'],
     );
   }
-  if (hasAffiliateProducerHandoffBlocker(input.approvalDecision)) {
+  const currentMappingFailure = stringValues(input.mappingErrorMessage).join(' ');
+  if (!currentMappingFailure && hasAffiliateProducerHandoffBlocker(input.approvalDecision)) {
     return ignored('reviewer-handoff-retry-required');
   }
 
   const embeddedReview = recordValue(envelope.approvalReview);
-  const currentMappingFailure = stringValues(input.mappingErrorMessage).join(' ');
   const priorReviewEvidence = [
     ...stringValues(decision.rationale),
     ...stringValues(decision.blockingIssues),

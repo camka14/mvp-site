@@ -70,7 +70,7 @@ describe('affiliate mapping producer repair eligibility', () => {
       ...base,
       mappingErrorMessage: 'Skipped already-finished intake: the stored evidence is already represented by the existing source package; do not create a second package.',
       approvalDecision: {
-        blockingIssues: ['The prior setup script refused --live.'],
+        blockingIssues: ['The producer commit cannot be resolved in the reviewer checkout.'],
       },
     })).toEqual(expect.objectContaining({
       eligible: true,
