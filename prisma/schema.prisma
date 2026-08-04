@@ -1967,11 +1967,34 @@ model AffiliateSourceDiscoveryCampaigns {
   maxQueriesPerRun      Int       @default(10)
   maxResultsPerQuery    Int       @default(10)
   queryCursor           Int       @default(0)
+  coverageFingerprint   String?   @unique
   createdByUserId       String?
   metadata              Json?
 
   @@index([status, nextRunAt])
   @@index([createdByUserId])
+}
+
+model AffiliateCoverageAgentJobs {
+  id             String    @id
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  subjectType    String
+  subjectKey     String
+  status         String    @default("QUEUED")
+  claimedAt      DateTime?
+  leaseExpiresAt DateTime?
+  workerId       String?
+  attemptCount   Int       @default(0)
+  context        Json?
+  result         Json?
+  errorMessage   String?
+  finishedAt     DateTime?
+
+  @@unique([subjectType, subjectKey])
+  @@index([status, createdAt])
+  @@index([subjectType, status])
+  @@index([leaseExpiresAt])
 }
 
 model AffiliateSourceDiscoveryRuns {

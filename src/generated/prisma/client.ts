@@ -340,6 +340,11 @@ export type AffiliateSourceIntakeArtifacts = Prisma.AffiliateSourceIntakeArtifac
  */
 export type AffiliateSourceDiscoveryCampaigns = Prisma.AffiliateSourceDiscoveryCampaignsModel
 /**
+ * Model AffiliateCoverageAgentJobs
+ *
+ */
+export type AffiliateCoverageAgentJobs = Prisma.AffiliateCoverageAgentJobsModel
+/**
  * Model AffiliateSourceDiscoveryRuns
  *
  */

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Affiliate Discovery Campaigns"
+  short_description: "Assess market coverage and recover failed captures"
+  default_prompt: "Use $plan-affiliate-discovery-campaigns to drain BracketIQ coverage gaps and failed intake captures."

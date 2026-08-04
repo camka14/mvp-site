@@ -111,6 +111,7 @@ export const ModelName = {
   AffiliateSourceIntakeRuns: 'AffiliateSourceIntakeRuns',
   AffiliateSourceIntakeArtifacts: 'AffiliateSourceIntakeArtifacts',
   AffiliateSourceDiscoveryCampaigns: 'AffiliateSourceDiscoveryCampaigns',
+  AffiliateCoverageAgentJobs: 'AffiliateCoverageAgentJobs',
   AffiliateSourceDiscoveryRuns: 'AffiliateSourceDiscoveryRuns',
   AffiliateSourceDiscoveryResults: 'AffiliateSourceDiscoveryResults',
   AffiliateSourceDomainPolicies: 'AffiliateSourceDomainPolicies',
@@ -1503,11 +1504,32 @@ export const AffiliateSourceDiscoveryCampaignsScalarFieldEnum = {
   maxQueriesPerRun: 'maxQueriesPerRun',
   maxResultsPerQuery: 'maxResultsPerQuery',
   queryCursor: 'queryCursor',
+  coverageFingerprint: 'coverageFingerprint',
   createdByUserId: 'createdByUserId',
   metadata: 'metadata'
 } as const
 
 export type AffiliateSourceDiscoveryCampaignsScalarFieldEnum = (typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum]
+
+
+export const AffiliateCoverageAgentJobsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  subjectType: 'subjectType',
+  subjectKey: 'subjectKey',
+  status: 'status',
+  claimedAt: 'claimedAt',
+  leaseExpiresAt: 'leaseExpiresAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  context: 'context',
+  result: 'result',
+  errorMessage: 'errorMessage',
+  finishedAt: 'finishedAt'
+} as const
+
+export type AffiliateCoverageAgentJobsScalarFieldEnum = (typeof AffiliateCoverageAgentJobsScalarFieldEnum)[keyof typeof AffiliateCoverageAgentJobsScalarFieldEnum]
 
 
 export const AffiliateSourceDiscoveryRunsScalarFieldEnum = {

@@ -31,6 +31,6 @@ describe('U.S. city discovery campaign templates', () => {
   });
 
   it('tracks the location-first all-sports query strategy version', () => {
-    expect(US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION).toBe(4);
+    expect(US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION).toBe(5);
   });
 });

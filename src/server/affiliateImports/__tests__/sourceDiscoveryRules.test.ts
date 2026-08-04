@@ -87,6 +87,28 @@ describe('affiliate source discovery rules', () => {
     expect(nearEnd.nextCursor).toBe(0);
   });
 
+  it('searches general events, league operators, and tournament operators separately', () => {
+    const generated = generateAffiliateSourceDiscoveryQueries(
+      {
+        ...campaign,
+        metadata: { coveredCities: [{ city: 'San Francisco', state: 'California' }] },
+        sourceTypeHints: ['EVENT', 'LEAGUE', 'TOURNAMENT'],
+        maxQueriesPerRun: 10,
+      },
+      [{ id: 'sport_volleyball', name: 'Indoor Volleyball' }],
+      0,
+    );
+
+    expect(generated.queries.map((query) => [query.sourceType, query.templateKey])).toEqual([
+      ['EVENT', 'PROFILE:events-registration'],
+      ['LEAGUE', 'PROFILE:league-operators'],
+      ['TOURNAMENT', 'PROFILE:tournament-operators'],
+      ['DIRECTORY', 'broad-directory'],
+    ]);
+    expect(generated.queries[1].query).toContain('league operator leagues registration association');
+    expect(generated.queries[2].query).toContain('tournament organizer tournaments cups championships series');
+  });
+
   it('disambiguates American football from soccer in US discovery queries', () => {
     const footballQueries = generateAffiliateSourceDiscoveryQueries(
       campaign,

@@ -55,6 +55,7 @@ export type AffiliateSourceDiscoveryCampaignsMinAggregateOutputType = {
   maxQueriesPerRun: number | null
   maxResultsPerQuery: number | null
   queryCursor: number | null
+  coverageFingerprint: string | null
   createdByUserId: string | null
 }
 
@@ -73,6 +74,7 @@ export type AffiliateSourceDiscoveryCampaignsMaxAggregateOutputType = {
   maxQueriesPerRun: number | null
   maxResultsPerQuery: number | null
   queryCursor: number | null
+  coverageFingerprint: string | null
   createdByUserId: string | null
 }
 
@@ -93,6 +95,7 @@ export type AffiliateSourceDiscoveryCampaignsCountAggregateOutputType = {
   maxQueriesPerRun: number
   maxResultsPerQuery: number
   queryCursor: number
+  coverageFingerprint: number
   createdByUserId: number
   metadata: number
   _all: number
@@ -128,6 +131,7 @@ export type AffiliateSourceDiscoveryCampaignsMinAggregateInputType = {
   maxQueriesPerRun?: true
   maxResultsPerQuery?: true
   queryCursor?: true
+  coverageFingerprint?: true
   createdByUserId?: true
 }
 
@@ -146,6 +150,7 @@ export type AffiliateSourceDiscoveryCampaignsMaxAggregateInputType = {
   maxQueriesPerRun?: true
   maxResultsPerQuery?: true
   queryCursor?: true
+  coverageFingerprint?: true
   createdByUserId?: true
 }
 
@@ -166,6 +171,7 @@ export type AffiliateSourceDiscoveryCampaignsCountAggregateInputType = {
   maxQueriesPerRun?: true
   maxResultsPerQuery?: true
   queryCursor?: true
+  coverageFingerprint?: true
   createdByUserId?: true
   metadata?: true
   _all?: true
@@ -274,6 +280,7 @@ export type AffiliateSourceDiscoveryCampaignsGroupByOutputType = {
   maxQueriesPerRun: number
   maxResultsPerQuery: number
   queryCursor: number
+  coverageFingerprint: string | null
   createdByUserId: string | null
   metadata: runtime.JsonValue | null
   _count: AffiliateSourceDiscoveryCampaignsCountAggregateOutputType | null
@@ -318,6 +325,7 @@ export type AffiliateSourceDiscoveryCampaignsWhereInput = {
   maxQueriesPerRun?: Prisma.IntFilter<"AffiliateSourceDiscoveryCampaigns"> | number
   maxResultsPerQuery?: Prisma.IntFilter<"AffiliateSourceDiscoveryCampaigns"> | number
   queryCursor?: Prisma.IntFilter<"AffiliateSourceDiscoveryCampaigns"> | number
+  coverageFingerprint?: Prisma.StringNullableFilter<"AffiliateSourceDiscoveryCampaigns"> | string | null
   createdByUserId?: Prisma.StringNullableFilter<"AffiliateSourceDiscoveryCampaigns"> | string | null
   metadata?: Prisma.JsonNullableFilter<"AffiliateSourceDiscoveryCampaigns">
 }
@@ -339,6 +347,7 @@ export type AffiliateSourceDiscoveryCampaignsOrderByWithRelationInput = {
   maxQueriesPerRun?: Prisma.SortOrder
   maxResultsPerQuery?: Prisma.SortOrder
   queryCursor?: Prisma.SortOrder
+  coverageFingerprint?: Prisma.SortOrderInput | Prisma.SortOrder
   createdByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   metadata?: Prisma.SortOrderInput | Prisma.SortOrder
 }
@@ -346,6 +355,7 @@ export type AffiliateSourceDiscoveryCampaignsOrderByWithRelationInput = {
 export type AffiliateSourceDiscoveryCampaignsWhereUniqueInput = Prisma.AtLeast<{
   id?: string
   name?: string
+  coverageFingerprint?: string
   AND?: Prisma.AffiliateSourceDiscoveryCampaignsWhereInput | Prisma.AffiliateSourceDiscoveryCampaignsWhereInput[]
   OR?: Prisma.AffiliateSourceDiscoveryCampaignsWhereInput[]
   NOT?: Prisma.AffiliateSourceDiscoveryCampaignsWhereInput | Prisma.AffiliateSourceDiscoveryCampaignsWhereInput[]
@@ -365,7 +375,7 @@ export type AffiliateSourceDiscoveryCampaignsWhereUniqueInput = Prisma.AtLeast<{
   queryCursor?: Prisma.IntFilter<"AffiliateSourceDiscoveryCampaigns"> | number
   createdByUserId?: Prisma.StringNullableFilter<"AffiliateSourceDiscoveryCampaigns"> | string | null
   metadata?: Prisma.JsonNullableFilter<"AffiliateSourceDiscoveryCampaigns">
-}, "id" | "name">
+}, "id" | "name" | "coverageFingerprint">
 
 export type AffiliateSourceDiscoveryCampaignsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -384,6 +394,7 @@ export type AffiliateSourceDiscoveryCampaignsOrderByWithAggregationInput = {
   maxQueriesPerRun?: Prisma.SortOrder
   maxResultsPerQuery?: Prisma.SortOrder
   queryCursor?: Prisma.SortOrder
+  coverageFingerprint?: Prisma.SortOrderInput | Prisma.SortOrder
   createdByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   metadata?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.AffiliateSourceDiscoveryCampaignsCountOrderByAggregateInput
@@ -413,6 +424,7 @@ export type AffiliateSourceDiscoveryCampaignsScalarWhereWithAggregatesInput = {
   maxQueriesPerRun?: Prisma.IntWithAggregatesFilter<"AffiliateSourceDiscoveryCampaigns"> | number
   maxResultsPerQuery?: Prisma.IntWithAggregatesFilter<"AffiliateSourceDiscoveryCampaigns"> | number
   queryCursor?: Prisma.IntWithAggregatesFilter<"AffiliateSourceDiscoveryCampaigns"> | number
+  coverageFingerprint?: Prisma.StringNullableWithAggregatesFilter<"AffiliateSourceDiscoveryCampaigns"> | string | null
   createdByUserId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateSourceDiscoveryCampaigns"> | string | null
   metadata?: Prisma.JsonNullableWithAggregatesFilter<"AffiliateSourceDiscoveryCampaigns">
 }
@@ -434,6 +446,7 @@ export type AffiliateSourceDiscoveryCampaignsCreateInput = {
   maxQueriesPerRun?: number
   maxResultsPerQuery?: number
   queryCursor?: number
+  coverageFingerprint?: string | null
   createdByUserId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -455,6 +468,7 @@ export type AffiliateSourceDiscoveryCampaignsUncheckedCreateInput = {
   maxQueriesPerRun?: number
   maxResultsPerQuery?: number
   queryCursor?: number
+  coverageFingerprint?: string | null
   createdByUserId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -476,6 +490,7 @@ export type AffiliateSourceDiscoveryCampaignsUpdateInput = {
   maxQueriesPerRun?: Prisma.IntFieldUpdateOperationsInput | number
   maxResultsPerQuery?: Prisma.IntFieldUpdateOperationsInput | number
   queryCursor?: Prisma.IntFieldUpdateOperationsInput | number
+  coverageFingerprint?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -497,6 +512,7 @@ export type AffiliateSourceDiscoveryCampaignsUncheckedUpdateInput = {
   maxQueriesPerRun?: Prisma.IntFieldUpdateOperationsInput | number
   maxResultsPerQuery?: Prisma.IntFieldUpdateOperationsInput | number
   queryCursor?: Prisma.IntFieldUpdateOperationsInput | number
+  coverageFingerprint?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -518,6 +534,7 @@ export type AffiliateSourceDiscoveryCampaignsCreateManyInput = {
   maxQueriesPerRun?: number
   maxResultsPerQuery?: number
   queryCursor?: number
+  coverageFingerprint?: string | null
   createdByUserId?: string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -539,6 +556,7 @@ export type AffiliateSourceDiscoveryCampaignsUpdateManyMutationInput = {
   maxQueriesPerRun?: Prisma.IntFieldUpdateOperationsInput | number
   maxResultsPerQuery?: Prisma.IntFieldUpdateOperationsInput | number
   queryCursor?: Prisma.IntFieldUpdateOperationsInput | number
+  coverageFingerprint?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -560,6 +578,7 @@ export type AffiliateSourceDiscoveryCampaignsUncheckedUpdateManyInput = {
   maxQueriesPerRun?: Prisma.IntFieldUpdateOperationsInput | number
   maxResultsPerQuery?: Prisma.IntFieldUpdateOperationsInput | number
   queryCursor?: Prisma.IntFieldUpdateOperationsInput | number
+  coverageFingerprint?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   metadata?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -581,6 +600,7 @@ export type AffiliateSourceDiscoveryCampaignsCountOrderByAggregateInput = {
   maxQueriesPerRun?: Prisma.SortOrder
   maxResultsPerQuery?: Prisma.SortOrder
   queryCursor?: Prisma.SortOrder
+  coverageFingerprint?: Prisma.SortOrder
   createdByUserId?: Prisma.SortOrder
   metadata?: Prisma.SortOrder
 }
@@ -607,6 +627,7 @@ export type AffiliateSourceDiscoveryCampaignsMaxOrderByAggregateInput = {
   maxQueriesPerRun?: Prisma.SortOrder
   maxResultsPerQuery?: Prisma.SortOrder
   queryCursor?: Prisma.SortOrder
+  coverageFingerprint?: Prisma.SortOrder
   createdByUserId?: Prisma.SortOrder
 }
 
@@ -625,6 +646,7 @@ export type AffiliateSourceDiscoveryCampaignsMinOrderByAggregateInput = {
   maxQueriesPerRun?: Prisma.SortOrder
   maxResultsPerQuery?: Prisma.SortOrder
   queryCursor?: Prisma.SortOrder
+  coverageFingerprint?: Prisma.SortOrder
   createdByUserId?: Prisma.SortOrder
 }
 
@@ -672,6 +694,7 @@ export type AffiliateSourceDiscoveryCampaignsSelect<ExtArgs extends runtime.Type
   maxQueriesPerRun?: boolean
   maxResultsPerQuery?: boolean
   queryCursor?: boolean
+  coverageFingerprint?: boolean
   createdByUserId?: boolean
   metadata?: boolean
 }, ExtArgs["result"]["affiliateSourceDiscoveryCampaigns"]>
@@ -693,6 +716,7 @@ export type AffiliateSourceDiscoveryCampaignsSelectCreateManyAndReturn<ExtArgs e
   maxQueriesPerRun?: boolean
   maxResultsPerQuery?: boolean
   queryCursor?: boolean
+  coverageFingerprint?: boolean
   createdByUserId?: boolean
   metadata?: boolean
 }, ExtArgs["result"]["affiliateSourceDiscoveryCampaigns"]>
@@ -714,6 +738,7 @@ export type AffiliateSourceDiscoveryCampaignsSelectUpdateManyAndReturn<ExtArgs e
   maxQueriesPerRun?: boolean
   maxResultsPerQuery?: boolean
   queryCursor?: boolean
+  coverageFingerprint?: boolean
   createdByUserId?: boolean
   metadata?: boolean
 }, ExtArgs["result"]["affiliateSourceDiscoveryCampaigns"]>
@@ -735,11 +760,12 @@ export type AffiliateSourceDiscoveryCampaignsSelectScalar = {
   maxQueriesPerRun?: boolean
   maxResultsPerQuery?: boolean
   queryCursor?: boolean
+  coverageFingerprint?: boolean
   createdByUserId?: boolean
   metadata?: boolean
 }
 
-export type AffiliateSourceDiscoveryCampaignsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "region" | "location" | "sportIds" | "sourceTypeHints" | "status" | "autoCreateIntakes" | "searchIntervalMinutes" | "lastRunAt" | "nextRunAt" | "maxQueriesPerRun" | "maxResultsPerQuery" | "queryCursor" | "createdByUserId" | "metadata", ExtArgs["result"]["affiliateSourceDiscoveryCampaigns"]>
+export type AffiliateSourceDiscoveryCampaignsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "region" | "location" | "sportIds" | "sourceTypeHints" | "status" | "autoCreateIntakes" | "searchIntervalMinutes" | "lastRunAt" | "nextRunAt" | "maxQueriesPerRun" | "maxResultsPerQuery" | "queryCursor" | "coverageFingerprint" | "createdByUserId" | "metadata", ExtArgs["result"]["affiliateSourceDiscoveryCampaigns"]>
 
 export type $AffiliateSourceDiscoveryCampaignsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AffiliateSourceDiscoveryCampaigns"
@@ -761,6 +787,7 @@ export type $AffiliateSourceDiscoveryCampaignsPayload<ExtArgs extends runtime.Ty
     maxQueriesPerRun: number
     maxResultsPerQuery: number
     queryCursor: number
+    coverageFingerprint: string | null
     createdByUserId: string | null
     metadata: runtime.JsonValue | null
   }, ExtArgs["result"]["affiliateSourceDiscoveryCampaigns"]>
@@ -1202,6 +1229,7 @@ export interface AffiliateSourceDiscoveryCampaignsFieldRefs {
   readonly maxQueriesPerRun: Prisma.FieldRef<"AffiliateSourceDiscoveryCampaigns", 'Int'>
   readonly maxResultsPerQuery: Prisma.FieldRef<"AffiliateSourceDiscoveryCampaigns", 'Int'>
   readonly queryCursor: Prisma.FieldRef<"AffiliateSourceDiscoveryCampaigns", 'Int'>
+  readonly coverageFingerprint: Prisma.FieldRef<"AffiliateSourceDiscoveryCampaigns", 'String'>
   readonly createdByUserId: Prisma.FieldRef<"AffiliateSourceDiscoveryCampaigns", 'String'>
   readonly metadata: Prisma.FieldRef<"AffiliateSourceDiscoveryCampaigns", 'Json'>
 }

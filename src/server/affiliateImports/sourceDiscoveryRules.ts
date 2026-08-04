@@ -22,8 +22,11 @@ const TYPE_TERMS: Record<string, string[]> = {
   CLUB: ['club', 'academy', 'competitive program', 'travel program'],
   TRYOUT: ['tryout', 'tryouts', 'evaluation', 'evaluations'],
   EVENT: ['event', 'events', 'registration'],
-  LEAGUE: ['league', 'leagues', 'league registration'],
-  TOURNAMENT: ['tournament', 'tournaments'],
+  LEAGUE: ['league', 'leagues', 'league registration', 'league operator'],
+  TOURNAMENT: [
+    'tournament', 'tournaments', 'tournament organizer', 'tournament host',
+    'cup', 'championship', 'championships', 'competition series',
+  ],
   CAMP: ['sports camp', 'camp', 'camps'],
   CLINIC: ['sports clinic', 'clinic', 'clinics', 'training'],
   OPEN_PLAY: ['open play', 'open gym', 'pickup', 'drop in', 'drop-in'],
@@ -49,9 +52,19 @@ const QUERY_PROFILES = [
     queryTerms: 'tryouts evaluations',
   },
   {
-    templateKey: 'leagues-tournaments-events',
-    sourceTypes: ['EVENT', 'LEAGUE', 'TOURNAMENT'],
-    queryTerms: 'leagues tournaments events registration',
+    templateKey: 'events-registration',
+    sourceTypes: ['EVENT'],
+    queryTerms: 'events registration organizer',
+  },
+  {
+    templateKey: 'league-operators',
+    sourceTypes: ['LEAGUE'],
+    queryTerms: 'league operator leagues registration association',
+  },
+  {
+    templateKey: 'tournament-operators',
+    sourceTypes: ['TOURNAMENT'],
+    queryTerms: 'tournament organizer tournaments cups championships series',
   },
   {
     templateKey: 'camps-clinics-open-play',
@@ -80,7 +93,7 @@ const CLOSED_OR_ENDED_PATTERN = /\b(?:registration\s+(?:is\s+)?closed|registrati
 const EDITORIAL_PATTERN = /\b(?:news|press[\s-]+releases?|blog|article|recap|guide|local resources?|top 10|best of)\b/i;
 const NON_PARTICIPATION_PATTERN = /\b(?:box office|broadcast live|buy tickets?|concert|tickets? (?:available|on sale)|watch live)\b/i;
 const PUBLIC_ACTION_PATTERN = /\b(?:register|registration|book|booking|reserve|reservation|tryout|sign[\s-]?up|join)\b/i;
-const ORGANIZATION_PATTERN = /\b(?:club|academy|association|league|sports|athletics|recreation|facility|center|centre|park district)\b/i;
+const ORGANIZATION_PATTERN = /\b(?:club|academy|association|league|organizer|operator|host|competition|sports|athletics|recreation|facility|center|centre|park district)\b/i;
 
 const STATE_ABBREVIATIONS: Record<string, string> = {
   Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA',

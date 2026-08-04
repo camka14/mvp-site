@@ -444,6 +444,7 @@ export const ModelName = {
   AffiliateSourceIntakeRuns: 'AffiliateSourceIntakeRuns',
   AffiliateSourceIntakeArtifacts: 'AffiliateSourceIntakeArtifacts',
   AffiliateSourceDiscoveryCampaigns: 'AffiliateSourceDiscoveryCampaigns',
+  AffiliateCoverageAgentJobs: 'AffiliateCoverageAgentJobs',
   AffiliateSourceDiscoveryRuns: 'AffiliateSourceDiscoveryRuns',
   AffiliateSourceDiscoveryResults: 'AffiliateSourceDiscoveryResults',
   AffiliateSourceDomainPolicies: 'AffiliateSourceDomainPolicies',
@@ -504,7 +505,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateApprovalJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "organizationDomains" | "organizationClaims" | "organizationClaimEvidence" | "organizationClaimEvents" | "organizationReviewResponses" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateCoverageAgentJobs" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateApprovalJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "organizationDomains" | "organizationClaims" | "organizationClaimEvidence" | "organizationClaimEvents" | "organizationReviewResponses" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -4945,6 +4946,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.AffiliateSourceDiscoveryCampaignsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.AffiliateSourceDiscoveryCampaignsCountAggregateOutputType> | number
+        }
+      }
+    }
+    AffiliateCoverageAgentJobs: {
+      payload: Prisma.$AffiliateCoverageAgentJobsPayload<ExtArgs>
+      fields: Prisma.AffiliateCoverageAgentJobsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AffiliateCoverageAgentJobsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AffiliateCoverageAgentJobsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>
+        }
+        findFirst: {
+          args: Prisma.AffiliateCoverageAgentJobsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AffiliateCoverageAgentJobsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>
+        }
+        findMany: {
+          args: Prisma.AffiliateCoverageAgentJobsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>[]
+        }
+        create: {
+          args: Prisma.AffiliateCoverageAgentJobsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>
+        }
+        createMany: {
+          args: Prisma.AffiliateCoverageAgentJobsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AffiliateCoverageAgentJobsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>[]
+        }
+        delete: {
+          args: Prisma.AffiliateCoverageAgentJobsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>
+        }
+        update: {
+          args: Prisma.AffiliateCoverageAgentJobsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>
+        }
+        deleteMany: {
+          args: Prisma.AffiliateCoverageAgentJobsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AffiliateCoverageAgentJobsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AffiliateCoverageAgentJobsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>[]
+        }
+        upsert: {
+          args: Prisma.AffiliateCoverageAgentJobsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AffiliateCoverageAgentJobsPayload>
+        }
+        aggregate: {
+          args: Prisma.AffiliateCoverageAgentJobsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAffiliateCoverageAgentJobs>
+        }
+        groupBy: {
+          args: Prisma.AffiliateCoverageAgentJobsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateCoverageAgentJobsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AffiliateCoverageAgentJobsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AffiliateCoverageAgentJobsCountAggregateOutputType> | number
         }
       }
     }
@@ -9646,11 +9721,32 @@ export const AffiliateSourceDiscoveryCampaignsScalarFieldEnum = {
   maxQueriesPerRun: 'maxQueriesPerRun',
   maxResultsPerQuery: 'maxResultsPerQuery',
   queryCursor: 'queryCursor',
+  coverageFingerprint: 'coverageFingerprint',
   createdByUserId: 'createdByUserId',
   metadata: 'metadata'
 } as const
 
 export type AffiliateSourceDiscoveryCampaignsScalarFieldEnum = (typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum)[keyof typeof AffiliateSourceDiscoveryCampaignsScalarFieldEnum]
+
+
+export const AffiliateCoverageAgentJobsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  subjectType: 'subjectType',
+  subjectKey: 'subjectKey',
+  status: 'status',
+  claimedAt: 'claimedAt',
+  leaseExpiresAt: 'leaseExpiresAt',
+  workerId: 'workerId',
+  attemptCount: 'attemptCount',
+  context: 'context',
+  result: 'result',
+  errorMessage: 'errorMessage',
+  finishedAt: 'finishedAt'
+} as const
+
+export type AffiliateCoverageAgentJobsScalarFieldEnum = (typeof AffiliateCoverageAgentJobsScalarFieldEnum)[keyof typeof AffiliateCoverageAgentJobsScalarFieldEnum]
 
 
 export const AffiliateSourceDiscoveryRunsScalarFieldEnum = {
@@ -12158,6 +12254,7 @@ export type GlobalOmitConfig = {
   affiliateSourceIntakeRuns?: Prisma.AffiliateSourceIntakeRunsOmit
   affiliateSourceIntakeArtifacts?: Prisma.AffiliateSourceIntakeArtifactsOmit
   affiliateSourceDiscoveryCampaigns?: Prisma.AffiliateSourceDiscoveryCampaignsOmit
+  affiliateCoverageAgentJobs?: Prisma.AffiliateCoverageAgentJobsOmit
   affiliateSourceDiscoveryRuns?: Prisma.AffiliateSourceDiscoveryRunsOmit
   affiliateSourceDiscoveryResults?: Prisma.AffiliateSourceDiscoveryResultsOmit
   affiliateSourceDomainPolicies?: Prisma.AffiliateSourceDomainPoliciesOmit

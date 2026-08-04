@@ -14,17 +14,19 @@ One campaign may cover multiple top-50 cities when they belong to the same obvio
 
 National discovery completes one metropolitan area before advancing to the next priority-ranked location. Each campaign includes every canonical sport except the generic `Other` fallback. Within a location, queries rotate across all selected sports before advancing to the next source-type template. `Grass Soccer` searches use the public-facing phrase `outdoor soccer`.
 
-Every bounded run reserves one query for the broad regional sports directory search. The remaining slots advance a persisted cursor through the location's complete sport/type matrix. Successful partial cycles become immediately due again; a completed cycle returns its cursor to zero and resumes on the normal campaign cadence, allowing the next city to start. Campaign setup records the query-strategy version and resets the cursor once when the strategy changes; rerunning the same setup version does not reset progress or results.
+Each complete query cycle includes one broad regional sports directory search. The remaining queries advance a persisted cursor through the location's complete sport/type matrix. Successful partial cycles become immediately due again; a completed cycle returns its cursor to zero and resumes on the normal campaign cadence, allowing the next city to start. Campaign setup records the query-strategy version and resets the cursor once when the strategy changes; rerunning the same setup version does not reset progress or results.
 
-The matrix uses five consolidated searches per sport:
+The matrix uses seven searches per sport:
 
 1. Clubs, academies, and competitive programs.
 2. Tryouts and evaluations.
-3. Leagues, tournaments, events, and registration.
-4. Camps, clinics, open play, and pickup.
-5. Fields, courts, facilities, rentals, and reservations.
+3. General events and registration.
+4. League operators, leagues, associations, and registration.
+5. Tournament operators, cups, championships, and competition series.
+6. Camps, clinics, open play, and pickup.
+7. Fields, courts, facilities, rentals, and reservations.
 
-With 14 concrete sports, one city requires 70 sport-profile searches. Nine profile searches plus one broad directory search fit in each default run, so a complete city uses eight bounded runs and 78 Firecrawl Search requests instead of the previous 358-request phrase matrix.
+With 14 concrete sports, one city requires 98 sport-profile searches plus one broad directory search. Ten searches fit in each default run, so a complete city uses ten bounded runs and 99 provider search requests. League and tournament operators no longer share one query with general events.
 
 | Priority | Campaign | Search region | Top-50 cities covered |
 | ---: | --- | --- | --- |
@@ -87,3 +89,9 @@ With 14 concrete sports, one city requires 70 sport-profile searches. Nine profi
 A mapping job is the handoff from captured source evidence to the worker that writes a source-specific mapping and tests. Claiming is atomic: the database changes one eligible job from `QUEUED` to `CLAIMED` in the same guarded operation that selects it, so two workers cannot receive the same job.
 
 The claim has a lease with a worker ID and expiration time. The lease is temporary ownership, not permanent completion. A healthy worker finishes or releases the job. If it crashes or disappears, another worker may reclaim the job only after the lease expires. This prevents duplicate concurrent mapping work without leaving a source permanently stuck after a worker failure.
+
+## Coverage Agent Terms
+
+The Coverage Agent owns market assessment and failed campaign intake recovery. It claims one `AffiliateCoverageAgentJobs` row at a time. A market job may create active focused campaigns through the validated campaign command. A failed-capture job may attach one durable `MANUAL_BROWSER` evidence run when a public page works outside the provider capture. It does not map source code, approve packages, publish organizations, or bypass explicit access restrictions.
+
+Coverage is not a raw organization count. A market is covered only when relevant query profiles completed, at least two independent source families were checked, no discovered lead remains unresolved, recent new-domain yield is recorded, and failed capture jobs have terminal outcomes. The repo-backed operating contract is `.agents/skills/plan-affiliate-discovery-campaigns/SKILL.md`.

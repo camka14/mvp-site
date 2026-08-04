@@ -14,7 +14,7 @@ export type AffiliateSourceDiscoveryCampaignTemplate = {
   }>;
 };
 
-export const US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION = 4;
+export const US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION = 5;
 
 const city = (
   priorityRank: number,
