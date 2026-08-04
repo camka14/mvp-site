@@ -126,8 +126,10 @@ export const buildCodexAffiliateIngestionGoal = (
   return [
     'Before doing any other work, call the create_goal tool with exactly the objective',
     'between the <objective> tags and omit token_budget.',
-    'After create_goal succeeds, begin the goal immediately and keep working until its',
-    'stopping condition is proven.',
+    'After create_goal succeeds, begin the goal immediately. If create_goal is not',
+    'available in this session, use the exact objective as the in-session goal and',
+    'continue; do not stop or restart only because that tool is unavailable. Keep',
+    'working until the stopping condition is proven.',
     `<objective>${objective}</objective>`,
   ].join(' ');
 };

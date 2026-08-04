@@ -47,6 +47,9 @@ describe('Codex affiliate coverage goal', () => {
     expect(CODEX_AFFILIATE_COVERAGE_SERVICE_TIER).toBe('fast');
     expect(CODEX_AFFILIATE_COVERAGE_FAST_MODE).toBe(true);
     expect(buildCodexAffiliateCoverageArgs(options)).toContain('--ephemeral');
+    expect(buildCodexAffiliateCoverageGoal(options)).toContain(
+      'use the exact objective as the in-session goal',
+    );
   });
 
   it('defines coverage, competition-operator, manual recovery, and stopping contracts', () => {

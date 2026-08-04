@@ -58,6 +58,8 @@ describe('Codex affiliate intake goal', () => {
 
     expect(objective.length).toBeLessThanOrEqual(4_000);
     expect(goal).toContain('call the create_goal tool');
+    expect(goal).toContain('use the exact objective as the in-session goal');
+    expect(goal).toContain('do not stop or restart only because that tool is unavailable');
     expect(goal).toContain('$ingest-affiliate-intakes');
     expect(goal).toContain('claimableJobs=0');
     expect(goal).toContain('eligibleReadyIntakesWithoutJob=0');

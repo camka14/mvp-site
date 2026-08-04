@@ -48,6 +48,9 @@ describe('Codex affiliate approval goal', () => {
     expect(CODEX_AFFILIATE_APPROVAL_SERVICE_TIER).toBe('fast');
     expect(CODEX_AFFILIATE_APPROVAL_FAST_MODE).toBe(true);
     expect(buildCodexAffiliateApprovalArgs(options)).toContain('--ephemeral');
+    expect(buildCodexAffiliateApprovalGoal(options)).toContain(
+      'use the exact objective as the in-session goal',
+    );
   });
 
   it('names the queue commands, evidence refresh, independence, and stop condition', () => {
