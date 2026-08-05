@@ -12,13 +12,50 @@ import {
   type AffiliateCoverageCompletion,
 } from './coverageAgentContracts';
 import { queueAffiliateSourceDiscoveryRun } from './sourceDiscovery';
-import { affiliateDiscoveryPolicyKeyForUrl } from './sourceDiscoveryRules';
+import {
+  affiliateDiscoveryPolicyKeyForUrl,
+  affiliateDiscoveryUrlKey,
+} from './sourceDiscoveryRules';
 import { US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION } from './sourceDiscoveryCampaignTemplates';
 import { persistAffiliateSourceIntakeArtifact } from './sourceIntakeArtifacts';
 import { canonicalizeAffiliateIntakeUrl } from './sourceIntakeUrlSafety';
 
 const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1_000;
+const DEFAULT_CAPTURE_RETRY_DELAY_MS = 30 * 60 * 1_000;
+const MAX_CAPTURE_ATTEMPTS = 3;
 export const AFFILIATE_COVERAGE_STRATEGY_VERSION = 1;
+
+const CAPTURE_RETRY_REASON_CODES = new Set([
+  'EVIDENCE_SIZE_LIMIT',
+  'HTTP_429',
+  'HTTP_5XX',
+  'JAVASCRIPT_RENDER_REQUIRED',
+  'NETWORK_ERROR',
+  'ROBOTS_EVIDENCE_UNAVAILABLE',
+  'STORED_HTML_AVAILABLE',
+  'TLS_ERROR',
+  'TRANSIENT_ACCESS_FAILURE',
+]);
+
+const SOURCE_EXCLUSION_REASON_CODES = new Set([
+  'CAPTCHA_REQUIRED',
+  'DUPLICATE_CAPTURE_TARGET',
+  'EXPLICIT_PROHIBITION',
+  'HELDOUT_SOURCE',
+  'LOGIN_REQUIRED',
+  'RETRY_EXHAUSTED',
+  'SOURCE_NOT_FOUND',
+  'UNRELATED_SOURCE',
+  'UNSUPPORTED_SOURCE',
+]);
+
+const HUMAN_DECISION_REASON_CODES = new Set([
+  'CONFLICTING_IDENTITY',
+  'CONFLICTING_SOURCE_IDENTITY',
+  'CONTRADICTORY_EVIDENCE',
+  'SOURCE_IDENTITY_CONFLICT',
+  'REPLACEMENT_DOMAIN_APPROVAL_REQUIRED',
+]);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -62,11 +99,168 @@ const hasUsefulPartialFailure = (run: any): boolean => (
   run.status === 'PARTIAL' && failedPageCount(run.summary) > 0
 );
 
+const resultReasonCodes = (value: unknown): string[] => {
+  const codes = recordValue(value).reasonCodes;
+  return Array.isArray(codes)
+    ? codes.filter((code): code is string => typeof code === 'string')
+    : [];
+};
+
+const resultSummary = (value: unknown): string => stringValue(recordValue(value).summary) ?? '';
+
+const hasReasonCode = (codes: string[], allowed: Set<string>): boolean => (
+  codes.some((code) => allowed.has(code))
+);
+
+const discoveryResultNeedsPipelineResolution = (result: any): boolean => (
+  result.status === 'NEW'
+  && !result.matchingIntakeId
+  && !result.matchingSourceId
+  && !result.matchingOrganizationId
+  && (
+    resultReasonCodes(result).includes('AUTO_PROMOTION_ELIGIBLE')
+    || recordValue(result.reasonDetails).autoPromotionEligible === true
+  )
+);
+
+const captureTargetKeyForUrl = (value: unknown, intakeId: string): string => {
+  const url = stringValue(value);
+  if (!url) return `intake:${intakeId}`;
+  try {
+    const canonicalUrl = canonicalizeAffiliateIntakeUrl(url);
+    const parsed = new URL(canonicalUrl);
+    const normalizedTarget = [
+      affiliateDiscoveryPolicyKeyForUrl(canonicalUrl),
+      parsed.pathname.replace(/\/$/, '') || '/',
+      parsed.search,
+    ].join('|');
+    return `url:${affiliateDiscoveryUrlKey(normalizedTarget)}`;
+  } catch {
+    return `intake:${intakeId}`;
+  }
+};
+
+const retryAtForAttempt = (now: Date, attemptCount: number): Date => {
+  const exponent = Math.max(0, Math.min(attemptCount - 1, 5));
+  return new Date(now.getTime() + DEFAULT_CAPTURE_RETRY_DELAY_MS * (2 ** exponent));
+};
+
 const marketSubjectKey = (campaignId: string): string => [
   campaignId,
   `query-v${US_CITY_DISCOVERY_QUERY_STRATEGY_VERSION}`,
   `coverage-v${AFFILIATE_COVERAGE_STRATEGY_VERSION}`,
 ].join(':');
+
+export const classifyLegacyAffiliateCoverageHumanReview = (job: any): {
+  status: 'EXCLUDED' | 'HUMAN_REVIEW_REQUIRED' | 'RETRY_SCHEDULED' | 'WAITING_FOR_PIPELINE';
+  decision: 'HUMAN_REVIEW_REQUIRED' | 'RETRY_LATER' | 'SOURCE_EXCLUDED' | 'WAITING_FOR_PIPELINE';
+  reasonCodes: string[];
+} => {
+  const existingCodes = resultReasonCodes(job.result);
+  const summary = (
+    resultSummary(job.result)
+    || stringValue(job.errorMessage)
+    || ''
+  ).toLowerCase();
+  if (job.subjectType === 'MARKET_COVERAGE') {
+    return {
+      status: 'WAITING_FOR_PIPELINE',
+      decision: 'WAITING_FOR_PIPELINE',
+      reasonCodes: Array.from(new Set([...existingCodes, 'UNRESOLVED_PIPELINE_LEADS'])),
+    };
+  }
+  if (
+    hasReasonCode(existingCodes, HUMAN_DECISION_REASON_CODES)
+    || /conflicting (?:source |organization )?identity|contradictory evidence|replacement domain/.test(summary)
+  ) {
+    return {
+      status: 'HUMAN_REVIEW_REQUIRED',
+      decision: 'HUMAN_REVIEW_REQUIRED',
+      reasonCodes: Array.from(new Set([...existingCodes, 'CONFLICTING_SOURCE_IDENTITY'])),
+    };
+  }
+  const explicitProhibition = !/(?:no|without) explicit (?:robots )?prohibition/.test(summary)
+    && /(?:robots(?:\.txt)? (?:explicitly )?(?:disallows?|prohibits?)\b|explicit (?:robots )?prohibition (?:exists|was found|is present)|policy prohibits?\b)/.test(summary);
+  const exclusionCode = /(?:requires? (?:a )?(?:log[ -]?in|sign[ -]?in|authentication|credentials?)|log[ -]?in[ -]?only|credential[ -]?gated|members only)/.test(summary)
+    ? 'LOGIN_REQUIRED'
+    : /(?:captcha (?:required|challenge|present)|requires? (?:a )?captcha)/.test(summary)
+      ? 'CAPTCHA_REQUIRED'
+      : explicitProhibition
+        ? 'EXPLICIT_PROHIBITION'
+        : /held[ -]?out/.test(summary)
+          ? 'HELDOUT_SOURCE'
+          : /(?:404|not found|no longer exists|stale source|missing website)/.test(summary)
+            ? 'SOURCE_NOT_FOUND'
+            : /(?:unrelated source|not a sports|unsupported source)/.test(summary)
+              ? 'UNRELATED_SOURCE'
+              : null;
+  if (exclusionCode || hasReasonCode(existingCodes, SOURCE_EXCLUSION_REASON_CODES)) {
+    return {
+      status: 'EXCLUDED',
+      decision: 'SOURCE_EXCLUDED',
+      reasonCodes: Array.from(new Set([...existingCodes, exclusionCode ?? 'UNSUPPORTED_SOURCE'])),
+    };
+  }
+  if (Number(job.attemptCount ?? 0) >= MAX_CAPTURE_ATTEMPTS) {
+    return {
+      status: 'EXCLUDED',
+      decision: 'SOURCE_EXCLUDED',
+      reasonCodes: Array.from(new Set([...existingCodes, 'RETRY_EXHAUSTED'])),
+    };
+  }
+  const retryCode = /exceed(?:s|ed)?.*(?:artifact|byte|size)|too large/.test(summary)
+    ? 'EVIDENCE_SIZE_LIMIT'
+    : /stored (?:provider )?(?:html|evidence)|existing (?:html|evidence)/.test(summary)
+      ? 'STORED_HTML_AVAILABLE'
+      : /(?:tls|certificate|ssl)/.test(summary)
+        ? 'TLS_ERROR'
+        : /robots/.test(summary)
+          ? 'ROBOTS_EVIDENCE_UNAVAILABLE'
+          : /javascript|client-side|rendered/.test(summary)
+            ? 'JAVASCRIPT_RENDER_REQUIRED'
+            : /(?:network|timeout|timed out|connection reset|http 5\d\d|http 429|rate limit|access failure)/.test(summary)
+              ? 'TRANSIENT_ACCESS_FAILURE'
+              : 'TRANSIENT_ACCESS_FAILURE';
+  return {
+    status: 'RETRY_SCHEDULED',
+    decision: 'RETRY_LATER',
+    reasonCodes: Array.from(new Set([...existingCodes, retryCode])),
+  };
+};
+
+const currentMarketUnresolvedLeadCount = async (
+  database: CoverageDatabase,
+  job: any,
+): Promise<number> => {
+  const campaignId = stringValue(recordValue(job.context).campaignId);
+  if (!campaignId) return 0;
+  const parent = await database.campaigns.findUnique({ where: { id: campaignId } });
+  if (!parent) return 0;
+  const neighbors = await database.campaigns.findMany({
+    where: { region: parent.region },
+    select: { id: true, metadata: true },
+  });
+  const campaignIds = [
+    campaignId,
+    ...neighbors.flatMap((campaign: any) => (
+      stringValue(recordValue(campaign.metadata).coverageParentCampaignId) === campaignId
+        ? [campaign.id]
+        : []
+    )),
+  ];
+  const results = await database.discoveryResults.findMany({
+    where: { campaignId: { in: Array.from(new Set(campaignIds)) } },
+    select: {
+      status: true,
+      reasonCodes: true,
+      reasonDetails: true,
+      matchingIntakeId: true,
+      matchingSourceId: true,
+      matchingOrganizationId: true,
+    },
+  });
+  return results.filter(discoveryResultNeedsPipelineResolution).length;
+};
 
 const jobIsClaimable = (job: any, now: Date): boolean => (
   job.status === 'QUEUED'
@@ -156,6 +350,87 @@ export const reconcileAffiliateCoverageJobs = async (
   const database = dependencies.database ?? coverageDatabase();
   const now = options.now ?? dependencies.now?.() ?? new Date();
   const createIdentifier = dependencies.createIdentifier ?? createId;
+  const existingJobs = await database.jobs.findMany({ orderBy: { createdAt: 'asc' } });
+  let legacyHumanReviewsReclassified = 0;
+  let legacyRetriesScheduled = 0;
+  let waitingJobsRequeued = 0;
+  let retryJobsRequeued = 0;
+  let sourcesExcluded = 0;
+  for (const job of existingJobs) {
+    if (job.status === 'HUMAN_REVIEW_REQUIRED') {
+      const classification = classifyLegacyAffiliateCoverageHumanReview(job);
+      if (classification.status === 'HUMAN_REVIEW_REQUIRED') continue;
+      let status: string = classification.status;
+      if (
+        status === 'WAITING_FOR_PIPELINE'
+        && await currentMarketUnresolvedLeadCount(database, job) === 0
+      ) {
+        status = 'QUEUED';
+        waitingJobsRequeued += 1;
+      } else if (status === 'RETRY_SCHEDULED') {
+        legacyRetriesScheduled += 1;
+      } else if (status === 'EXCLUDED') {
+        sourcesExcluded += 1;
+      }
+      await database.jobs.update({
+        where: { id: job.id },
+        data: {
+          status,
+          result: {
+            ...recordValue(job.result),
+            decision: classification.decision,
+            reasonCodes: classification.reasonCodes,
+            reclassifiedAt: now.toISOString(),
+            ...(status === 'RETRY_SCHEDULED' ? {
+              retryAt: retryAtForAttempt(now, Number(job.attemptCount ?? 1)).toISOString(),
+            } : {}),
+          },
+          errorMessage: null,
+          finishedAt: status === 'EXCLUDED' ? now : null,
+          claimedAt: null,
+          workerId: null,
+          leaseExpiresAt: null,
+        },
+      });
+      legacyHumanReviewsReclassified += 1;
+      continue;
+    }
+    if (job.status === 'WAITING_FOR_PIPELINE') {
+      if (await currentMarketUnresolvedLeadCount(database, job) === 0) {
+        await database.jobs.update({
+          where: { id: job.id },
+          data: {
+            status: 'QUEUED',
+            errorMessage: null,
+            finishedAt: null,
+            claimedAt: null,
+            workerId: null,
+            leaseExpiresAt: null,
+          },
+        });
+        waitingJobsRequeued += 1;
+      }
+      continue;
+    }
+    if (job.status === 'RETRY_SCHEDULED') {
+      const retryAtText = stringValue(recordValue(job.result).retryAt);
+      const retryAt = retryAtText ? new Date(retryAtText) : now;
+      if (!Number.isNaN(retryAt.getTime()) && retryAt <= now) {
+        await database.jobs.update({
+          where: { id: job.id },
+          data: {
+            status: 'QUEUED',
+            errorMessage: null,
+            finishedAt: null,
+            claimedAt: null,
+            workerId: null,
+            leaseExpiresAt: null,
+          },
+        });
+        retryJobsRequeued += 1;
+      }
+    }
+  }
   const campaigns = await database.campaigns.findMany({ orderBy: { createdAt: 'asc' } });
   const templateCampaigns = campaigns.filter((campaign: any) => recordValue(campaign.metadata).template === true);
   let marketJobsCreated = 0;
@@ -194,14 +469,114 @@ export const reconcileAffiliateCoverageJobs = async (
   for (const run of intakeRuns) {
     if (!latestByIntake.has(run.intakeId)) latestByIntake.set(run.intakeId, run);
   }
+  const captureJobs = existingJobs
+    .filter((job: any) => job.subjectType === 'FAILED_INTAKE_CAPTURE')
+    .sort((left: any, right: any) => left.createdAt.getTime() - right.createdAt.getTime());
+  const intakeIds = Array.from(new Set([
+    ...latestByIntake.keys(),
+    ...captureJobs.flatMap((job: any) => {
+      const intakeId = stringValue(recordValue(job.context).intakeId);
+      return intakeId ? [intakeId] : [];
+    }),
+  ]));
+  const intakeRows = intakeIds.length
+    ? await database.intakes.findMany({
+        where: { id: { in: intakeIds } },
+        select: { id: true, baseUrl: true },
+      })
+    : [];
+  const intakeById = new Map<string, any>(
+    intakeRows.map((intake: any) => [intake.id, intake]),
+  );
+  const jobsByCaptureTarget = new Map<string, any>();
+  let duplicateCaptureJobsExcluded = 0;
+  for (const job of captureJobs) {
+    const context = recordValue(job.context);
+    const intakeId = stringValue(context.intakeId);
+    if (!intakeId) continue;
+    const targetKey = stringValue(context.captureTargetKey)
+      ?? captureTargetKeyForUrl(intakeById.get(intakeId)?.baseUrl, intakeId);
+    const representative = jobsByCaptureTarget.get(targetKey);
+    if (!representative) {
+      jobsByCaptureTarget.set(targetKey, job);
+      if (!stringValue(context.captureTargetKey)) {
+        await database.jobs.update({
+          where: { id: job.id },
+          data: { context: { ...context, captureTargetKey: targetKey } },
+        });
+      }
+      continue;
+    }
+    if (job.status === 'CLAIMED' || job.status === 'EXCLUDED') continue;
+    await database.jobs.update({
+      where: { id: job.id },
+      data: {
+        status: 'EXCLUDED',
+        result: {
+          schemaVersion: 1,
+          jobId: job.id,
+          agentId: 'coverage-reconcile',
+          decision: 'SOURCE_EXCLUDED',
+          summary: `Duplicate failed-capture target already belongs to coverage job ${representative.id}.`,
+          campaignIds: [],
+          manualRunId: null,
+          coverageEvidence: null,
+          reasonCodes: ['DUPLICATE_CAPTURE_TARGET'],
+          canonicalCoverageJobId: representative.id,
+        },
+        context: { ...context, captureTargetKey: targetKey },
+        errorMessage: null,
+        finishedAt: now,
+        claimedAt: null,
+        workerId: null,
+        leaseExpiresAt: null,
+      },
+    });
+    duplicateCaptureJobsExcluded += 1;
+  }
   let failedCaptureJobsCreated = 0;
   for (const run of latestByIntake.values()) {
     if (run.status !== 'FAILED' && !hasUsefulPartialFailure(run)) continue;
+    const targetKey = captureTargetKeyForUrl(
+      intakeById.get(run.intakeId)?.baseUrl,
+      run.intakeId,
+    );
+    const representative = jobsByCaptureTarget.get(targetKey);
+    if (representative) {
+      const context = recordValue(representative.context);
+      if (
+        stringValue(context.runId) !== run.id
+        && representative.status === 'COMPLETED'
+      ) {
+        await database.jobs.update({
+          where: { id: representative.id },
+          data: {
+            status: 'QUEUED',
+            context: {
+              ...context,
+              intakeId: run.intakeId,
+              runId: run.id,
+              runStatus: run.status,
+              failedPageCount: failedPageCount(run.summary),
+              captureTargetKey: targetKey,
+              reconciledAt: now.toISOString(),
+            },
+            result: null,
+            errorMessage: null,
+            finishedAt: null,
+            claimedAt: null,
+            workerId: null,
+            leaseExpiresAt: null,
+          },
+        });
+      }
+      continue;
+    }
     const existing = await database.jobs.findUnique({
       where: {
         subjectType_subjectKey: {
           subjectType: 'FAILED_INTAKE_CAPTURE',
-          subjectKey: run.id,
+          subjectKey: targetKey,
         },
       },
     });
@@ -210,23 +585,31 @@ export const reconcileAffiliateCoverageJobs = async (
       data: {
         id: createIdentifier(),
         subjectType: 'FAILED_INTAKE_CAPTURE',
-        subjectKey: run.id,
+        subjectKey: targetKey,
         status: 'QUEUED',
         context: {
           intakeId: run.intakeId,
           runId: run.id,
           runStatus: run.status,
           failedPageCount: failedPageCount(run.summary),
+          captureTargetKey: targetKey,
           reconciledAt: now.toISOString(),
         },
       },
     });
+    jobsByCaptureTarget.set(targetKey, { id: run.id, subjectKey: targetKey });
     failedCaptureJobsCreated += 1;
   }
   return {
     marketJobsCreated,
     failedCaptureJobsCreated,
     totalCreated: marketJobsCreated + failedCaptureJobsCreated,
+    legacyHumanReviewsReclassified,
+    legacyRetriesScheduled,
+    waitingJobsRequeued,
+    retryJobsRequeued,
+    sourcesExcluded,
+    duplicateCaptureJobsExcluded,
   };
 };
 
@@ -307,6 +690,8 @@ const marketCoverageContext = async (database: CoverageDatabase, job: any) => {
         sportHints: true,
         score: true,
         policyKey: true,
+        reasonCodes: true,
+        reasonDetails: true,
         matchingIntakeId: true,
         matchingSourceId: true,
         matchingOrganizationId: true,
@@ -334,12 +719,7 @@ const marketCoverageContext = async (database: CoverageDatabase, job: any) => {
       statusCounts,
       sourceTypeCounts,
       sportCounts,
-      unresolvedLeadCount: results.filter((result: any) => (
-        ['NEW', 'REVIEW_REQUIRED'].includes(result.status)
-        && !result.matchingIntakeId
-        && !result.matchingSourceId
-        && !result.matchingOrganizationId
-      )).length,
+      unresolvedLeadCount: results.filter(discoveryResultNeedsPipelineResolution).length,
     },
     neighboringCampaigns,
   };
@@ -580,8 +960,11 @@ export const storeAffiliateManualBrowserEvidence = async (input: {
   if (input.html.length === 0) throw new Error('Manual browser HTML is empty.');
   const sourceUrl = canonicalizeAffiliateIntakeUrl(input.sourceUrl);
   const finalUrl = canonicalizeAffiliateIntakeUrl(input.finalUrl ?? input.sourceUrl);
-  if (sourceUrl !== canonicalizeAffiliateIntakeUrl(page.canonicalUrl)) {
-    throw new Error('Manual evidence source URL must be the claimed failed page.');
+  if (
+    captureTargetKeyForUrl(sourceUrl, intakeId)
+    !== captureTargetKeyForUrl(page.canonicalUrl, intakeId)
+  ) {
+    throw new Error('Manual evidence source URL must be the claimed failed page or its safe canonical host variant.');
   }
   const expectedPolicyKey = affiliateDiscoveryPolicyKeyForUrl(page.canonicalUrl);
   if (
@@ -789,6 +1172,8 @@ export const completeAffiliateCoverageJob = async (
           where: { campaignId: { in: campaignIds } },
           select: {
             status: true,
+            reasonCodes: true,
+            reasonDetails: true,
             matchingIntakeId: true,
             matchingSourceId: true,
             matchingOrganizationId: true,
@@ -802,12 +1187,8 @@ export const completeAffiliateCoverageJob = async (
           select: { summary: true },
         }),
       ]);
-      const currentUnresolvedLeadCount = currentResults.filter((row: any) => (
-        ['NEW', 'REVIEW_REQUIRED'].includes(row.status)
-        && !row.matchingIntakeId
-        && !row.matchingSourceId
-        && !row.matchingOrganizationId
-      )).length;
+      const currentUnresolvedLeadCount = currentResults
+        .filter(discoveryResultNeedsPipelineResolution).length;
       if (currentUnresolvedLeadCount !== 0) {
         throw new Error(`COVERED cannot pass while ${currentUnresolvedLeadCount} current leads remain unresolved.`);
       }
@@ -825,7 +1206,17 @@ export const completeAffiliateCoverageJob = async (
         throw new Error(`COVERED cites query profiles with no successful run evidence: ${unsupportedProfiles.join(', ')}.`);
       }
     }
-    if (['CAPTURE_RECOVERED', 'MAPPER_REPAIR_REQUIRED'].includes(result.decision)) {
+    if (result.decision === 'WAITING_FOR_PIPELINE') {
+      const currentUnresolvedLeadCount = await currentMarketUnresolvedLeadCount(database, job);
+      if (
+        !result.coverageEvidence
+        || result.coverageEvidence.unresolvedLeadCount !== currentUnresolvedLeadCount
+        || currentUnresolvedLeadCount === 0
+      ) {
+        throw new Error('WAITING_FOR_PIPELINE requires the current nonzero unresolved automatic lead count.');
+      }
+    }
+    if (['CAPTURE_RECOVERED', 'MAPPER_REPAIR_REQUIRED', 'RETRY_LATER', 'SOURCE_EXCLUDED'].includes(result.decision)) {
       throw new Error('Market coverage jobs cannot use a capture repair decision.');
     }
   } else {
@@ -838,9 +1229,21 @@ export const completeAffiliateCoverageJob = async (
       });
       if (artifactCount === 0) throw new Error('Manual recovery run has no HTML or Markdown evidence.');
     }
-    if (['CAMPAIGNS_CREATED', 'COVERED'].includes(result.decision)) {
+    if (result.decision === 'RETRY_LATER' && !hasReasonCode(result.reasonCodes, CAPTURE_RETRY_REASON_CODES)) {
+      throw new Error('RETRY_LATER requires a recognized transient capture reason code.');
+    }
+    if (result.decision === 'SOURCE_EXCLUDED' && !hasReasonCode(result.reasonCodes, SOURCE_EXCLUSION_REASON_CODES)) {
+      throw new Error('SOURCE_EXCLUDED requires a recognized deterministic exclusion reason code.');
+    }
+    if (['CAMPAIGNS_CREATED', 'COVERED', 'WAITING_FOR_PIPELINE'].includes(result.decision)) {
       throw new Error('Failed capture jobs cannot use a market coverage decision.');
     }
+  }
+  if (
+    result.decision === 'HUMAN_REVIEW_REQUIRED'
+    && !hasReasonCode(result.reasonCodes, HUMAN_DECISION_REASON_CODES)
+  ) {
+    throw new Error('HUMAN_REVIEW_REQUIRED requires conflicting identity, contradictory evidence, or replacement-domain approval.');
   }
   let repairMappingJobId: string | null = null;
   if (result.decision === 'MAPPER_REPAIR_REQUIRED') {
@@ -855,20 +1258,39 @@ export const completeAffiliateCoverageJob = async (
       createIdentifier: dependencies.createIdentifier ?? createId,
     });
   }
-  const status = result.decision === 'HUMAN_REVIEW_REQUIRED'
-    ? 'HUMAN_REVIEW_REQUIRED'
-    : result.decision === 'CAMPAIGNS_CREATED'
-      ? 'QUEUED'
-      : 'COMPLETED';
+  const retryExhausted = result.decision === 'RETRY_LATER'
+    && Number(job.attemptCount ?? 0) >= MAX_CAPTURE_ATTEMPTS;
+  const retryAt = result.decision === 'RETRY_LATER' && !retryExhausted
+    ? retryAtForAttempt(now, Number(job.attemptCount ?? 1))
+    : null;
+  const storedResult = retryExhausted
+    ? {
+        ...result,
+        decision: 'SOURCE_EXCLUDED',
+        summary: `${result.summary} The bounded capture retry budget is exhausted.`,
+        reasonCodes: Array.from(new Set([...result.reasonCodes, 'RETRY_EXHAUSTED'])),
+      }
+    : retryAt
+      ? { ...result, retryAt: retryAt.toISOString() }
+      : result;
+  let status = 'COMPLETED';
+  if (result.decision === 'HUMAN_REVIEW_REQUIRED') status = 'HUMAN_REVIEW_REQUIRED';
+  if (result.decision === 'CAMPAIGNS_CREATED') status = 'QUEUED';
+  if (result.decision === 'WAITING_FOR_PIPELINE') status = 'WAITING_FOR_PIPELINE';
+  if (result.decision === 'RETRY_LATER') {
+    status = retryExhausted ? 'EXCLUDED' : 'RETRY_SCHEDULED';
+  }
+  if (result.decision === 'SOURCE_EXCLUDED') status = 'EXCLUDED';
+  const releasesClaim = ['QUEUED', 'WAITING_FOR_PIPELINE', 'RETRY_SCHEDULED'].includes(status);
   return database.jobs.update({
     where: { id: job.id },
     data: {
       status,
-      result: repairMappingJobId ? { ...result, repairMappingJobId } : result,
+      result: repairMappingJobId ? { ...storedResult, repairMappingJobId } : storedResult,
       errorMessage: status === 'HUMAN_REVIEW_REQUIRED' ? result.summary : null,
-      finishedAt: status === 'QUEUED' ? null : now,
-      claimedAt: status === 'QUEUED' ? null : job.claimedAt,
-      workerId: status === 'QUEUED' ? null : job.workerId,
+      finishedAt: releasesClaim ? null : now,
+      claimedAt: releasesClaim ? null : job.claimedAt,
+      workerId: releasesClaim ? null : job.workerId,
       leaseExpiresAt: null,
     },
   });

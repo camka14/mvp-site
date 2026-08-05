@@ -67,6 +67,11 @@ describe('Codex affiliate coverage goal', () => {
     expect(goal).toContain('league operators and tournament hosts separate coverage');
     expect(goal).toContain('one bounded manual public-page pass');
     expect(goal).toContain('MANUAL_BROWSER');
+    expect(goal).toContain('WAITING_FOR_PIPELINE');
+    expect(goal).toContain('RETRY_LATER');
+    expect(goal).toContain('SOURCE_EXCLUDED');
+    expect(goal).toContain('same-policy-key www redirect');
+    expect(goal).toContain('Review-only intermediary leads do not block coverage');
     expect(goal).toContain('return the same market job to the queue');
     expect(goal).toContain('Route broken approved-source selectors to the mapper');
     expect(goal).toContain('Do not map sources');

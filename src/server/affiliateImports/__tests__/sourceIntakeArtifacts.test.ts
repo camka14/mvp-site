@@ -29,6 +29,7 @@ jest.mock('@/lib/storageProvider', () => ({
 
 import {
   INTAKE_IMAGE_ARTIFACT_LIMIT_BYTES,
+  INTAKE_TEXT_ARTIFACT_LIMIT_BYTES,
   assertAffiliateIntakeArtifactSize,
   persistAffiliateSourceIntakeArtifact,
 } from '@/server/affiliateImports/sourceIntakeArtifacts';
@@ -54,6 +55,14 @@ describe('affiliate source intake artifacts', () => {
       'LOGO_CANDIDATE',
       INTAKE_IMAGE_ARTIFACT_LIMIT_BYTES + 1,
     )).toThrow('LOGO_CANDIDATE exceeds');
+  });
+
+  it('accepts a public HTML artifact larger than the former five-megabyte limit', () => {
+    expect(INTAKE_TEXT_ARTIFACT_LIMIT_BYTES).toBe(8 * 1024 * 1024);
+    expect(() => assertAffiliateIntakeArtifactSize(
+      'PAGE_HTML',
+      5_290_079,
+    )).not.toThrow();
   });
 
   it('uploads and records new artifact bytes', async () => {

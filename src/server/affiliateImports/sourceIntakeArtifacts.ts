@@ -7,7 +7,7 @@ import {
   type StorageGetResult,
 } from '@/lib/storageProvider';
 
-export const INTAKE_TEXT_ARTIFACT_LIMIT_BYTES = 5 * 1024 * 1024;
+export const INTAKE_TEXT_ARTIFACT_LIMIT_BYTES = 8 * 1024 * 1024;
 export const INTAKE_IMAGE_ARTIFACT_LIMIT_BYTES = 3 * 1024 * 1024;
 export const INTAKE_RUN_ARTIFACT_LIMIT_BYTES = 20 * 1024 * 1024;
 

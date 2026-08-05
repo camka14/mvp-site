@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import {
+  classifyLegacyAffiliateCoverageHumanReview,
   claimNextAffiliateCoverageJob,
   completeAffiliateCoverageJob,
   createAffiliateCoverageCampaign,
@@ -27,7 +28,7 @@ const database = (overrides: Record<string, any> = {}) => ({
   },
   discoveryRuns: { findMany: jest.fn().mockResolvedValue([]) },
   discoveryResults: { findMany: jest.fn().mockResolvedValue([]) },
-  intakes: { findUnique: jest.fn(), update: jest.fn() },
+  intakes: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn(), update: jest.fn() },
   pages: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn() },
   intakeRuns: {
     findMany: jest.fn().mockResolvedValue([]),
@@ -49,6 +50,54 @@ const database = (overrides: Record<string, any> = {}) => ({
 });
 
 describe('affiliate coverage agent queue', () => {
+  it('classifies only identity conflicts as legacy human decisions', () => {
+    expect(classifyLegacyAffiliateCoverageHumanReview({
+      subjectType: 'MARKET_COVERAGE',
+      result: { summary: 'The market still has unresolved leads.', reasonCodes: ['UNRESOLVED_LEADS'] },
+    })).toEqual(expect.objectContaining({ status: 'WAITING_FOR_PIPELINE' }));
+    expect(classifyLegacyAffiliateCoverageHumanReview({
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      result: { summary: 'The public page requires login credentials.', reasonCodes: [] },
+    })).toEqual(expect.objectContaining({
+      status: 'EXCLUDED',
+      reasonCodes: ['LOGIN_REQUIRED'],
+    }));
+    expect(classifyLegacyAffiliateCoverageHumanReview({
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      attemptCount: 1,
+      result: { summary: 'The TLS certificate failed during the public request.', reasonCodes: [] },
+    })).toEqual(expect.objectContaining({
+      status: 'RETRY_SCHEDULED',
+      reasonCodes: ['TLS_ERROR'],
+    }));
+    expect(classifyLegacyAffiliateCoverageHumanReview({
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      attemptCount: 1,
+      result: {
+        summary: 'No explicit robots prohibition was found, but robots evidence remained unavailable.',
+        reasonCodes: [],
+      },
+    })).toEqual(expect.objectContaining({
+      status: 'RETRY_SCHEDULED',
+      reasonCodes: ['ROBOTS_EVIDENCE_UNAVAILABLE'],
+    }));
+    expect(classifyLegacyAffiliateCoverageHumanReview({
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      attemptCount: 1,
+      result: { summary: 'Readable HTML exceeded the artifact byte limit.', reasonCodes: [] },
+    })).toEqual(expect.objectContaining({
+      status: 'RETRY_SCHEDULED',
+      reasonCodes: ['EVIDENCE_SIZE_LIMIT'],
+    }));
+    expect(classifyLegacyAffiliateCoverageHumanReview({
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      result: { summary: 'The page contains a conflicting organization identity.', reasonCodes: [] },
+    })).toEqual(expect.objectContaining({
+      status: 'HUMAN_REVIEW_REQUIRED',
+      reasonCodes: ['CONFLICTING_SOURCE_IDENTITY'],
+    }));
+  });
+
   it('reconciles template markets and only the latest failed or useful partial capture once', async () => {
     const db = database();
     db.campaigns.findMany.mockResolvedValue([
@@ -79,10 +128,17 @@ describe('affiliate coverage agent queue', () => {
       createIdentifier: () => `job_${++id}`,
     });
 
-    expect(first).toEqual({ marketJobsCreated: 1, failedCaptureJobsCreated: 1, totalCreated: 2 });
+    expect(first).toEqual(expect.objectContaining({
+      marketJobsCreated: 1,
+      failedCaptureJobsCreated: 1,
+      totalCreated: 2,
+    }));
     expect(second.totalCreated).toBe(0);
     expect(db.jobs.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ subjectType: 'FAILED_INTAKE_CAPTURE', subjectKey: 'run_new' }),
+      data: expect.objectContaining({
+        subjectType: 'FAILED_INTAKE_CAPTURE',
+        subjectKey: 'intake:intake_1',
+      }),
     }));
     expect(db.jobs.create).not.toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ subjectKey: 'run_old' }),
@@ -124,6 +180,106 @@ describe('affiliate coverage agent queue', () => {
       claimableJobs: 0,
       activeLeases: 2,
       claimedWithoutLease: 0,
+    }));
+  });
+
+  it('deduplicates new failed-capture work by canonical intake target', async () => {
+    const db = database();
+    db.intakeRuns.findMany.mockResolvedValue([
+      { id: 'run_1', intakeId: 'intake_1', status: 'FAILED', createdAt: now, summary: {} },
+      { id: 'run_2', intakeId: 'intake_2', status: 'FAILED', createdAt: now, summary: {} },
+    ]);
+    db.intakes.findMany.mockResolvedValue([
+      { id: 'intake_1', baseUrl: 'https://www.official.example/' },
+      { id: 'intake_2', baseUrl: 'https://official.example' },
+    ]);
+    db.jobs.findUnique.mockResolvedValue(null);
+    db.jobs.create.mockImplementation(async ({ data }: any) => data);
+
+    const result = await reconcileAffiliateCoverageJobs({ now }, {
+      database: db as any,
+      createIdentifier: () => 'coverage_job',
+    });
+
+    expect(result.failedCaptureJobsCreated).toBe(1);
+    expect(db.jobs.create).toHaveBeenCalledTimes(1);
+    expect(db.jobs.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        context: expect.objectContaining({ captureTargetKey: expect.stringMatching(/^url:/) }),
+      }),
+    }));
+  });
+
+  it('returns legacy market reviews to the queue when no automatic lead remains unresolved', async () => {
+    const job = {
+      id: 'market_job',
+      subjectType: 'MARKET_COVERAGE',
+      subjectKey: 'market_1:v5',
+      status: 'HUMAN_REVIEW_REQUIRED',
+      context: { campaignId: 'market_1' },
+      result: {
+        summary: 'Focused campaigns ran, but review-only leads remain.',
+        reasonCodes: ['UNRESOLVED_LEADS'],
+      },
+      createdAt: now,
+    };
+    const db = database();
+    db.jobs.findMany.mockResolvedValue([job]);
+    db.campaigns.findUnique.mockResolvedValue({ id: 'market_1', region: 'Portland, Oregon' });
+    db.discoveryResults.findMany.mockResolvedValue([{
+      status: 'REVIEW_REQUIRED',
+      reasonCodes: ['MANUAL_REVIEW_ONLY'],
+      reasonDetails: { autoPromotionEligible: false },
+      matchingIntakeId: null,
+      matchingSourceId: null,
+      matchingOrganizationId: null,
+    }]);
+    db.jobs.update.mockResolvedValue({});
+
+    const result = await reconcileAffiliateCoverageJobs({ now }, { database: db as any });
+
+    expect(result.legacyHumanReviewsReclassified).toBe(1);
+    expect(result.waitingJobsRequeued).toBe(1);
+    expect(db.jobs.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'market_job' },
+      data: expect.objectContaining({ status: 'QUEUED' }),
+    }));
+  });
+
+  it('schedules a delayed retry when reconciliation migrates a transient legacy review', async () => {
+    const job = {
+      id: 'capture_job',
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      subjectKey: 'failed_run',
+      status: 'HUMAN_REVIEW_REQUIRED',
+      attemptCount: 1,
+      context: { intakeId: 'intake_1', runId: 'failed_run' },
+      result: {
+        summary: 'The TLS certificate check failed before public evidence was captured.',
+        reasonCodes: ['TLS_FAILURE'],
+      },
+      createdAt: now,
+    };
+    const db = database();
+    db.jobs.findMany.mockResolvedValue([job]);
+    db.intakes.findMany.mockResolvedValue([{
+      id: 'intake_1', baseUrl: 'https://official.example/',
+    }]);
+    db.jobs.update.mockResolvedValue({});
+
+    const result = await reconcileAffiliateCoverageJobs({ now }, { database: db as any });
+
+    expect(result.legacyRetriesScheduled).toBe(1);
+    expect(result.retryJobsRequeued).toBe(0);
+    expect(db.jobs.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'capture_job' },
+      data: expect.objectContaining({
+        status: 'RETRY_SCHEDULED',
+        result: expect.objectContaining({
+          retryAt: '2026-08-03T17:00:00.000Z',
+          reasonCodes: ['TLS_FAILURE', 'TLS_ERROR'],
+        }),
+      }),
     }));
   });
 
@@ -294,7 +450,8 @@ describe('affiliate coverage agent queue', () => {
       jobId: 'repair_job',
       agentId: 'coverage-1',
       pageId: 'page_1',
-      sourceUrl: 'https://official.example/programs',
+      sourceUrl: 'https://www.official.example/programs',
+      finalUrl: 'https://www.official.example/programs',
       html,
       notes: 'One public browser navigation rendered the official page without authentication.',
     }, {
@@ -311,6 +468,8 @@ describe('affiliate coverage agent queue', () => {
     expect(persistArtifact).toHaveBeenCalledWith(expect.objectContaining({
       kind: 'PAGE_HTML',
       provider: 'MANUAL_BROWSER',
+      sourceUrl: 'https://www.official.example/programs',
+      finalUrl: 'https://www.official.example/programs',
     }));
     expect(db.intakes.update).toHaveBeenCalledWith({
       where: { id: 'intake_1' },
@@ -486,7 +645,14 @@ describe('affiliate coverage agent queue', () => {
       leaseExpiresAt: new Date('2026-08-03T18:30:00.000Z'),
       context: { campaignId: 'market_1' },
     });
-    db.discoveryResults.findMany.mockResolvedValue([]);
+    db.discoveryResults.findMany.mockResolvedValue([{
+      status: 'REVIEW_REQUIRED',
+      reasonCodes: ['MANUAL_REVIEW_ONLY'],
+      reasonDetails: { autoPromotionEligible: false },
+      matchingIntakeId: null,
+      matchingSourceId: null,
+      matchingOrganizationId: null,
+    }]);
     db.discoveryRuns.findMany.mockResolvedValue([{
       summary: {
         queries: [
@@ -518,5 +684,83 @@ describe('affiliate coverage agent queue', () => {
       where: { id: 'job_1' },
       data: expect.objectContaining({ status: 'COMPLETED', finishedAt: now }),
     });
+  });
+
+  it('schedules a bounded transient retry and excludes an exhausted retry', async () => {
+    const baseJob = {
+      id: 'capture_job',
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      status: 'CLAIMED',
+      workerId: 'coverage-1',
+      claimedAt: now,
+      leaseExpiresAt: new Date('2026-08-03T18:30:00.000Z'),
+      context: { intakeId: 'intake_1' },
+    };
+    const db = database();
+    db.jobs.findUnique.mockResolvedValue({ ...baseJob, attemptCount: 1 });
+    db.jobs.update.mockResolvedValue({ id: 'capture_job', status: 'RETRY_SCHEDULED' });
+    await completeAffiliateCoverageJob({
+      schemaVersion: 1,
+      jobId: 'capture_job',
+      agentId: 'coverage-1',
+      decision: 'RETRY_LATER',
+      summary: 'A transient TLS failure prevented the bounded public capture.',
+      campaignIds: [],
+      coverageEvidence: null,
+      reasonCodes: ['TLS_ERROR'],
+    }, { database: db as any, now: () => now });
+    expect(db.jobs.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'RETRY_SCHEDULED',
+        result: expect.objectContaining({ retryAt: '2026-08-03T17:00:00.000Z' }),
+        claimedAt: null,
+        workerId: null,
+      }),
+    }));
+
+    db.jobs.findUnique.mockResolvedValue({ ...baseJob, attemptCount: 3 });
+    await completeAffiliateCoverageJob({
+      schemaVersion: 1,
+      jobId: 'capture_job',
+      agentId: 'coverage-1',
+      decision: 'RETRY_LATER',
+      summary: 'The public endpoint still returns a transient network error.',
+      campaignIds: [],
+      coverageEvidence: null,
+      reasonCodes: ['NETWORK_ERROR'],
+    }, { database: db as any, now: () => now });
+    expect(db.jobs.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'EXCLUDED',
+        result: expect.objectContaining({
+          decision: 'SOURCE_EXCLUDED',
+          reasonCodes: ['NETWORK_ERROR', 'RETRY_EXHAUSTED'],
+        }),
+        finishedAt: now,
+      }),
+    }));
+  });
+
+  it('rejects generic human-review completion without a human decision reason', async () => {
+    const db = database();
+    db.jobs.findUnique.mockResolvedValue({
+      id: 'capture_job',
+      subjectType: 'FAILED_INTAKE_CAPTURE',
+      status: 'CLAIMED',
+      workerId: 'coverage-1',
+      leaseExpiresAt: new Date('2026-08-03T18:30:00.000Z'),
+    });
+    await expect(completeAffiliateCoverageJob({
+      schemaVersion: 1,
+      jobId: 'capture_job',
+      agentId: 'coverage-1',
+      decision: 'HUMAN_REVIEW_REQUIRED',
+      summary: 'The website returned an inconclusive public access response.',
+      campaignIds: [],
+      coverageEvidence: null,
+      reasonCodes: ['INACCESSIBLE_EVIDENCE'],
+    }, { database: db as any, now: () => now })).rejects.toThrow(
+      'HUMAN_REVIEW_REQUIRED requires conflicting identity',
+    );
   });
 });

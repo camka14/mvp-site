@@ -446,6 +446,45 @@ describe('affiliate source discovery rules', () => {
     expect(unrelated.reasonCodes).toContain('NO_SPORTS_SIGNAL');
   });
 
+  it('rejects foreign government domains that repeat a United States search query', () => {
+    const query = {
+      query: 'Indianapolis, Indiana Basketball league operator leagues registration association official',
+      sportId: 'sport_basketball',
+      sportName: 'Basketball',
+      sourceType: 'LEAGUE',
+      profileSourceTypes: ['LEAGUE'],
+      templateKey: 'PROFILE:league-operators',
+      targetCity: 'Indianapolis',
+      targetState: 'Indiana',
+    };
+    for (const input of [
+      {
+        url: 'https://wb.gov.in/basketball-league-indianapolis',
+        title: 'Basketball League Indianapolis Indiana',
+      },
+      {
+        url: 'https://emms.ap.gov.in/indianapolis-football',
+        title: 'Indianapolis Football League Registration',
+      },
+      {
+        url: 'https://rera.wb.gov.in/soccer-clubs-in-tulsa',
+        title: 'Soccer Clubs in Tulsa',
+      },
+    ]) {
+      const result = evaluateAffiliateSourceDiscoveryResult({
+        ...input,
+        description: 'Official sports league registration and association.',
+        query,
+        campaignRegion: 'Indianapolis, Indiana metropolitan area',
+        selectedSports: [{ id: 'sport_basketball', name: 'Basketball' }],
+        currentYear: 2026,
+      });
+      expect(result.status).toBe('REJECTED');
+      expect(result.autoPromotionEligible).toBe(false);
+      expect(result.reasonCodes).toEqual(['FOREIGN_GOVERNMENT_DOMAIN']);
+    }
+  });
+
   it('uses registrable domains and isolates shared-platform tenants', () => {
     expect(affiliateDiscoveryPolicyKeyForUrl('https://events.example.co.uk/tryouts')).toBe('example.co.uk');
     expect(affiliateDiscoveryPolicyKeyForUrl('https://stonewallsportssf.leagueapps.com/leagues')).toBe('stonewallsportssf.leagueapps.com');

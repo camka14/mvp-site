@@ -62,10 +62,43 @@ Every result uses:
 Allowed decisions are:
 
 - `CAMPAIGNS_CREATED`: Use only for a market job and include at least one campaign ID. Run each listed campaign first. Completion returns the market job to `QUEUED` for a fresh assessment.
-- `COVERED`: Use only for a market job. Include two source families, completed profiles backed by successful run summaries, at least two recent yields, and `unresolvedLeadCount: 0`. Include all focused campaign IDs whose results support the decision.
+- `COVERED`: Use only for a market job. Include two source families, completed profiles backed by successful run summaries, at least two recent yields, and `unresolvedLeadCount: 0`. This count includes only unlinked, automatically promotable direct results. Include all focused campaign IDs whose results support the decision.
+- `WAITING_FOR_PIPELINE`: Use only for a market job with a current nonzero count of unlinked, automatically promotable direct results. Include that count in `coverageEvidence`. Reconciliation returns the job to `QUEUED` after the count reaches zero.
 - `CAPTURE_RECOVERED`: Use only for a failed-capture job and include the successful manual run ID.
 - `MAPPER_REPAIR_REQUIRED`: Use when an existing scraper package needs implementation repair.
-- `HUMAN_REVIEW_REQUIRED`: Use when safe automated work cannot resolve the evidence.
+- `RETRY_LATER`: Use only for a transient failed-capture condition. Reconciliation queues the job after a bounded delay. The server changes an exhausted retry to `SOURCE_EXCLUDED`.
+- `SOURCE_EXCLUDED`: Use for a deterministic source exclusion that must not retry.
+- `HUMAN_REVIEW_REQUIRED`: Use only for conflicting identity, contradictory evidence, or replacement-domain approval.
+
+Use one of these reason codes with `RETRY_LATER`:
+
+- `EVIDENCE_SIZE_LIMIT`
+- `HTTP_429`
+- `HTTP_5XX`
+- `JAVASCRIPT_RENDER_REQUIRED`
+- `NETWORK_ERROR`
+- `ROBOTS_EVIDENCE_UNAVAILABLE`
+- `STORED_HTML_AVAILABLE`
+- `TLS_ERROR`
+- `TRANSIENT_ACCESS_FAILURE`
+
+Use one of these reason codes with `SOURCE_EXCLUDED`:
+
+- `CAPTCHA_REQUIRED`
+- `DUPLICATE_CAPTURE_TARGET`
+- `EXPLICIT_PROHIBITION`
+- `HELDOUT_SOURCE`
+- `LOGIN_REQUIRED`
+- `RETRY_EXHAUSTED`
+- `SOURCE_NOT_FOUND`
+- `UNRELATED_SOURCE`
+- `UNSUPPORTED_SOURCE`
+
+Use one of these reason codes with `HUMAN_REVIEW_REQUIRED`:
+
+- `CONFLICTING_SOURCE_IDENTITY`
+- `CONTRADICTORY_EVIDENCE`
+- `REPLACEMENT_DOMAIN_APPROVAL_REQUIRED`
 
 A covered result uses evidence such as:
 
@@ -79,9 +112,11 @@ A covered result uses evidence such as:
 
 ## Retry and stopping rules
 
-One failed-capture job permits one manual public-page pass. Do not loop. A new official URL needs governed intake handling and cannot be inferred from a similar name.
+One claim permits one manual public-page pass. Reconciliation can schedule another claim only for a recognized transient reason and stops after three total claims. A same-policy-key `www` redirect is not a replacement source. A new policy key needs governed intake handling and cannot be inferred from a similar name.
 
-Complete every claimed job. Use human review rather than releasing a non-transient evidence problem. An expired lease can be reclaimed; an active lease cannot.
+The manual-evidence command can use public HTML already exported from the failed page. State this provenance in `notes`. Do not relabel login, CAPTCHA, browser-error, or unrelated content as public evidence.
+
+Complete every claimed job. Use an exclusion for a deterministic non-transient source problem. Use human review only for the three human decision reason codes. An expired lease can be reclaimed; an active lease cannot.
 
 The final queue report must show:
 

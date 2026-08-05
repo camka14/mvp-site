@@ -20,6 +20,11 @@ The new worker does not replace deterministic search or capture code. It does no
 - [x] (2026-08-03 17:08Z) Added the Luna max and fast goal launcher, single-goal supervisor loop, and package commands.
 - [x] (2026-08-03 17:08Z) Completed the skill contract and focused tests. Skill validation, Prisma validation, ESLint, TypeScript, the dry run, and the production build pass.
 - [x] (2026-08-04) Removed the fast-mode and fast-service-tier invocation overrides. Kept Luna at `max` reasoning effort.
+- [x] (2026-08-04) Replaced generic human-review outcomes with explicit pipeline-wait, bounded-retry, source-exclusion, and true human-review states.
+- [x] (2026-08-04) Deduplicated failed-capture work by canonical intake target and added legacy duplicate migration to reconciliation.
+- [x] (2026-08-04) Rejected foreign government search results for United States campaigns, allowed safe same-policy-key redirects, and raised the public HTML artifact limit to 8 MiB.
+- [ ] (2026-08-04) Reclassify the existing live coverage human-review backlog through the new deterministic rules after an authorized deployment.
+- [x] (2026-08-04) Passed 45 focused tests, targeted ESLint, TypeScript, the Luna goal dry run, and `git diff --check`.
 
 ## Surprises & Discoveries
 
@@ -37,6 +42,12 @@ The new worker does not replace deterministic search or capture code. It does no
 
 - Observation: The production build regenerates the tracked Prisma client and requires the new generated coverage-job model.
   Evidence: `npm run build` passed `prisma:check`, regenerated the client, and completed the Next.js production build.
+
+- Observation: The first live queue collapsed routine wait, retry, and exclusion conditions into `HUMAN_REVIEW_REQUIRED`.
+  Evidence: All 44 market jobs required human review only because unresolved discovery leads still existed. Most of the 54 failed-capture reviews were transient access failures, deterministic exclusions, duplicate targets, or recoverable evidence-size failures. Only conflicting source identity required a person.
+
+- Observation: A review-only search result is not always unfinished pipeline work.
+  Evidence: Directory and intermediary results remain useful research leads, but they cannot be promoted automatically. Counting every such result as unresolved prevented any market from reaching a stable state.
 
 ## Decision Log
 
@@ -64,11 +75,31 @@ The new worker does not replace deterministic search or capture code. It does no
   Rationale: The loop must not start a second goal while the first goal owns queue work. A database lock also prevents two supervisor processes from launching duplicate goals.
   Date/Author: 2026-08-03 / Codex
 
+- Decision: Add `WAITING_FOR_PIPELINE`, `RETRY_SCHEDULED`, and `EXCLUDED` job states.
+  Rationale: These states describe normal automated outcomes. They keep human review for conflicting identity, contradictory evidence, and replacement-domain approval only.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Count only unlinked, automatically promotable direct results as unresolved pipeline leads.
+  Rationale: Intermediary and review-only results can inform coverage, but they do not represent unfinished automatic intake work.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Limit failed-capture retries and convert exhausted or clearly unusable sources to an explicit exclusion.
+  Rationale: Transient failures deserve another bounded attempt. Persistent login, prohibition, missing-source, and exhausted-retry outcomes must stop without creating repeated agent work.
+  Date/Author: 2026-08-04 / Codex
+
+- Decision: Store retry timing in the existing job result JSON.
+  Rationale: Coverage statuses are strings and job results are JSON. The new state machine does not need a database migration.
+  Date/Author: 2026-08-04 / Codex
+
 ## Outcomes & Retrospective
 
 The Coverage Agent is implemented locally. It can create bounded focused campaigns, distinguish league operators from tournament hosts, reassess parent and focused campaign results, recover one failed public intake capture with durable evidence, and create a real mapper repair job when selectors have drifted. Its leased queue and supervisor prevent duplicate work.
 
 Five focused Jest suites pass with 36 tests. The skill validator, Prisma schema validation, targeted ESLint, `tsc --noEmit`, launcher dry run, `git diff --check`, generated Prisma client check, and Next.js production build pass. No runtime, timer, campaign, provider request, live database, process, or deployment changed during implementation.
+
+The 2026-08-04 recovery code is complete. Reconciliation now migrates legacy queue outcomes, collapses canonical duplicate capture targets, and requeues only eligible waiting or retry work. The discovery evaluator rejects foreign government domains for United States campaigns. The manual evidence path accepts same-policy-key `www` redirects and public HTML up to 8 MiB.
+
+Five focused Jest suites pass with 45 tests. Targeted ESLint, TypeScript, the Luna goal dry run, and `git diff --check` pass. The skill validator could not start because each available Python runtime lacks the `yaml` module. The skill frontmatter and referenced contract were inspected directly. No live database, runtime, provider request, deployment, or process changed during this recovery implementation. The live reclassification counts remain pending until an authorized deployment runs reconciliation.
 
 ## Context and Orientation
 
@@ -93,6 +124,12 @@ Fifth, add a manual evidence command for a claimed failed-capture job. It reads 
 Sixth, add queue, reconcile, claim, campaign-create, manual-evidence, and complete scripts plus package commands. Add `codexCoverageGoal.ts` and `run-affiliate-coverage-codex-goal.ts`. The goal must reconcile, check status, claim one job, finish it, and repeat until claimable jobs and active leases are zero.
 
 Finally, replace the initialized skill placeholders with concise workflow instructions and a detailed completion contract. Add a supervisor loop that keeps one goal active at a time. Add Jest coverage for profile generation, race-safe claims, idempotent campaigns, manual evidence validation, completion states, mapper repair, the supervisor wait boundary, and goal text. Validate the skill, Prisma schema, TypeScript, focused tests, and changed-file whitespace.
+
+The recovery milestone extends reconciliation before it creates new work. Reconciliation must migrate legacy market reviews with unresolved leads to `WAITING_FOR_PIPELINE`. It must requeue the market only after automatically promotable direct leads are resolved. It must classify failed captures as a bounded retry, a deterministic exclusion, or a true human decision. It must also collapse duplicate failed-capture jobs that refer to the same canonical intake target.
+
+The completion command must accept `WAITING_FOR_PIPELINE`, `RETRY_LATER`, and `SOURCE_EXCLUDED`. It must enforce job-type and reason-code rules. It must schedule retries with a bounded delay, stop after the retry limit, and clear every released lease. The goal and skill must use the same decisions.
+
+Discovery scoring must reject foreign government domains for United States campaigns before promotion. Manual evidence may follow a `www` or non-`www` redirect when both URLs share the same policy key. The text artifact limit must accept the known 5.3 MB public HTML page while the total run limit remains bounded.
 
 ## Concrete Steps
 

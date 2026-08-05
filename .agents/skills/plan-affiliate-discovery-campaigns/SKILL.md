@@ -41,29 +41,37 @@ Separate the organization archetype from its event types. One competition operat
 
 Create focused campaigns when a sport or archetype has weak coverage. Prefer metro searches for local operators and regional or state language for governing associations. Use `LEAGUE` and `TOURNAMENT` as separate campaign source types. Do not create arbitrary query text, duplicate a campaign fingerprint, or use provider calls outside the deterministic campaign runner.
 
-Run every created campaign with the exact discovery-run command in the active goal. Then complete the job as `CAMPAIGNS_CREATED`. This returns the same market assessment to the queue. Reclaim it to receive fresh campaign results and reassess. Continue until the evidence supports `COVERED` or requires human review.
+Run every created campaign with the exact discovery-run command in the active goal. Then complete the job as `CAMPAIGNS_CREATED`. This returns the same market assessment to the queue. Reclaim it to receive fresh campaign results and reassess. Continue until the evidence supports `COVERED` or the job must wait for the intake pipeline.
 
 Mark a market `COVERED` only when:
 
 - at least two independent source families were checked;
 - the relevant query profiles completed;
-- no discovered lead remains unresolved;
+- no automatically promotable direct lead remains unresolved;
 - recent new-domain yields are recorded;
 - failed intake captures for the assessed evidence have a terminal outcome.
 
-Organization count alone does not prove coverage. Peer-market differences are anomaly signals only.
+Review-only intermediary and directory results can inform the assessment, but they do not block coverage. Organization count alone does not prove coverage. Peer-market differences are anomaly signals only.
+
+Use `WAITING_FOR_PIPELINE` only when the claim reports a nonzero count of unlinked, automatically promotable direct results. Include the exact current count. Reconciliation will return the job after those leads resolve.
 
 ## Recover failed intake captures
 
-Export and inspect the stored failed run first. Identify the exact failed page and reason. Then perform one bounded manual public-page navigation or direct request when no explicit prohibition exists.
+Export and inspect the stored failed run first. Identify the exact failed page and reason. Then perform one bounded manual public-page navigation or direct request when no explicit prohibition exists. Reconciliation can later schedule one bounded retry for a transient failure.
 
 Do not use credentials, login sessions, CAPTCHA solving, stealth evasion, proxy rotation, or repeated retries. Do not bypass `DISALLOWED` robots evidence or a blocked domain policy. A public page that requires authentication is not manually recoverable.
 
-When the page is readable, save the final HTML and an optional screenshot in the workspace. Submit them through the manual-evidence command. The command must create a supplemental `MANUAL_BROWSER` run and durable HTML or Markdown artifacts before the job can use `CAPTURE_RECOVERED`.
+When the page is readable, save the final HTML and an optional screenshot in the workspace. Submit them through the manual-evidence command. Public HTML already stored for the failed page is valid input when its provenance is recorded. The final URL can add or remove `www` only when it has the same policy key as the claimed page. The command must create a supplemental `MANUAL_BROWSER` run and durable HTML or Markdown artifacts before the job can use `CAPTURE_RECOVERED`.
 
-If the official URL moved, do not silently attach another domain's content. Record the replacement as human review unless the governed intake workflow has created or linked the replacement page.
+If the official URL moved to another policy key, do not silently attach that domain's content. Record `REPLACEMENT_DOMAIN_APPROVAL_REQUIRED` for human review unless the governed intake workflow has created or linked the replacement page.
 
-If stored evidence shows an existing approved scraper has broken selectors, return `MAPPER_REPAIR_REQUIRED`. Do not edit scraper packages from this role. Use `HUMAN_REVIEW_REQUIRED` for explicit prohibitions, login-only pages, conflicting identity, inaccessible evidence, or a replacement domain that needs approval.
+If stored evidence shows an existing approved scraper has broken selectors, return `MAPPER_REPAIR_REQUIRED`. Do not edit scraper packages from this role.
+
+Classify other outcomes with these exact decisions:
+
+- Use `RETRY_LATER` for a transient network, TLS, HTTP 429 or 5xx, unavailable robots evidence, JavaScript render, stored-HTML, or evidence-size problem. Use the matching reason code from the completion contract.
+- Use `SOURCE_EXCLUDED` for login, CAPTCHA, explicit prohibition, heldout, missing, unrelated, unsupported, duplicate, or exhausted-retry sources.
+- Use `HUMAN_REVIEW_REQUIRED` only for `CONFLICTING_SOURCE_IDENTITY`, `CONTRADICTORY_EVIDENCE`, or `REPLACEMENT_DOMAIN_APPROVAL_REQUIRED`.
 
 ## Preserve boundaries
 

@@ -9,7 +9,10 @@ export const AFFILIATE_COVERAGE_JOB_TYPES = [
 export const AFFILIATE_COVERAGE_JOB_STATUSES = [
   'QUEUED',
   'CLAIMED',
+  'WAITING_FOR_PIPELINE',
+  'RETRY_SCHEDULED',
   'COMPLETED',
+  'EXCLUDED',
   'HUMAN_REVIEW_REQUIRED',
 ] as const;
 
@@ -19,6 +22,9 @@ export const AFFILIATE_COVERAGE_DECISIONS = [
   'COVERED',
   'HUMAN_REVIEW_REQUIRED',
   'MAPPER_REPAIR_REQUIRED',
+  'RETRY_LATER',
+  'SOURCE_EXCLUDED',
+  'WAITING_FOR_PIPELINE',
 ] as const;
 
 const agentId = z.string().trim().regex(

@@ -387,6 +387,24 @@ export const evaluateAffiliateSourceDiscoveryResult = (
   const policyKey = affiliateDiscoveryPolicyKeyForUrl(canonicalUrl);
   const url = new URL(canonicalUrl);
   const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  const targetsUnitedStatesMarket = Boolean(
+    input.query.targetState && STATE_ABBREVIATIONS[input.query.targetState],
+  );
+  const foreignGovernmentHost = /(?:^|\.)(?:gov|gob|gouv)\.[a-z]{2,3}$/i.test(host);
+  if (targetsUnitedStatesMarket && foreignGovernmentHost) {
+    return {
+      canonicalUrl,
+      policyKey,
+      score: 0,
+      status: 'REJECTED',
+      classification: 'UNSUPPORTED',
+      autoPromotionEligible: false,
+      sourceTypeHints: [],
+      sportHints: [],
+      reasonCodes: ['FOREIGN_GOVERNMENT_DOMAIN'],
+      reasons: ['A foreign government domain cannot be a direct source for a United States sports market.'],
+    };
+  }
   const text = `${input.title ?? ''} ${input.description ?? ''} ${host} ${url.pathname}`.toLowerCase();
   const currentYear = input.currentYear ?? input.now?.getUTCFullYear() ?? new Date().getUTCFullYear();
   const now = input.now ?? new Date();
