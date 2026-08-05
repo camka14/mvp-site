@@ -23,6 +23,7 @@ import type {
   AffiliateDateDisplayMode,
   AffiliateScrapeMapping,
 } from './types';
+import { validateAffiliateAgentSportName } from './affiliateSportMapping';
 
 export type AffiliateGoldScenarioIntent =
   | 'EXECUTABLE_MAPPING'
@@ -613,6 +614,27 @@ export const materializeAffiliateMappingGoldExample = async (
         );
       }
     }
+  }
+
+  const sportIssues = expectedCandidates.flatMap((candidate, index) => {
+    const issue = validateAffiliateAgentSportName(
+      candidate.sportName,
+      `expectedCandidates.${index}.sportName`,
+    );
+    return issue ? [issue] : [];
+  });
+  if (sportIssues.length > 0 && (
+    implementationMode === 'GENERIC_MAPPING'
+    || implementationMode === 'MANUAL_CANDIDATES'
+  )) {
+    warnings.push(
+      `Unsupported or non-canonical sport mapping held for human review: ${Array.from(new Set(
+        sportIssues.map((issue) => issue.sportName ?? '<missing>'),
+      )).join(', ')}.`,
+    );
+    implementationMode = 'INSUFFICIENT_EVIDENCE';
+    approvedMapping = null;
+    expectedCandidates = [];
   }
 
   const approvedDraft = draftFor({

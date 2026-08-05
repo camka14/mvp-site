@@ -26,7 +26,7 @@ const candidate = {
   title: 'River City Summer League',
   officialActionUrl: 'https://rivercity.example/register',
   sourceUrl: 'https://rivercity.example/events',
-  sportName: 'Soccer',
+  sportName: 'Grass Soccer',
   tags: ['League'],
   venueName: 'River City Sports Complex',
   address: '100 Main Street',
@@ -147,6 +147,7 @@ describe('affiliate mapping agent contracts', () => {
           title: candidate.title,
           officialActionUrl: candidate.officialActionUrl,
           sourceUrl: candidate.sourceUrl,
+          sportName: candidate.sportName,
           dateDisplayMode: candidate.dateDisplayMode,
           dateDisplayText: candidate.dateDisplayText,
         }],
@@ -178,6 +179,20 @@ describe('affiliate mapping agent contracts', () => {
     });
     expect(result.success).toBe(false);
     expect(result.error?.issues.some((issue) => issue.path[0] === 'mapping')).toBe(true);
+  });
+
+  it('rejects generic or composite sport labels in executable agent output', () => {
+    const generic = affiliateSourceDraftSchema.safeParse({
+      ...allowedDraft,
+      expectedCandidates: [{ ...candidate, sportName: 'Volleyball' }],
+    });
+    const composite = affiliateSourceDraftSchema.safeParse({
+      ...allowedDraft,
+      expectedCandidates: [{ ...candidate, sportName: 'Baseball & Fastpitch Softball' }],
+    });
+    expect(generic.success).toBe(false);
+    expect(composite.success).toBe(false);
+    expect(generic.error?.issues.some((issue) => issue.message.includes('human review'))).toBe(true);
   });
 
   it('rejects an internal BracketIQ action URL', () => {

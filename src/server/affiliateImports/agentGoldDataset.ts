@@ -18,6 +18,7 @@ import {
   type AffiliateMappingTeachingEnvelope,
   type AffiliateMappingSftRelease,
 } from './agentTrainingRelease';
+import { validateAffiliateAgentSportName } from './affiliateSportMapping';
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/i, 'Expected a SHA-256 hash.');
 const nonEmptyStringSchema = z.string().trim().min(1);
@@ -162,6 +163,17 @@ const validatePersistedCandidate = (
   approvedAt: string,
   context: z.RefinementCtx,
 ) => {
+  const sportIssue = validateAffiliateAgentSportName(
+    candidate.sportName,
+    `expectedPersistedCandidates.${candidateIndex}.sportName`,
+  );
+  if (sportIssue) {
+    context.addIssue({
+      code: 'custom',
+      path: ['expectedPersistedCandidates', candidateIndex, 'sportName'],
+      message: sportIssue.message,
+    });
+  }
   if (!isExternalOfficialUrl(candidate.officialActionUrl)) {
     context.addIssue({
       code: 'custom',

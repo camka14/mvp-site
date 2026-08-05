@@ -82,6 +82,32 @@ describe('default sports', () => {
     });
   });
 
+  it('seeds Badminton and Flag Football with complete event-creation rules', async () => {
+    const createMany = jest.fn().mockResolvedValue(undefined);
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const client = {
+      sports: { findMany, createMany, update: jest.fn() },
+    };
+
+    await ensureDefaultSports(client as any);
+
+    const seeded = createMany.mock.calls[0][0].data;
+    const badminton = seeded.find((sport: any) => sport.id === 'Badminton');
+    const flagFootball = seeded.find((sport: any) => sport.id === 'Flag Football');
+    expect(badminton).toMatchObject({ id: 'Badminton', name: 'Badminton' });
+    expect(badminton.matchRulesTemplate).toMatchObject({ scoringModel: 'SETS', segmentLabel: 'Game' });
+    expect(badminton.officialPositionTemplates).toEqual([{ name: 'Umpire', count: 1 }]);
+    expect(flagFootball).toMatchObject({ id: 'Flag Football', name: 'Flag Football' });
+    expect(flagFootball.matchRulesTemplate).toMatchObject({ scoringModel: 'PERIODS', segmentCount: 2 });
+    expect(flagFootball.officialPositionTemplates).toEqual([
+      { name: 'Referee', count: 1 },
+      { name: 'Field Judge', count: 1 },
+    ]);
+  });
+
   it('prefers the row whose stable ID already matches the canonical name', () => {
     const duplicateWithMoreConfiguration = {
       id: 'sport_indoor_volleyball_duplicate',

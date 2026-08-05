@@ -80,7 +80,7 @@ describe('affiliate mapping gold materialization', () => {
       title: 'River City Summer League',
       officialActionUrl: 'https://register.river.example/summer',
       sourceUrl: 'https://river.example/events',
-      sportName: 'Soccer',
+      sportName: 'Grass Soccer',
       startsAt,
       dateDisplayMode: 'SCHEDULED',
       dateDisplayText: 'September 1, 2026',

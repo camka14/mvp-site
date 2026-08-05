@@ -58,7 +58,7 @@ const allowedDraft = {
     title: 'River City Summer League',
     officialActionUrl: 'https://rivercity.example/register',
     sourceUrl: 'https://rivercity.example/events',
-    sportName: 'Soccer',
+    sportName: 'Grass Soccer',
     tags: ['League'],
     venueName: 'River City Sports Complex',
     address: '100 Main Street',

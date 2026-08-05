@@ -57,6 +57,7 @@ const draft = {
     listingKind: 'EVENT',
     title: 'River City Summer League',
     officialActionUrl: 'https://rivercity.example/register',
+    sportName: 'Grass Soccer',
     tags: ['League'],
     divisions: [],
   }],

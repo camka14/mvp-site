@@ -4,6 +4,7 @@ import {
   affiliateScrapeMappingSchema,
   type AffiliateScrapeMapping,
 } from './types';
+import { collectAffiliateAgentSportIssues } from './affiliateSportMapping';
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/i, 'Expected a SHA-256 hash.');
 const nonEmptyStringSchema = z.string().trim().min(1);
@@ -320,6 +321,13 @@ export const affiliateSourceDraftSchema = z.object({
           message: 'Expected candidate kind must match the draft listing kind.',
         });
       }
+    });
+  }
+  for (const issue of collectAffiliateAgentSportIssues(draft)) {
+    context.addIssue({
+      code: 'custom',
+      path: issue.path.split('.'),
+      message: issue.message,
     });
   }
   validateScheduledEvidence(draft, context);

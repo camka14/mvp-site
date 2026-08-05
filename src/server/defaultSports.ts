@@ -318,7 +318,19 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     incidentTypeDefinitions: pickleballIncidentDefinitions,
     supportedIncidentTypes: incidentCodes(pickleballIncidentDefinitions),
   }),
+  Badminton: setBasedRules({
+    segmentLabel: 'Game',
+    incidentTypeDefinitions: tennisIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(tennisIncidentDefinitions),
+  }),
   Football: periodRules(4, 'Quarter', 15, {
+    supportsDraw: true,
+    supportsOvertime: true,
+    canUseOvertime: true,
+    incidentTypeDefinitions: footballIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(footballIncidentDefinitions),
+  }),
+  'Flag Football': periodRules(2, 'Half', 25, {
     supportsDraw: true,
     supportsOvertime: true,
     canUseOvertime: true,
@@ -422,12 +434,19 @@ const OFFICIAL_POSITION_TEMPLATES_BY_SPORT: Record<string, SportOfficialPosition
   Pickleball: [
     { name: 'Referee', count: 1 },
   ],
+  Badminton: [
+    { name: 'Umpire', count: 1 },
+  ],
   Football: [
     { name: 'Referee', count: 1 },
     { name: 'Umpire', count: 1 },
     { name: 'Head Linesman', count: 1 },
     { name: 'Line Judge', count: 1 },
     { name: 'Back Judge', count: 1 },
+  ],
+  'Flag Football': [
+    { name: 'Referee', count: 1 },
+    { name: 'Field Judge', count: 1 },
   ],
   Hockey: [
     { name: 'Referee', count: 2 },
@@ -565,6 +584,19 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     usePointsPerGoalConceded: false,
   },
   {
+    id: 'Badminton',
+    name: 'Badminton',
+    officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Badminton),
+    skillDivisionTypes: skillDivisionTypesForSport('Badminton'),
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Badminton),
+    usePointsForWin: true,
+    usePointsForLoss: true,
+    usePointsPerSetWin: true,
+    usePointsPerSetLoss: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
+  },
+  {
     id: 'Racquetball',
     name: 'Racquetball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Racquetball),
@@ -587,6 +619,18 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
       { id: 'open', name: 'Open' },
     ]),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Football),
+    usePointsForWin: true,
+    usePointsForDraw: true,
+    usePointsForLoss: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
+  },
+  {
+    id: 'Flag Football',
+    name: 'Flag Football',
+    officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Flag Football']),
+    skillDivisionTypes: skillDivisionTypesForSport('Flag Football'),
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Flag Football']),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,

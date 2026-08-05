@@ -299,6 +299,39 @@ const candidatePersistenceData = (params: {
   };
 };
 
+const AFFILIATE_SPORT_REVIEW_WARNING =
+  'Sport mapping is not a canonical Sports.name; human review is required.';
+
+const quarantineAffiliateCandidateTarget = async (candidate: any): Promise<void> => {
+  const { events, facilities, organizations } = affiliatePrisma();
+  const eventId = nullableString(candidate.publishedEventId);
+  if (eventId) {
+    await events.updateMany({
+      where: { id: eventId, state: 'PUBLISHED' },
+      data: { state: 'UNPUBLISHED', updatedAt: new Date() },
+    });
+  }
+  const facilityId = nullableString(candidate.publishedFacilityId);
+  if (facilityId) {
+    await facilities.updateMany({
+      where: { id: facilityId, status: 'ACTIVE' },
+      data: { status: 'DRAFT', updatedAt: new Date() },
+    });
+  }
+  const organizationId = nullableString(candidate.publishedOrganizationId);
+  if (organizationId) {
+    await organizations.updateMany({
+      where: {
+        id: organizationId,
+        status: 'LISTED',
+        publicPageEnabled: true,
+        ownershipStatus: 'UNCLAIMED',
+      },
+      data: { status: 'UNLISTED', publicPageEnabled: false, updatedAt: new Date() },
+    });
+  }
+};
+
 export const listAffiliateSources = async () => {
   const { sources, mappings, runs } = affiliatePrisma();
   const rows = await sources.findMany({
@@ -1182,17 +1215,25 @@ const resolveAffiliateSportId = async (sportName: unknown): Promise<string | nul
   return sport?.id ?? null;
 };
 
+const affiliateCanonicalSportError = (
+  sportName: unknown,
+  targetLabel: 'event' | 'organization' | 'rental facility' | 'team',
+): Error => {
+  const received = nullableString(sportName);
+  return new Error(
+    `Affiliate ${targetLabel} cannot be published unless sportName exactly matches a current Sports.name. `
+    + `Received ${received ?? 'no sport name'}. Send unsupported sports to human review instead of guessing a replacement.`,
+  );
+};
+
 const assertAffiliateCandidateUsesCanonicalSport = async (
   candidate: Pick<AffiliateCandidateInput, 'sportName'> | any,
-  targetLabel: 'event' | 'organization' | 'rental facility',
+  targetLabel: 'event' | 'organization' | 'rental facility' | 'team',
 ): Promise<string> => {
   const sportName = nullableString(candidate.sportName);
   const sportId = await resolveAffiliateSportId(sportName);
   if (!sportName || !sportId) {
-    throw new Error(
-      `Affiliate ${targetLabel} cannot be published unless sportName exactly matches a current Sports.name. `
-      + `Received ${sportName ?? 'no sport name'}. Send unsupported sports to human review instead of guessing a replacement.`,
-    );
+    throw affiliateCanonicalSportError(sportName, targetLabel);
   }
   return sportId;
 };
@@ -1383,10 +1424,6 @@ const buildAffiliateEventData = async (
   state: 'UNPUBLISHED' | 'PUBLISHED' | 'PRIVATE' = 'UNPUBLISHED',
   fallbackCoordinates?: unknown,
 ) => {
-  const sportId = await resolveAffiliateSportId(candidate.sportName);
-  if (state === 'PUBLISHED' && !sportId) {
-    await assertAffiliateCandidateUsesCanonicalSport(candidate, 'event');
-  }
   const dateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
   const dateDisplayText = dateDisplayTextFromCandidate(candidate);
   const start = eventStartFromCandidate(candidate);
@@ -1396,6 +1433,10 @@ const buildAffiliateEventData = async (
         ? candidate.endsAt
         : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null)
       : null;
+  const sportId = await resolveAffiliateSportId(candidate.sportName);
+  if (state === 'PUBLISHED' && !sportId) {
+    throw affiliateCanonicalSportError(candidate.sportName, 'event');
+  }
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
   const maxParticipants = participantAvailability.maxParticipants;
@@ -2270,18 +2311,33 @@ export const runAffiliateSourceScrape = async (
           },
         },
       });
+      const sportId = await resolveAffiliateSportId(candidate.sportName);
+      const candidateForPersistence = sportId
+        ? candidate
+        : {
+            ...candidate,
+            warnings: Array.from(
+              new Set([...(candidate.warnings ?? []), AFFILIATE_SPORT_REVIEW_WARNING]),
+            ),
+          };
+      const invalidSportMapping = !sportId;
+      const quarantineInvalidSport = invalidSportMapping
+        && (importMode === 'AUTOMATIC' || existing?.status === 'PUBLISHED');
       const data = candidatePersistenceData({
         sourceId,
         runId: run.id,
         mappingId: mappingRow.id,
         dedupeKey,
-        candidate,
+        candidate: candidateForPersistence,
       });
-      const shouldPublishCandidate = automaticallyPublishCandidates || existing?.status === 'PUBLISHED';
+      const shouldPublishCandidate = !invalidSportMapping
+        && (automaticallyPublishCandidates || existing?.status === 'PUBLISHED');
       // Keep newly discovered candidates non-published until their backing target
       // has passed every publication gate. Otherwise a failed automatic import
       // can leave a PUBLISHED candidate pointing at no usable public record.
-      const initialCandidateStatus = existing?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
+      const initialCandidateStatus = quarantineInvalidSport
+        ? 'NEEDS_REVIEW'
+        : existing?.status === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
 
       const saved = existing
         ? await candidates.update({
@@ -2302,6 +2358,13 @@ export const runAffiliateSourceScrape = async (
               status: initialCandidateStatus,
             },
           });
+      if (quarantineInvalidSport) {
+        await quarantineAffiliateCandidateTarget(saved);
+        savedCandidates.push(saved);
+        if (existing) updatedCandidateCount += 1;
+        else createdCandidateCount += 1;
+        continue;
+      }
       if (candidate.listingKind === 'EVENT') {
         const event = await upsertAffiliateEventForCandidate(saved, source, {
           state: shouldPublishCandidate ? 'PUBLISHED' : 'UNPUBLISHED',
