@@ -6,7 +6,7 @@ This document must be maintained in accordance with `PLANS.md`.
 
 ## Purpose / Big Picture
 
-BracketIQ currently pauses newly discovered domains at policy review and mapping packages at source review. After this change, a second Codex CLI process pinned to Luna max in fast mode can independently inspect those approval items, apply evidence-backed decisions, and keep the capture-to-mapping pipeline moving without waiting for the operator to approve every routine item. The reviewer remains separate from the ingestion worker and leaves a durable decision record.
+BracketIQ currently pauses newly discovered domains at policy review and mapping packages at source review. After this change, a second Codex CLI process pinned to Luna at `max` reasoning can independently inspect those approval items, apply evidence-backed decisions, and keep the capture-to-mapping pipeline moving without waiting for the operator to approve every routine item. The launcher does not request fast mode or a specific service tier. The reviewer remains separate from the ingestion worker and leaves a durable decision record.
 
 The reviewer may allow or block an intake domain after checking stored robots and policy evidence. It blocks only an explicit prohibition that applies to the target public path. It allows capture when the bounded check finds no explicit prohibition, including when policy resources are missing or inaccessible. The reviewer may apply a review-ready source package to the live database after it independently checks the commit, stored evidence, tests, duplicate-safe scrapes, logo evidence, and unpublished state. When a bounded review establishes that no official logo is present, the reviewer may explicitly accept the logo absence without weakening any other package check. It may defer or reject uncertain mapping work. It never publishes organizations or candidates, enables recurring scraping, validates mappings, approves training data, or approves work produced under its own reviewer identity.
 
@@ -29,6 +29,7 @@ The reviewer may allow or block an intake domain after checking stored robots an
 - [x] (2026-08-01) Previewed and requeued 249 live deferred domain policies without restarting the approval loop. The same cutoff then returned zero eligible deferred policies.
 - [x] (2026-08-02) Added configurable reviewer pools, unique reviewer IDs, concurrent claim tests, worker-specific progress files, and required valid-event-division review.
 - [x] (2026-08-02) Required reviewers to accept an evidenced city or region centroid when an organization has no street address and to return a missing defensible fallback as `ORGANIZATION_LOCATION_INVALID` producer repair.
+- [x] (2026-08-04) Removed the fast-mode and fast-service-tier invocation overrides. Kept Luna at `max` reasoning effort.
 
 ## Surprises & Discoveries
 
@@ -167,7 +168,7 @@ An approval job is a durable database row that points to either a domain-policy 
 
 The optional `--force-mapping-review-cohort=<key>` loop flag creates one non-claimable `MAPPING_FULL_REVIEW_COHORT` control row. It records its arm time as the mapping cutoff. It remains `WAITING_FOR_MAPPING_DRAIN` while producer leases, mapping/capture work, first-pass mapping reviews, or approval work remain. It changes to `ENQUEUED_FOR_REVIEW` after one transaction returns cutoff-eligible approved mapping packages to the reviewer. Reusing the same key cannot enqueue them twice.
 
-The skill lives at `.agents/skills/review-affiliate-approvals`. The launcher lives at `scripts/run-affiliate-approval-codex-goal.ts` and pins `gpt-5.6-luna` with max reasoning, persisted fast mode, persisted goals, no interactive approval prompts, and the repository-local skill.
+The skill lives at `.agents/skills/review-affiliate-approvals`. The launcher lives at `scripts/run-affiliate-approval-codex-goal.ts` and pins `gpt-5.6-luna` with max reasoning, persisted goals, no service-tier or fast-mode override, no interactive approval prompts, and the repository-local skill.
 
 ## Plan of Work
 
@@ -255,6 +256,8 @@ Revision note (2026-08-01): Recorded the guarded-live setup and manual-logo reco
 Revision note (2026-08-02): Superseded the mandatory-logo gate with an explicit accepted-absence state and added reviewer-queue recovery for earlier logo-only terminal decisions.
 
 Revision note (2026-08-01): Upgraded the Luna approval process to max reasoning in persisted fast mode and made those settings explicit in the launcher's tests and preflight output.
+
+Revision note (2026-08-04): Removed the service-tier and fast-mode invocation overrides. Kept Luna at max reasoning and made the default service behavior explicit in the launcher's tests and preflight output.
 
 Revision note (2026-08-02): Added independent description-quality review and the durable one-time full-mapping rereview flag. The cohort remains waiting until the current queues are strictly idle.
 

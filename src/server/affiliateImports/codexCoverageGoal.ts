@@ -2,8 +2,8 @@ import path from 'node:path';
 
 export const CODEX_AFFILIATE_COVERAGE_MODEL = 'gpt-5.6-luna';
 export const CODEX_AFFILIATE_COVERAGE_REASONING_EFFORT = 'max';
-export const CODEX_AFFILIATE_COVERAGE_SERVICE_TIER = 'fast';
-export const CODEX_AFFILIATE_COVERAGE_FAST_MODE = true;
+export const CODEX_AFFILIATE_COVERAGE_SERVICE_TIER = null;
+export const CODEX_AFFILIATE_COVERAGE_FAST_MODE = false;
 export const CODEX_AFFILIATE_COVERAGE_SKILL = '$plan-affiliate-discovery-campaigns';
 export const CODEX_AFFILIATE_COVERAGE_OBJECTIVE_MAX_LENGTH = 4_000;
 
@@ -134,10 +134,6 @@ export const buildCodexAffiliateCoverageArgs = (
   CODEX_AFFILIATE_COVERAGE_MODEL,
   '--config',
   `model_reasoning_effort="${CODEX_AFFILIATE_COVERAGE_REASONING_EFFORT}"`,
-  '--config',
-  `service_tier="${CODEX_AFFILIATE_COVERAGE_SERVICE_TIER}"`,
-  '--config',
-  `features.fast_mode=${CODEX_AFFILIATE_COVERAGE_FAST_MODE}`,
   '--config',
   'sandbox_workspace_write.network_access=true',
   '--enable',

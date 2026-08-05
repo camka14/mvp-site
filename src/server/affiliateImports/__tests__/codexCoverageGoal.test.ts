@@ -18,8 +18,9 @@ describe('Codex affiliate coverage goal', () => {
     agentId: 'codex-luna-coverage-1',
   };
 
-  it('pins Luna max in fast mode with goals and bounded workspace permissions', () => {
-    expect(buildCodexAffiliateCoverageArgs(options)).toEqual([
+  it('pins Luna max without fast mode and with bounded workspace permissions', () => {
+    const args = buildCodexAffiliateCoverageArgs(options);
+    expect(args).toEqual([
       '--ask-for-approval',
       'never',
       'exec',
@@ -31,10 +32,6 @@ describe('Codex affiliate coverage goal', () => {
       '--config',
       `model_reasoning_effort="${CODEX_AFFILIATE_COVERAGE_REASONING_EFFORT}"`,
       '--config',
-      `service_tier="${CODEX_AFFILIATE_COVERAGE_SERVICE_TIER}"`,
-      '--config',
-      `features.fast_mode=${CODEX_AFFILIATE_COVERAGE_FAST_MODE}`,
-      '--config',
       'sandbox_workspace_write.network_access=true',
       '--enable',
       'goals',
@@ -44,8 +41,10 @@ describe('Codex affiliate coverage goal', () => {
     ]);
     expect(CODEX_AFFILIATE_COVERAGE_MODEL).toBe('gpt-5.6-luna');
     expect(CODEX_AFFILIATE_COVERAGE_REASONING_EFFORT).toBe('max');
-    expect(CODEX_AFFILIATE_COVERAGE_SERVICE_TIER).toBe('fast');
-    expect(CODEX_AFFILIATE_COVERAGE_FAST_MODE).toBe(true);
+    expect(CODEX_AFFILIATE_COVERAGE_SERVICE_TIER).toBeNull();
+    expect(CODEX_AFFILIATE_COVERAGE_FAST_MODE).toBe(false);
+    expect(args.some((argument) => argument.includes('service_tier'))).toBe(false);
+    expect(args.some((argument) => argument.includes('features.fast_mode'))).toBe(false);
     expect(buildCodexAffiliateCoverageArgs(options)).toContain('--ephemeral');
     expect(buildCodexAffiliateCoverageGoal(options)).toContain(
       'use the exact objective as the in-session goal',

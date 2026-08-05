@@ -19,6 +19,7 @@ The new worker does not replace deterministic search or capture code. It does no
 - [x] (2026-08-03 17:08Z) Added idempotent campaign creation, durable manual browser evidence, and mapper-repair handoff commands.
 - [x] (2026-08-03 17:08Z) Added the Luna max and fast goal launcher, single-goal supervisor loop, and package commands.
 - [x] (2026-08-03 17:08Z) Completed the skill contract and focused tests. Skill validation, Prisma validation, ESLint, TypeScript, the dry run, and the production build pass.
+- [x] (2026-08-04) Removed the fast-mode and fast-service-tier invocation overrides. Kept Luna at `max` reasoning effort.
 
 ## Surprises & Discoveries
 
@@ -75,7 +76,7 @@ Five focused Jest suites pass with 36 tests. The skill validator, Prisma schema 
 
 A coverage job is a persistent unit of agent work. `MARKET_COVERAGE` asks the agent to assess one existing regional campaign and create focused follow-up campaigns when evidence shows a gap. `FAILED_INTAKE_CAPTURE` asks the agent to inspect one failed or useful partial intake run and attempt a single manual public-page recovery. A lease is temporary ownership of that job. A conditional database update is the race boundary.
 
-The Codex goal will use Luna with maximum reasoning and fast service mode, matching the mapper and reviewer. Its repository-backed skill is `.agents/skills/plan-affiliate-discovery-campaigns/SKILL.md`.
+The Codex goal uses Luna with maximum reasoning, matching the mapper and reviewer. It does not request fast mode or a specific service tier. Its repository-backed skill is `.agents/skills/plan-affiliate-discovery-campaigns/SKILL.md`.
 
 ## Plan of Work
 
@@ -121,7 +122,7 @@ Exercise the launcher without starting Codex or touching live state with:
 
     npm run affiliate:coverage:codex-goal:dry-run
 
-The dry run must print the Luna model, maximum reasoning, fast mode, local commands, stable worker ID, and a goal that stops only when the coverage queue is empty.
+The dry run must print the Luna model, maximum reasoning, service tier `null`, fast mode `false`, local commands, stable worker ID, and a goal that stops only when the coverage queue is empty.
 
 ## Validation and Acceptance
 

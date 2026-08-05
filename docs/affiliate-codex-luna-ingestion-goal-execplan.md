@@ -6,7 +6,7 @@ Maintain this document in accordance with `PLANS.md` at the repository root.
 
 ## Purpose / Big Picture
 
-BracketIQ already has an evidence-backed queue for affiliate website intakes and an open-weight mapping worker, but the open-weight worker only produces constrained mapping drafts one intake at a time. After this change, an operator can choose a second ingestion option on the BracketIQ VM: Codex CLI running `gpt-5.6-luna` at `max` reasoning effort in fast mode under a durable goal. That goal repeatedly consumes every eligible intake until no claimable intake remains, creating the review-ready organization setup, mapping or source-specific extractor, official logo work, source notes, tests, and validation evidence required by the existing affiliate import workflow.
+BracketIQ already has an evidence-backed queue for affiliate website intakes and an open-weight mapping worker, but the open-weight worker only produces constrained mapping drafts one intake at a time. After this change, an operator can choose a second ingestion option on the BracketIQ VM: Codex CLI running `gpt-5.6-luna` at `max` reasoning effort under a durable goal. The launcher does not request fast mode or a specific service tier. That goal repeatedly consumes every eligible intake until no claimable intake remains, creating the review-ready organization setup, mapping or source-specific extractor, official logo work, source notes, tests, and validation evidence required by the existing affiliate import workflow.
 
 The new path is an explicitly invoked developer command. It is not imported by the Next.js application, added to a web route, or scheduled by the website process, so deploying the branch does not change ordinary website behavior. The command must stop before public publication, automatic schedule enablement, or unapproved live mutation. Failed, blocked, incomplete, held-out, and `TEAM`-only intakes are recorded and skipped instead of retried indefinitely.
 
@@ -27,6 +27,7 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - [x] (2026-07-31 20:00Z) Passed TypeScript, 88 generated source suites with 176 tests, 53 shared importer and approval tests, `git diff --check`, and an audit confirming all 73 checked-in official logos are opaque 1024-by-1024 PNG files.
 - [x] (2026-08-01) Upgraded the ingestion launcher to `max` reasoning and persisted Codex fast mode through `service_tier="fast"` and `features.fast_mode=true`.
 - [x] (2026-08-02) Added headless mapper pools with one isolated Git workspace and one stable worker ID per agent. Added a hard valid-division gate before `REVIEW_REQUIRED`.
+- [x] (2026-08-04) Removed the fast-mode and fast-service-tier invocation overrides. Kept Luna at `max` reasoning effort.
 
 ## Surprises & Discoveries
 
@@ -61,6 +62,10 @@ The new path is an explicitly invoked developer command. It is not imported by t
 - Decision: use `gpt-5.6-luna` with `model_reasoning_effort=max`, `service_tier="fast"`, and `features.fast_mode=true` as invocation overrides.
   Rationale: this gives the hosted ingestion worker the strongest configured reasoning effort and the account's fast service tier without changing the open-weight runtime or its training eligibility contract. The model, effort, service tier, and fast-mode flag remain visible and testable in command construction and result provenance.
   Date/Author: 2026-08-01 / Codex
+
+- Decision: keep `gpt-5.6-luna` and `model_reasoning_effort=max`, but omit `service_tier` and `features.fast_mode` from each invocation.
+  Rationale: the user no longer wants fast mode. Omitting both overrides uses the Codex default service behavior and keeps the absence of fast mode explicit in launcher provenance.
+  Date/Author: 2026-08-04 / Codex
 
 - Decision: treat queue exhaustion as “no eligible claimable mapping jobs remain,” not “every historical intake row has been published.”
   Rationale: blocked, incomplete, failed, held-out, duplicate, review-required, and already-finished rows must not keep a goal alive forever. The queue status command will report each category separately.
@@ -112,7 +117,7 @@ The read-only queue report will live in `scripts/report-affiliate-mapping-queue.
 
 First create the repository-local skill using the standard skill initializer. Keep `SKILL.md` concise and put the exact per-intake completion contract in one referenced file. Generate `agents/openai.yaml` from the finished skill and validate the folder with the standard skill validator. The skill must forbid public-site requests when stored evidence is sufficient, forbid `TEAM` mappings, forbid invented dates or generated logos, require official logo evidence, and require source-specific validation against stored fixtures.
 
-Next add the pure Codex goal module. Define constants for the requested model, reasoning effort, and service mode, build one stable goal objective under Codex's 4,000-character goal limit, and construct the interactive CLI arguments without shell interpolation. Use `--cd`, `--model gpt-5.6-luna`, `--config model_reasoning_effort=\"max\"`, `--config service_tier=\"fast\"`, `--config features.fast_mode=true`, `--enable goals`, `--sandbox workspace-write`, and `--ask-for-approval never`. The positional initial message must instruct the agent to call `create_goal` with the exact objective before doing any work. The launcher must use `spawn` or `execFile` with argument arrays, never a shell command string. It must preserve the interactive terminal so `/goal`, `/status`, pause, resume, and login flows remain usable.
+Next add the pure Codex goal module. Define constants for the requested model and reasoning effort, build one stable goal objective under Codex's 4,000-character goal limit, and construct the interactive CLI arguments without shell interpolation. Use `--cd`, `--model gpt-5.6-luna`, `--config model_reasoning_effort=\"max\"`, `--enable goals`, `--sandbox workspace-write`, and `--ask-for-approval never`. Do not pass `service_tier` or `features.fast_mode`. The positional initial message must instruct the agent to call `create_goal` with the exact objective before doing any work. The launcher must use `spawn` or `execFile` with argument arrays, never a shell command string. It must preserve the interactive terminal so `/goal`, `/status`, pause, resume, and login flows remain usable.
 
 Then add the read-only queue report. Query status groups from `AffiliateSourceIntakes` and `AffiliateSourceMappingJobs`, count old queued or expired leased jobs as claimable, count ready intakes that do not yet have an active or finished mapping job, and print stable JSON. Do not claim, release, or finish jobs from the report.
 
@@ -143,7 +148,7 @@ Exercise the launcher without contacting OpenAI:
 
     npm run affiliate:intakes:codex-goal:dry-run
 
-Expected output names `gpt-5.6-luna`, `max`, service tier `fast`, fast mode `true`, `.agents/skills/ingest-affiliate-intakes/SKILL.md`, the queue-exhaustion command, and either `authenticated: true` or the exact login command. It does not claim a job.
+Expected output names `gpt-5.6-luna`, `max`, service tier `null`, fast mode `false`, `.agents/skills/ingest-affiliate-intakes/SKILL.md`, the queue-exhaustion command, and either `authenticated: true` or the exact login command. It does not claim a job.
 
 On the VM, after the branch is checked out and dependencies are installed:
 
@@ -162,13 +167,13 @@ The launcher starts Codex in the repository. The operator can use `/goal` to vie
 
 ## Validation and Acceptance
 
-The pure launcher tests must prove that the requested model, max effort, fast service tier, fast-mode feature flag, goal feature, repository directory, workspace-write sandbox, and no-approval mode are passed as separate safe arguments. They must prove the goal text requires the repository skill, excludes failed/blocked/held-out/TEAM sources, requires mappings, organizations, logos, tests, review status, source-scoped commits, and stops only at the read-only queue exhaustion condition.
+The pure launcher tests must prove that the requested model, max effort, goal feature, repository directory, workspace-write sandbox, and no-approval mode are passed as separate safe arguments. They must prove that no service-tier or fast-mode override is present. They must also prove the goal text requires the repository skill, excludes failed/blocked/held-out/TEAM sources, requires mappings, organizations, logos, tests, review status, source-scoped commits, and stops only at the read-only queue exhaustion condition.
 
 The queue status tests must cover a queued job, an expired lease, an active lease, a claimed job without a lease, a ready intake without a mapping job, review-required and failed jobs, and stable zero-work completion.
 
 The skill validator must accept the repo-local skill. Focused Jest and TypeScript must pass. `git diff --check` must report no whitespace errors. The final staged diff must contain no application route, React component, Prisma schema, migration, production compose, or deployment-script change.
 
-On the VM, `codex login status` must pass before the launcher starts. A launcher dry run must not write the database, claim a job, contact a public source, or launch an agent. The real launcher must visibly report `gpt-5.6-luna`, `max`, service tier `fast`, and fast mode `true`; `/goal` must show the ingestion objective. The goal is done only when the queue report returns all three completion counts as zero and the progress log lists all review-ready and skipped intakes.
+On the VM, `codex login status` must pass before the launcher starts. A launcher dry run must not write the database, claim a job, contact a public source, or launch an agent. The real launcher must visibly report `gpt-5.6-luna`, `max`, service tier `null`, and fast mode `false`; `/goal` must show the ingestion objective. The goal is done only when the queue report returns all three completion counts as zero and the progress log lists all review-ready and skipped intakes.
 
 ## Idempotence and Recovery
 
@@ -195,8 +200,8 @@ In `src/server/affiliateImports/codexCliGoal.ts`, export:
 
     export const CODEX_AFFILIATE_INGESTION_MODEL = 'gpt-5.6-luna';
     export const CODEX_AFFILIATE_INGESTION_REASONING_EFFORT = 'max';
-    export const CODEX_AFFILIATE_INGESTION_SERVICE_TIER = 'fast';
-    export const CODEX_AFFILIATE_INGESTION_FAST_MODE = true;
+    export const CODEX_AFFILIATE_INGESTION_SERVICE_TIER = null;
+    export const CODEX_AFFILIATE_INGESTION_FAST_MODE = false;
 
     export type CodexAffiliateGoalOptions = {
       repositoryRoot: string;
@@ -232,5 +237,7 @@ Revision note (2026-07-31): Recorded the OVH Bubblewrap failure, externally isol
 Revision note (2026-07-31): Recorded queue exhaustion, cohort audit results, release validation, and the guarded live-approval boundary.
 
 Revision note (2026-08-01): Upgraded the Luna ingestion process to max reasoning in persisted fast mode and made those settings explicit in preflight output and result provenance.
+
+Revision note (2026-08-04): Removed the service-tier and fast-mode invocation overrides. Kept Luna at max reasoning and made the default service behavior explicit in preflight output and result provenance.
 
 Revision note (2026-08-02): Added isolated multi-mapper execution, conditional-claim concurrency proof, worker-specific progress files, and the hard valid-event-division completion gate.

@@ -18,7 +18,7 @@ describe('Codex affiliate intake goal', () => {
     workerId: 'codex-luna-vm-1',
   };
 
-  it('pins Luna max in fast mode with persisted goals and bounded workspace permissions', () => {
+  it('pins Luna max without fast mode and with bounded workspace permissions', () => {
     const args = buildCodexAffiliateIngestionArgs(options);
 
     expect(args).toEqual([
@@ -33,10 +33,6 @@ describe('Codex affiliate intake goal', () => {
       '--config',
       `model_reasoning_effort="${CODEX_AFFILIATE_INGESTION_REASONING_EFFORT}"`,
       '--config',
-      `service_tier="${CODEX_AFFILIATE_INGESTION_SERVICE_TIER}"`,
-      '--config',
-      `features.fast_mode=${CODEX_AFFILIATE_INGESTION_FAST_MODE}`,
-      '--config',
       'sandbox_workspace_write.network_access=true',
       '--enable',
       'goals',
@@ -46,8 +42,10 @@ describe('Codex affiliate intake goal', () => {
     ]);
     expect(CODEX_AFFILIATE_INGESTION_MODEL).toBe('gpt-5.6-luna');
     expect(CODEX_AFFILIATE_INGESTION_REASONING_EFFORT).toBe('max');
-    expect(CODEX_AFFILIATE_INGESTION_SERVICE_TIER).toBe('fast');
-    expect(CODEX_AFFILIATE_INGESTION_FAST_MODE).toBe(true);
+    expect(CODEX_AFFILIATE_INGESTION_SERVICE_TIER).toBeNull();
+    expect(CODEX_AFFILIATE_INGESTION_FAST_MODE).toBe(false);
+    expect(args.some((argument) => argument.includes('service_tier'))).toBe(false);
+    expect(args.some((argument) => argument.includes('features.fast_mode'))).toBe(false);
     expect(args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
     expect(args).toContain('--ephemeral');
   });
