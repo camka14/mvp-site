@@ -37,4 +37,13 @@ describe('event and organization sport migrations', () => {
     expect(migration).toContain('cardinality(organization."sports") = 0');
     expect(migration).toContain('Affiliate organization sport repair left a non-canonical sport name.');
   });
+
+  it('repairs remaining affiliate aliases regardless of ownership status', () => {
+    const migration = readMigration('20260805162000_repair_remaining_affiliate_organization_sport_aliases');
+
+    expect(migration).toContain("WHEN 'soccer' THEN 'Grass Soccer'");
+    expect(migration).toContain('organization."id" LIKE \'affiliate_org_%\'');
+    expect(migration).not.toContain('organization."ownershipStatus"');
+    expect(migration).toContain('Affiliate organization sport alias repair left a non-canonical sport name.');
+  });
 });

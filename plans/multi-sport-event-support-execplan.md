@@ -17,7 +17,7 @@ The event-level `sportId` field is removed. `sportIds` is the only event sport f
 - [x] (2026-08-05) Updated web and mobile create/edit, detail, search, and filter surfaces.
 - [x] (2026-08-05) Added regression tests and ran web/mobile validation.
 - [x] (2026-08-05) Audited production organization and event sport data, added canonical organization alias repair, and repaired existing sportless events before dropping the scalar event column.
-- [ ] Apply the migration to live only after code validation and explicit delivery approval.
+- [x] (2026-08-05) Applied the event and organization migrations to live, then repaired two claimed affiliate organizations that still stored `Soccer`.
 
 ## Surprises & Discoveries
 
@@ -154,3 +154,5 @@ The implementation may use existing Prisma, Zod, React Hook Form, Kotlin seriali
 2026-08-05: Follow-up decision: complete the migration by dropping event-level `sportId` and removing all scalar fallbacks. `sportIds` is now the sole event sport source of truth; the first value is derived only when a downstream rule needs one primary sport.
 
 2026-08-05: Production audit found 281 unclaimed affiliate organizations with unsupported or composite sport labels and 16 events without a sport. The migration order was corrected because `20260805120000` was already used by an existing ownership migration. The new event migration is `20260805160000`; known organization aliases and explicit composite labels are repaired in `20260805161000`, while unsupported labels are removed and empty affiliate organizations are unlisted.
+
+2026-08-05: Post-deploy audit found two claimed, unlisted affiliate organizations that still used `Soccer`. Added `20260805162000_repair_remaining_affiliate_organization_sport_aliases` so known aliases are repaired for every affiliate organization, regardless of ownership status.
