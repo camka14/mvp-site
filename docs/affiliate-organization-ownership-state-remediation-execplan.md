@@ -22,7 +22,8 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 - [x] (2026-08-05 17:50Z) Added the shared affiliate ownership initializer. Applied it to the shared candidate publisher and generated setup code. Made live sync inserts explicit and made conflict updates preserve ownership fields.
 - [x] (2026-08-05 17:50Z) Changed both database defaults to `AFFILIATE_IMPORTED / UNCLAIMED`. Added a claimed-affiliate evidence constraint as `NOT VALID` so it protects new writes without blocking deployment on historical rows.
 - [x] (2026-08-05 17:50Z) Replaced the unsafe backfill behavior with claim-aware repair categories, a reviewed digest requirement, an advisory lock, row locks, compare-and-set updates, provenance rechecks, and rollback snapshots.
-- [ ] Validate migration replay, focused tests, TypeScript, the production build, and local browser behavior.
+- [x] (2026-08-05 18:04Z) Applied the additive migration to the local Docker database. Verified fail-closed defaults, false-claim rejection, valid claimed-affiliate evidence, the digest-bound repair, and an idempotent second audit. Passed 108 focused tests, TypeScript, Prisma validation and generation, the production build, the full CI suite, and API route coverage for 315 files.
+- [ ] Validate the organization-page claim action in a local browser after the user explicitly authorizes starting the local web process.
 - [ ] Obtain explicit production-change authorization, take a backup, deploy the tested revision, run the production dry run, review its report, and apply the guarded repair.
 - [ ] Verify the live API, organization page, claim wizard entry, representative first-party organizations, and post-repair audit.
 
@@ -91,7 +92,9 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 
 ## Outcomes & Retrospective
 
-Planning, diagnosis, and local implementation are complete through the first focused validation pass. No production database row, process, or deployment changed. The implementation uses fail-closed database defaults, explicit primary producer state, a claimed-affiliate check constraint, and a guarded repair command. The first focused run passed 44 tests in 5 suites. Prisma validation, client generation, and TypeScript also passed. The local CYO row was already `AFFILIATE_IMPORTED / UNCLAIMED`, so its scoped audit returned `PRESERVE` with no write.
+Planning, diagnosis, local implementation, and automated validation are complete. No production database row, process, or deployment changed. The implementation uses fail-closed database defaults, explicit primary producer state, a claimed-affiliate check constraint, and a guarded repair command. The final focused run passed 108 tests in 8 suites. The full CI suite and API route coverage passed. Prisma validation, client generation, TypeScript, and the production build passed.
+
+The local migration and database contract checks passed. Omitted ownership fields produced `AFFILIATE_IMPORTED / UNCLAIMED / NONE`. PostgreSQL rejected a claimed affiliate without evidence and accepted the state after both claim fields were present. A disposable false-default fixture produced one repair candidate. The reviewed digest write repaired one row. The second audit produced zero repair candidates. The disposable source and organization were removed. The final full local audit preserved all 178 affiliate organizations with zero repair and zero manual-review rows. Local CYO remained `AFFILIATE_IMPORTED / UNCLAIMED`.
 
 At final completion, record the number of organizations in each `originType / ownershipStatus` group. Also record the number preserved because of claim history, the number sent to manual review, and the exact post-repair result for CYO / Camp Howard Sports.
 
