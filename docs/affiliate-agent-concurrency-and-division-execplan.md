@@ -31,10 +31,10 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-02 18:17Z) Committed and pushed the scoped implementation to `main` without the user's unrelated work.
 - [x] (2026-08-02 18:28Z) Updated the VM checkouts, preserved mapper work, and started mapper 2 in a separate Git worktree and container.
 - [x] (2026-08-02 18:30Z) Verified two unique mapper IDs, one unchanged reviewer, two different active mapping jobs, and no duplicate active claims.
-- [x] (2026-08-05 18:20Z) Verified the upgraded OVH host has 8 vCPUs, 22 GiB usable memory, and 200 GB storage.
-- [x] (2026-08-05 18:32Z) Drained and stopped 10 mapper containers, one two-reviewer container, and one coverage container without releasing active leases.
-- [ ] Split the two reviewers into separate containers with separate loop locks and Codex state directories.
-- [ ] Add and verify CPU, memory, swap, and process limits for every mapper, reviewer, and coverage container.
+- [x] (2026-08-05 15:20Z) Verified the upgraded OVH host has 8 vCPUs, 22 GiB usable memory, and 200 GB storage.
+- [x] (2026-08-05 15:32Z) Drained and stopped 10 mapper containers, one two-reviewer container, and one coverage container without releasing active leases.
+- [x] (2026-08-05 17:31Z) Split the two reviewers into separate stopped containers with separate loop locks and Codex state directories.
+- [x] (2026-08-05 17:32Z) Added and verified CPU, memory, swap, and process limits for every mapper, reviewer, and coverage container.
 
 ## Surprises & Discoveries
 
@@ -94,11 +94,18 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 The repository now contains the division gate and both pool controls. The main
 branch contains the implementation and restart-safe claim renewal. The live VM
-runs two isolated mapper containers with worker IDs `codex-luna-vm-1` and
-`codex-luna-vm-2`. It still runs one reviewer, as intended. A live database
-check showed two `CLAIMED` rows with different job IDs, intake IDs, worker IDs,
-and leases. The reviewer checkout contains the configurable pool code, so an
-operator can increase its count during a later authorized restart.
+runs a Compose-managed fleet definition for 10 isolated mappers, two isolated
+reviewers, and one coverage worker. The fleet is intentionally stopped with
+restart policy `no`. A live database check showed zero active mapping,
+approval, and coverage leases before the stopped containers were replaced.
+Reviewer 1 uses loop lock `4201072131`. Reviewer 2 uses loop lock
+`4201072133`. Each reviewer has its own authenticated Codex state directory.
+
+Docker inspection confirmed 1.25 CPUs, 3 GiB memory, 3 GiB memory-swap, and a
+512-process limit for every mapper. It confirmed 1 CPU, 2 GiB memory, 2 GiB
+memory-swap, and a 512-process limit for each reviewer and the coverage worker.
+The production application, PostgreSQL, Redis, Caddy, intake timer, and daily
+scraper timer remained healthy or active after this change.
 
 The focused live-checkout queue, goal, and pool run passed 28 tests. Its broad
 TypeScript check remains blocked by existing generated-package errors in the
