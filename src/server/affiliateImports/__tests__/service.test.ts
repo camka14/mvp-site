@@ -818,6 +818,51 @@ describe('affiliate import service', () => {
     expect(result.candidate.listingKind).toBe('EVENT');
   });
 
+  it('maps generic affiliate Volleyball to the canonical Indoor Volleyball sport', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_volleyball',
+      sourceId: 'source_1',
+      listingKind: 'EVENT',
+      title: 'Summer Volleyball Camp',
+      sportName: 'Volleyball',
+      venueName: '8th Street Athletics',
+      city: 'Portland, OR',
+      startsAt: new Date('2099-07-05T17:00:00.000Z'),
+      officialActionUrl: 'https://example.com/volleyball-camp',
+      sourceUrl: 'https://example.com/source',
+      status: 'DISCOVERED',
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_1',
+      name: 'Example Source',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'owner_1' });
+    prismaMock.sports.findFirst.mockImplementation(async ({ where }) => (
+      where.name.equals === 'Indoor Volleyball' ? { id: 'sport_indoor_volleyball' } : null
+    ));
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }));
+
+    await publishAffiliateCandidate('candidate_volleyball', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.sports.findFirst).toHaveBeenCalledWith({
+      where: { name: { equals: 'Indoor Volleyball', mode: 'insensitive' } },
+      select: { id: true },
+    });
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Summer Volleyball Camp',
+        sportId: 'sport_indoor_volleyball',
+      }),
+    });
+  });
+
   it('publishes located events without listing an unlocatable source organization', async () => {
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.387, 45.539]);
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({

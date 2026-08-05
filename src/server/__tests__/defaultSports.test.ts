@@ -42,6 +42,46 @@ describe('default sports', () => {
     ]);
   });
 
+  it('seeds Racquetball with game scoring, skill divisions, and an official template', async () => {
+    const createMany = jest.fn().mockResolvedValue(undefined);
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const client = {
+      sports: { findMany, createMany, update: jest.fn() },
+    };
+
+    await ensureDefaultSports(client as any);
+
+    const racquetball = createMany.mock.calls[0][0].data.find(
+      (sport: any) => sport.id === 'Racquetball',
+    );
+
+    expect(racquetball).toMatchObject({
+      id: 'Racquetball',
+      name: 'Racquetball',
+      usePointsForWin: true,
+      usePointsForLoss: true,
+      usePointsPerSetWin: true,
+      usePointsPerSetLoss: true,
+    });
+    expect(racquetball.skillDivisionTypes).toEqual([
+      { id: 'beginner', name: 'Beginner' },
+      { id: 'intermediate', name: 'Intermediate' },
+      { id: 'advanced', name: 'Advanced' },
+      { id: 'open', name: 'Open' },
+    ]);
+    expect(racquetball.officialPositionTemplates).toEqual([
+      { name: 'Referee', count: 1 },
+    ]);
+    expect(racquetball.matchRulesTemplate).toMatchObject({
+      scoringModel: 'SETS',
+      segmentLabel: 'Game',
+      supportedIncidentTypes: ['POINT', 'WARNING', 'POINT_PENALTY', 'GAME_PENALTY', 'DEFAULT', 'NOTE', 'ADMIN'],
+    });
+  });
+
   it('prefers the row whose stable ID already matches the canonical name', () => {
     const duplicateWithMoreConfiguration = {
       id: 'sport_indoor_volleyball_duplicate',

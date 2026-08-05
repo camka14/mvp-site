@@ -308,6 +308,11 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     incidentTypeDefinitions: tennisIncidentDefinitions,
     supportedIncidentTypes: incidentCodes(tennisIncidentDefinitions),
   }),
+  Racquetball: setBasedRules({
+    segmentLabel: 'Game',
+    incidentTypeDefinitions: tennisIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(tennisIncidentDefinitions),
+  }),
   Pickleball: setBasedRules({
     segmentLabel: 'Game',
     incidentTypeDefinitions: pickleballIncidentDefinitions,
@@ -410,6 +415,9 @@ const OFFICIAL_POSITION_TEMPLATES_BY_SPORT: Record<string, SportOfficialPosition
   ],
   Tennis: [
     { name: 'Umpire', count: 1 },
+  ],
+  Racquetball: [
+    { name: 'Referee', count: 1 },
   ],
   Pickleball: [
     { name: 'Referee', count: 1 },
@@ -549,6 +557,19 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Pickleball),
     skillDivisionTypes: skillDivisionTypesForSport('Pickleball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Pickleball),
+    usePointsForWin: true,
+    usePointsForLoss: true,
+    usePointsPerSetWin: true,
+    usePointsPerSetLoss: true,
+    usePointsPerGoalScored: false,
+    usePointsPerGoalConceded: false,
+  },
+  {
+    id: 'Racquetball',
+    name: 'Racquetball',
+    officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Racquetball),
+    skillDivisionTypes: skillDivisionTypesForSport('Racquetball'),
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Racquetball),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerSetWin: true,

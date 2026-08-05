@@ -102,6 +102,11 @@ const nullableString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const AFFILIATE_SPORT_NAME_ALIASES: Record<string, string> = {
+  soccer: 'Indoor Soccer',
+  volleyball: 'Indoor Volleyball',
+};
+
 const recordValue = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -1173,8 +1178,9 @@ const resolveAffiliateSportId = async (sportName: unknown): Promise<string | nul
   const name = nullableString(sportName);
   if (!name) return null;
   const { sports } = affiliatePrisma();
+  const canonicalName = AFFILIATE_SPORT_NAME_ALIASES[name.toLowerCase()] ?? name;
   const sport = await sports.findFirst({
-    where: { name: { equals: name, mode: 'insensitive' } },
+    where: { name: { equals: canonicalName, mode: 'insensitive' } },
     select: { id: true },
   });
   return sport?.id ?? null;
