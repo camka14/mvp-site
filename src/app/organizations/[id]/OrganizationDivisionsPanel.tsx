@@ -20,10 +20,11 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { Archive, Pencil, Plus } from 'lucide-react';
+import { Archive, ExternalLink, Pencil, Plus } from 'lucide-react';
 import type { Division, Organization } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { useSports } from '@/app/hooks/useSports';
+import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 
 type DivisionTypeOption = { id: string; name: string };
 type DivisionTypePayload = {
@@ -36,7 +37,6 @@ type Props = {
   organization: Organization;
   canManage?: boolean;
   summary?: boolean;
-  onViewAll?: () => void;
   onChanged?: (divisions: Division[]) => void;
 };
 
@@ -62,7 +62,6 @@ export default function OrganizationDivisionsPanel({
   organization,
   canManage = false,
   summary = false,
-  onViewAll,
   onChanged,
 }: Props) {
   const { sports } = useSports();
@@ -72,8 +71,13 @@ export default function OrganizationDivisionsPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [opened, setOpened] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(emptyDraft);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [organization.$id]);
 
   useEffect(() => {
     let active = true;
@@ -100,7 +104,7 @@ export default function OrganizationDivisionsPanel({
     () => divisions.filter((division) => canManage || division.status === 'ACTIVE'),
     [canManage, divisions],
   );
-  const rows = summary ? visibleDivisions.slice(0, 4) : visibleDivisions;
+  const rows = summary && !expanded ? visibleDivisions.slice(0, 2) : visibleDivisions;
   const sportOptions = sports.map((sport) => ({ value: sport.$id, label: sport.name }));
   const genderOptions = (types.genders ?? []).map((option) => ({ value: option.id, label: option.name }));
   const ageOptions = (types.ages ?? []).map((option) => ({ value: option.id, label: option.name }));
@@ -194,8 +198,10 @@ export default function OrganizationDivisionsPanel({
           {!summary && <Text size="sm" c="dimmed">Current club offerings and total per-player season prices.</Text>}
         </div>
         <Group gap="xs">
-          {summary && onViewAll && visibleDivisions.length > 0 && (
-            <Button variant="subtle" size="xs" onClick={onViewAll}>View all</Button>
+          {summary && visibleDivisions.length > 2 && (
+            <Button variant="subtle" size="xs" onClick={() => setExpanded((current) => !current)}>
+              {expanded ? 'Show less' : `More (${visibleDivisions.length - 2})`}
+            </Button>
           )}
           {canManage && !summary && (
             <Button leftSection={<Plus size={16} />} size="sm" onClick={openCreate}>Add division</Button>
@@ -220,11 +226,39 @@ export default function OrganizationDivisionsPanel({
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {rows.map((division) => (
-                <Table.Tr key={division.id}>
+              {rows.map((division) => {
+                const registrationUrl = canManage
+                  ? null
+                  : normalizeExternalHttpUrl(division.registrationUrl);
+                const openRegistration = () => {
+                  if (registrationUrl) {
+                    window.open(registrationUrl, '_blank', 'noopener,noreferrer');
+                  }
+                };
+                return (
+                <Table.Tr
+                  key={division.id}
+                  onClick={registrationUrl ? openRegistration : undefined}
+                  onKeyDown={registrationUrl ? (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      openRegistration();
+                    }
+                  } : undefined}
+                  role={registrationUrl ? 'link' : undefined}
+                  tabIndex={registrationUrl ? 0 : undefined}
+                  aria-label={registrationUrl ? `Register for ${division.name}` : undefined}
+                  style={registrationUrl ? { cursor: 'pointer' } : undefined}
+                >
                   <Table.Td>
                     <Text fw={600} size="sm">{division.name}</Text>
                     {division.status !== 'ACTIVE' && <Badge size="xs" color="gray">{division.status}</Badge>}
+                    {registrationUrl && (
+                      <Group gap={4} mt={2} c="blue">
+                        <Text size="xs" c="blue">Register</Text>
+                        <ExternalLink size={12} aria-hidden="true" />
+                      </Group>
+                    )}
                   </Table.Td>
                   <Table.Td>{division.sportId ?? 'Not specified'}</Table.Td>
                   <Table.Td>{genderOptions.find((option) => option.value === division.gender)?.label ?? division.gender}</Table.Td>
@@ -248,7 +282,8 @@ export default function OrganizationDivisionsPanel({
                     </Table.Td>
                   )}
                 </Table.Tr>
-              ))}
+                );
+              })}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

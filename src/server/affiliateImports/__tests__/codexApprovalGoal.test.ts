@@ -78,6 +78,12 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('claimableJobs=0, activeLeases=0, and claimedWithoutLease=0');
     expect(goal).toContain('Never approve a package produced by this reviewer identity');
     expect(goal).toContain('disposable validation database review-scrape evidence');
+    expect(goal).toContain('Read sportQuality');
+    expect(goal).toContain('exact Sports.name values');
+    expect(goal).toContain('SPORT_NAME_INVALID producer repair');
+    expect(goal).toContain('SPORT_NOT_IN_CATALOG with HUMAN_REVIEW_REQUIRED');
+    expect(goal).toContain('never guess a sport surface');
+    expect(goal).toContain('sportQualityVerified=true');
     expect(goal).toContain('Use live data only for queue and governed decisions');
     expect(goal).toContain('NOT_APPLIED before approval is expected');
     expect(goal).toContain('need not exist in production');
@@ -103,7 +109,8 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('preview only the claimed organization, never --all, then clean it');
     expect(goal).toContain('Every non-approved mapping result needs mappingDisposition');
     expect(goal).toContain('PRODUCER_REPAIR');
-    expect(goal).toContain('HUMAN_REVIEW_REQUIRED and DEFER only');
+    expect(goal).toContain('use HUMAN_REVIEW_REQUIRED for an unsupported');
+    expect(goal).toContain('DEFER only for missing, inaccessible, or conflicting evidence');
     expect(goal).toContain('Do not edit producer packages, publish');
     expect(goal).toContain('progress/codex-luna-approval-vm-1.jsonl');
   });

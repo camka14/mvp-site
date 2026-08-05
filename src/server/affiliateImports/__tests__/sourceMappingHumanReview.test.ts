@@ -95,6 +95,18 @@ describe('affiliate mapping human-review queue', () => {
     }));
   });
 
+  it('explains the product decision for an unsupported sport', () => {
+    expect(affiliateMappingReviewGuidance({
+      requestedNextAction: 'HUMAN_REVIEW_REQUIRED',
+      reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+      blockingIssues: ['Badminton is not in the BracketIQ sports catalog.'],
+    })).toEqual({
+      reviewOwner: 'USER',
+      reviewQuestion: 'Should this sport be added to the BracketIQ sports catalog?',
+      recommendedAction: 'Review the source sport below. Add a fully configured canonical sport only when BracketIQ should support it; otherwise leave this mapping stopped.',
+    });
+  });
+
   it('does not query intakes when the terminal queue is empty', async () => {
     prismaMock.affiliateSourceMappingJobs.findMany.mockResolvedValue([]);
 

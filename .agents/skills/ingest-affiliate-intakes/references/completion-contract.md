@@ -32,6 +32,14 @@ Every successful checkpoint must contain:
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.
 
+Compare every candidate `sportName` and every source organization sport with
+the exact `name` values in the current `Sports` table. Use a catalog name only
+when stored source evidence supports that exact sport. Do not treat generic
+`Volleyball` as indoor, grass, or beach volleyball, and do not infer a soccer
+surface. A missing or incorrectly cased catalog name is a producer defect. A
+source sport absent from the catalog is not a mapping failure: preserve the
+source label and package evidence so the reviewer can stop it for human review.
+
 Resolve organization location separately from event location. A missing street
 address is not an organization defect when first-party content, stored intake
 discovery context, or a parent directory supports a city, locality, metro, or

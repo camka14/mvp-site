@@ -8,6 +8,7 @@ const checks = {
   storedEvidenceSufficient: true,
   identityIndependent: true,
   packageValidationPassed: false,
+  sportQualityVerified: false,
   descriptionQualityVerified: false,
   officialLogoVerified: false,
   logoAbsenceAccepted: false,
@@ -62,6 +63,7 @@ describe('affiliate approval result', () => {
       checks: {
         ...checks,
         packageValidationPassed: true,
+        sportQualityVerified: true,
         descriptionQualityVerified: true,
         logoAbsenceAccepted: true,
         duplicateSafetyVerified: true,
@@ -78,6 +80,7 @@ describe('affiliate approval result', () => {
       checks: {
         ...checks,
         packageValidationPassed: true,
+        sportQualityVerified: true,
         descriptionQualityVerified: true,
         officialLogoVerified: true,
         logoAbsenceAccepted: true,
@@ -103,6 +106,7 @@ describe('affiliate approval result', () => {
       checks: {
         ...checks,
         packageValidationPassed: true,
+        sportQualityVerified: true,
         officialLogoVerified: true,
         duplicateSafetyVerified: true,
       },
@@ -165,6 +169,46 @@ describe('affiliate approval result', () => {
       'EVENT_DESCRIPTION_INVALID',
       'ORGANIZATION_DESCRIPTION_INVALID',
     ]);
+  });
+
+  it('accepts a noncanonical catalog name as a producer repair', () => {
+    expect(affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['Use the exact catalog name Indoor Volleyball.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['SPORT_NAME_INVALID'],
+      },
+    }).mappingDisposition?.reasonCodes).toEqual(['SPORT_NAME_INVALID']);
+  });
+
+  it('routes a sport absent from the catalog only to human review', () => {
+    expect(affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['Badminton is not in the BracketIQ sports catalog.'],
+      mappingDisposition: {
+        nextAction: 'HUMAN_REVIEW_REQUIRED',
+        reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+      },
+    }).mappingDisposition?.reasonCodes).toEqual(['SPORT_NOT_IN_CATALOG']);
+
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'REJECT',
+      blockingIssues: ['Badminton is not in the BracketIQ sports catalog.'],
+      mappingDisposition: {
+        nextAction: 'PRODUCER_REPAIR',
+        reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+      },
+    })).toThrow('concrete producer-defect reason codes');
   });
 
   it('reserves mapping deferral for terminal human review', () => {

@@ -98,6 +98,24 @@ import {
 import { geocodeAddressToCoordinates } from '@/server/geocoding';
 
 const geocodeAddressToCoordinatesMock = jest.mocked(geocodeAddressToCoordinates);
+const canonicalSportNames = new Set([
+  'Indoor Volleyball',
+  'Beach Volleyball',
+  'Grass Volleyball',
+  'Basketball',
+  'Indoor Soccer',
+  'Grass Soccer',
+  'Beach Soccer',
+  'Tennis',
+  'Pickleball',
+  'Racquetball',
+  'Football',
+  'Hockey',
+  'Baseball',
+  'Softball',
+  'Ultimate Frisbee',
+  'Other',
+]);
 
 describe('affiliate import service', () => {
   beforeEach(() => {
@@ -122,6 +140,9 @@ describe('affiliate import service', () => {
       ...update,
     }));
     prismaMock.organizations.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.sports.findFirst.mockImplementation(async ({ where }) => (
+      canonicalSportNames.has(where?.name) ? { id: where.name } : null
+    ));
     prismaMock.eventTags = undefined;
     prismaMock.eventTagAssignments = undefined;
   });
@@ -818,7 +839,7 @@ describe('affiliate import service', () => {
     expect(result.candidate.listingKind).toBe('EVENT');
   });
 
-  it('maps generic affiliate Volleyball to the canonical Indoor Volleyball sport', async () => {
+  it('does not guess that generic Volleyball means Indoor Volleyball', async () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
       id: 'candidate_volleyball',
       sourceId: 'source_1',
@@ -838,9 +859,7 @@ describe('affiliate import service', () => {
       organizationId: 'org_1',
     });
     prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1', ownerId: 'owner_1' });
-    prismaMock.sports.findFirst.mockImplementation(async ({ where }) => (
-      where.name.equals === 'Indoor Volleyball' ? { id: 'sport_indoor_volleyball' } : null
-    ));
+    prismaMock.sports.findFirst.mockResolvedValue(null);
     prismaMock.events.findUnique.mockResolvedValue(null);
     prismaMock.events.findFirst.mockResolvedValue(null);
     prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
@@ -849,18 +868,16 @@ describe('affiliate import service', () => {
       ...data,
     }));
 
-    await publishAffiliateCandidate('candidate_volleyball', { publishedByUserId: 'admin_1' });
+    await expect(publishAffiliateCandidate(
+      'candidate_volleyball',
+      { publishedByUserId: 'admin_1' },
+    )).rejects.toThrow('sportName exactly matches a current Sports.name');
 
     expect(prismaMock.sports.findFirst).toHaveBeenCalledWith({
-      where: { name: { equals: 'Indoor Volleyball', mode: 'insensitive' } },
+      where: { name: 'Volleyball' },
       select: { id: true },
     });
-    expect(prismaMock.events.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        name: 'Summer Volleyball Camp',
-        sportId: 'sport_indoor_volleyball',
-      }),
-    });
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
   });
 
   it('publishes located events without listing an unlocatable source organization', async () => {
@@ -945,6 +962,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_rental',
       listingKind: 'RENTAL',
       title: 'Downtown Soccer Field Rental',
+      sportName: 'Indoor Soccer',
       venueName: 'Downtown Sports Center',
       city: 'Portland, OR',
       address: '100 Main St, Portland, OR 97201',
@@ -1394,6 +1412,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'EVENT',
       title: 'Affiliate event',
+      sportName: 'Basketball',
       officialActionUrl: 'https://example.com/register',
       sourceUrl: 'https://example.com/event',
     });
@@ -1415,6 +1434,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'EVENT',
       title: 'Affiliate event',
+      sportName: 'Basketball',
       startsAt: null,
       officialActionUrl: 'https://example.com/register',
       sourceUrl: 'https://example.com/event',
@@ -1439,6 +1459,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'EVENT',
       title: 'New York Showcase',
+      sportName: 'Basketball',
       venueName: 'Major Owens Center',
       city: 'Brooklyn, NY',
       address: '1561 Bedford Ave, Brooklyn, NY 11225',
@@ -1452,7 +1473,7 @@ describe('affiliate import service', () => {
       organizationId: 'org_1',
     });
     prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_1' });
-    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'Basketball' });
     prismaMock.events.findUnique.mockResolvedValue(null);
     prismaMock.events.findFirst.mockResolvedValue(null);
 
@@ -1473,6 +1494,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'RENTAL',
       title: 'Brooklyn Court Rental',
+      sportName: 'Indoor Volleyball',
       venueName: 'Brooklyn Sports Center',
       city: 'Brooklyn, NY',
       address: '100 Main St, Brooklyn, NY 11201',
@@ -1504,6 +1526,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'CLUB',
       title: 'Brooklyn Volleyball Club',
+      sportName: 'Indoor Volleyball',
       city: 'Brooklyn, NY',
       officialActionUrl: 'https://example.com/club',
       sourceUrl: 'https://example.com/clubs',
@@ -1541,6 +1564,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'CLUB',
       title: 'Locationless Volleyball Club',
+      sportName: 'Indoor Volleyball',
       officialActionUrl: 'https://example.com/club',
       sourceUrl: 'https://example.com/clubs',
     });
@@ -1573,6 +1597,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_1',
       listingKind: 'CLUB',
       title: 'Brooklyn Volleyball Club',
+      sportName: 'Indoor Volleyball',
       city: 'Brooklyn, NY',
       officialActionUrl: 'https://example.com/club',
       sourceUrl: 'https://example.com/clubs',
@@ -1808,6 +1833,7 @@ describe('affiliate import service', () => {
           title: { selector: '.title' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           startsAt: { selector: '.start', transform: 'dateTime' },
+          sportName: { selector: 'body', mode: 'literal', value: 'Basketball' },
           city: { selector: 'body', mode: 'literal', value: 'Portland' },
           venueName: { selector: 'body', mode: 'literal', value: 'Automatic Sports Complex' },
         },
@@ -1818,7 +1844,7 @@ describe('affiliate import service', () => {
     prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
     prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({ ...data }));
     prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
-    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'Basketball' });
     prismaMock.events.findUnique.mockResolvedValue(null);
     prismaMock.events.findFirst.mockResolvedValue(null);
     prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
@@ -2041,7 +2067,7 @@ describe('affiliate import service', () => {
             title: 'Example Club Tryouts',
             officialActionUrl: 'https://example.com/tryouts',
             sourceUrl: 'https://example.com/tryouts',
-            sportName: 'Volleyball',
+            sportName: 'Indoor Volleyball',
             dateDisplayMode: 'NO_FIXED_DATE',
             dateDisplayText: 'Dates not posted',
             scheduleText: 'Tryouts are not currently up to date.',
@@ -2661,7 +2687,7 @@ describe('affiliate import service', () => {
           title: { selector: '.name' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
           description: { selector: '.description' },
-          sportName: { selector: '.club', mode: 'literal', value: 'Volleyball' },
+          sportName: { selector: '.club', mode: 'literal', value: 'Indoor Volleyball' },
           city: { selector: '.club', mode: 'literal', value: 'Portland, OR' },
         },
       },
@@ -2703,7 +2729,7 @@ describe('affiliate import service', () => {
         ownerId: 'owner_1',
         name: 'Portland Juniors Volleyball Club',
         website: 'https://example.com/portland-juniors',
-        sports: ['Volleyball'],
+        sports: ['Indoor Volleyball'],
         status: 'UNLISTED',
         publicPageEnabled: false,
         publicSlug: 'portland-juniors-volleyball-club',
@@ -2730,7 +2756,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_clubs',
       listingKind: 'CLUB',
       title: 'Portland Juniors Volleyball Club',
-      sportName: 'Volleyball',
+      sportName: 'Indoor Volleyball',
       city: 'Portland, OR',
       description: 'Youth volleyball club with tryouts listed on the official site.',
       officialActionUrl: 'https://example.com/portland-juniors',
@@ -2849,6 +2875,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_clubs',
       listingKind: 'EVENT',
       title: 'Portland Juniors Clinic',
+      sportName: 'Indoor Volleyball',
       venueName: 'Portland Sports Center',
       city: 'Portland, OR',
       startsAt: new Date('2099-08-18T04:00:00.000Z'),
@@ -2872,7 +2899,7 @@ describe('affiliate import service', () => {
       publicPageEnabled: false,
       coordinates: [-122.6765, 45.5231],
     });
-    prismaMock.sports.findFirst.mockResolvedValue(null);
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'Indoor Volleyball' });
     prismaMock.events.findUnique.mockResolvedValue(null);
     prismaMock.events.findFirst.mockResolvedValue(null);
     prismaMock.events.create.mockImplementation(async ({ data }) => ({ id: 'event_1', ...data }));
@@ -2891,7 +2918,7 @@ describe('affiliate import service', () => {
       sourceId: 'source_clubs',
       listingKind: 'CLUB',
       title: 'Imported name that must not replace the profile',
-      sportName: 'Volleyball',
+      sportName: 'Indoor Volleyball',
       city: 'Portland, OR',
       description: 'Imported description that must remain source-only.',
       officialActionUrl: 'https://registration.example/claimed-club',

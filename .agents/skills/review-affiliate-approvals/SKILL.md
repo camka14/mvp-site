@@ -112,6 +112,18 @@ absent locality evidence. Do not apply this city-level fallback to events.
 
 Also review event and division integrity independently of the organization:
 
+- Read the deterministic `sportQuality` section from the package-evidence
+  command before any approval. Set `sportQualityVerified` only when every
+  candidate and source organization sport exactly matches a current `Sports.name`
+  row. Generic `Volleyball` is not interchangeable with `Indoor Volleyball`,
+  `Grass Volleyball`, or `Beach Volleyball`. Do not infer a volleyball or soccer
+  surface. Return missing, wrong-case, or otherwise deterministically correctable
+  catalog names to `PRODUCER_REPAIR` with `SPORT_NAME_INVALID`. When any source
+  sport is absent from the catalog, immediately `REJECT` with
+  `HUMAN_REVIEW_REQUIRED` and `SPORT_NOT_IN_CATALOG`. Preserve the source label
+  in the evidence so a human can decide whether to implement the sport. Do not
+  approve, substitute another sport, or ask the mapper to guess.
+
 - Compare the organization description and inspected event descriptions with
   stored first-party page evidence. Public copy must describe the organization
   or activity naturally. It must not say where the record was listed, found,

@@ -5,6 +5,7 @@ import { affiliateSourceMatchesIntakeEvidence } from '../src/server/affiliateImp
 import { codexAffiliateIngestionResultSchema } from '../src/server/affiliateImports/codexIngestionResult';
 import { analyzeAffiliateDescriptionQuality } from '../src/server/affiliateImports/descriptionQuality';
 import { inspectAffiliateEventDivisionQuality } from '../src/server/affiliateImports/eventDivisionQuality';
+import { inspectAffiliateSportQuality } from '../src/server/affiliateImports/sportQuality';
 import {
   inspectAffiliateDisposableReviewScrapes,
   inspectAffiliateProducerPackage,
@@ -53,6 +54,10 @@ const main = async () => {
       result,
     });
     const eventDivisionQuality = await inspectAffiliateEventDivisionQuality({
+      queryable: disposable,
+      sourceId: disposableReviews.sourceId,
+    });
+    const sportQuality = await inspectAffiliateSportQuality({
       queryable: disposable,
       sourceId: disposableReviews.sourceId,
     });
@@ -151,6 +156,7 @@ const main = async () => {
       producer,
       disposableReviews,
       eventDivisionQuality,
+      sportQuality,
       candidateSample: candidateSample.rows,
       descriptionQuality: {
         checkedCandidateCount: candidateDescriptions.rows.length,

@@ -12,7 +12,7 @@ import {
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { locationService } from '@/lib/locationService';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
-import { buildEventDivisionDisplayLabels } from '@/lib/eventDivisionDisplay';
+import { buildEventDivisionCardLabel } from '@/lib/eventDivisionDisplay';
 import { trackEventOutboundClicked } from '@/lib/analytics/eventAnalytics';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
 
@@ -200,7 +200,7 @@ export default function EventCard({
     return Array.from(names);
   }, [event.fields, event.timeSlots]);
 
-  const divisionLabels = useMemo(() => buildEventDivisionDisplayLabels(event), [event]);
+  const divisionLabel = useMemo(() => buildEventDivisionCardLabel(event), [event]);
 
   const hostLabel = useMemo(() => {
     if (typeof event.organization === 'object' && event.organization && 'name' in event.organization) {
@@ -332,12 +332,12 @@ export default function EventCard({
             </div>
           )}
 
-          {divisionLabels.length > 0 && (
+          {divisionLabel && (
             <div className="flex items-center">
               <svg className="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              {divisionLabels.join(', ')}
+              {divisionLabel}
             </div>
           )}
 

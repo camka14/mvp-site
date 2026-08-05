@@ -28,6 +28,7 @@ the result. `reviewerId` must exactly match the claim owner.
     "storedEvidenceSufficient": true,
     "identityIndependent": true,
     "packageValidationPassed": false,
+    "sportQualityVerified": false,
     "descriptionQualityVerified": false,
     "officialLogoVerified": false,
     "logoAbsenceAccepted": false,
@@ -61,6 +62,7 @@ Mapping `APPROVE` results and all domain-policy results must omit this field.
 
 Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
 `EVENT_LOCATION_INVALID`, `ORGANIZATION_LOCATION_INVALID`,
+`SPORT_NAME_INVALID`,
 `EVENT_DIVISION_GROUPING_INVALID`,
 `EVENT_DIVISION_CLASSIFICATION_INVALID`, `EVENT_PRICING_INVALID`,
 `EVENT_CAPACITY_INVALID`, `EVENT_DESCRIPTION_INVALID`,
@@ -68,7 +70,7 @@ Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
 `PACKAGE_VALIDATION_FAILED`, `DUPLICATE_SAFETY_INVALID`, and
 `OTHER_PRODUCER_DEFECT`. Human-review reason codes are
 `NO_VERIFIABLE_OFFICIAL_LOGO` (legacy decisions),
-`INSUFFICIENT_STORED_EVIDENCE`, and
+`SPORT_NOT_IN_CATALOG`, `INSUFFICIENT_STORED_EVIDENCE`, and
 `CONFLICTING_LIVE_RECORD`. `RETRY_LIMIT_EXCEEDED` and
 `UNCLASSIFIED_TERMINAL_FAILURE` are normally assigned by queue recovery rather
 than the reviewer.
@@ -84,10 +86,20 @@ stored evidence conflicts about whether an explicit prohibition applies, or
 when the target domain or path cannot be identified. A prohibition for a
 private, account, login, checkout, or payment path does not block a separate
 public listing path. A mapping approval requires
-`identityIndependent`, `packageValidationPassed`, `descriptionQualityVerified`,
+`identityIndependent`, `packageValidationPassed`, `sportQualityVerified`,
+`descriptionQualityVerified`,
 `duplicateSafetyVerified`,
 and `storedEvidenceSufficient`, plus exactly one of `officialLogoVerified` or
 `logoAbsenceAccepted`.
+
+The package-evidence report contains `sportQuality`. Every candidate sport and
+every source organization sport must exactly match a current `Sports.name`.
+Use `SPORT_NAME_INVALID` with `PRODUCER_REPAIR` for a missing name or a
+deterministic spelling or casing correction. Use `SPORT_NOT_IN_CATALOG` with a
+`REJECT` decision and `HUMAN_REVIEW_REQUIRED` when a source label is absent
+from the catalog. This includes generic `Volleyball` when only surface-specific
+volleyball sports exist and sports such as Badminton until BracketIQ implements
+them. Never substitute a catalog sport based only on similarity.
 
 For a producer result with `logoDisposition = MANUAL_REVIEW`, the reviewer must
 inspect stored logo and branding evidence first and then perform the bounded

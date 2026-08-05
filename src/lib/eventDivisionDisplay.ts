@@ -42,6 +42,19 @@ const aliasesForDivision = (division: Pick<Division, 'id' | 'key'>): string[] =>
   return Array.from(aliases);
 };
 
+const dedupeDivisions = (divisions: Division[]): Division[] => {
+  const rows = new Map<string, Division>();
+  divisions.forEach((division) => {
+    const key = normalizeDivisionKey(division.id)
+      ?? normalizeDivisionKey(division.key)
+      ?? normalizeDivisionKey(division.name);
+    if (key && !rows.has(key)) {
+      rows.set(key, division);
+    }
+  });
+  return Array.from(rows.values());
+};
+
 const getDivisionIdFromEventEntry = (entry: Event['divisions'][number]): string | null => {
   if (typeof entry === 'string') {
     return normalizeDivisionKey(entry);
@@ -147,7 +160,7 @@ const buildTournamentBracketDisplayRows = (
 ): Division[] => {
   const explicitBracketRows = [...playoffDetails, ...details.filter(isPlayoffDivision)];
   if (explicitBracketRows.length > 0) {
-    return explicitBracketRows;
+    return dedupeDivisions(explicitBracketRows);
   }
 
   const sportInput = event.sport?.name ?? event.sportId ?? undefined;
@@ -252,21 +265,27 @@ const dedupeLabels = (labels: string[]): string[] => {
   return deduped;
 };
 
-export const buildEventDivisionDisplayLabels = (event: Event): string[] => {
+type EventDivisionDisplayRow = {
+  divisionId: string;
+  detail: Division | null;
+  label: string;
+};
+
+const buildEventDivisionDisplayRows = (event: Event): EventDivisionDisplayRow[] => {
   const details = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
   const playoffDetails = Array.isArray(event.playoffDivisionDetails) ? event.playoffDivisionDetails : [];
   const sportInput = event.sport?.name ?? event.sportId ?? undefined;
 
   if (hasTournamentPoolPlay(event, details)) {
-    return dedupeLabels(
-      buildTournamentBracketDisplayRows(event, details, playoffDetails).map((detail) => (
-        labelForDivision({
-          divisionId: detail.id,
-          detail,
-          sportInput,
-        })
-      )),
-    );
+    return buildTournamentBracketDisplayRows(event, details, playoffDetails).map((detail) => ({
+      divisionId: detail.id,
+      detail,
+      label: labelForDivision({
+        divisionId: detail.id,
+        detail,
+        sportInput,
+      }),
+    }));
   }
 
   const detailIndexes = indexDivisions(details);
@@ -280,15 +299,190 @@ export const buildEventDivisionDisplayLabels = (event: Event): string[] => {
       .map(getDivisionIdFromEventEntry)
       .filter((entry): entry is string => Boolean(entry))
       .filter((entry) => !aliasesForIdentifier(entry).some((alias) => playoffAliases.has(alias)))
+      .filter((entry, index, entries) => entries.indexOf(entry) === index)
     : [];
 
-  return dedupeLabels(
-    divisionIds.map((divisionId) => (
-      labelForDivision({
+  return divisionIds.map((divisionId) => {
+    const detail = getDivisionDetail(divisionId, detailIndexes);
+    return {
+      divisionId,
+      detail,
+      label: labelForDivision({
         divisionId,
-        detail: getDivisionDetail(divisionId, detailIndexes),
+        detail,
         sportInput,
-      })
-    )),
+      }),
+    };
+  });
+};
+
+export const buildEventDivisionDisplayLabels = (event: Event): string[] => (
+  dedupeLabels(buildEventDivisionDisplayRows(event).map((row) => row.label))
+);
+
+type EventDivisionAxes = {
+  gender: string | null;
+  ageId: string | null;
+  ageLabel: string | null;
+  skillId: string | null;
+  skillLabel: string | null;
+};
+
+const dualAxisTokenRegex = /^([mfc])_skill_(.+)_age_(.+)$/i;
+const singleAxisTokenRegex = /^([mfc])_(age|skill)_(.+)$/i;
+const compactAgeTokenRegex = /^([mfc])_(u\d+|\d+u|\d+plus)$/i;
+const underAgeRegex = /^(?:u(\d+)|(\d+)u)$/i;
+const plusAgeRegex = /^(\d+)(?:plus|\+)$/i;
+const exactAgeLabelRegex = /^(?:u?\d+u?|\d+\+)$/i;
+const skillOrder = new Map([
+  ['recreational', 0],
+  ['rec', 0],
+  ['beginner', 1],
+  ['novice', 1],
+  ['developmental', 2],
+  ['local', 3],
+  ['intermediate', 4],
+  ['select', 5],
+  ['competitive', 6],
+  ['advanced', 7],
+  ['premier', 8],
+  ['elite', 9],
+  ['national', 10],
+  ['open', 11],
+]);
+
+const normalizeAxisId = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, '_');
+
+const compactAxisToken = (value: string): string => {
+  const normalized = normalizeAxisId(value);
+  const underAgeMatch = normalized.match(underAgeRegex);
+  if (underAgeMatch) {
+    return `U${underAgeMatch[1] || underAgeMatch[2]}`;
+  }
+  const plusAgeMatch = normalized.match(plusAgeRegex);
+  if (plusAgeMatch) {
+    return `${plusAgeMatch[1]}+`;
+  }
+  if (normalized === 'recreational' || normalized === 'rec') {
+    return 'Rec';
+  }
+  return startCase(normalized);
+};
+
+const eventDivisionAxes = (row: EventDivisionDisplayRow): EventDivisionAxes => {
+  const detail = row.detail;
+  const token = extractDivisionTokenFromId(detail?.key ?? detail?.id ?? row.divisionId)
+    ?? normalizeAxisId(detail?.key ?? detail?.id ?? row.divisionId);
+  const dualMatch = token.match(dualAxisTokenRegex);
+  const singleMatch = token.match(singleAxisTokenRegex);
+  const compactAgeMatch = token.match(compactAgeTokenRegex);
+  const normalizedName = row.label.trim();
+  const nameIsOnlyAge = exactAgeLabelRegex.test(normalizedName);
+  const tokenGender = dualMatch?.[1]
+    ?? singleMatch?.[1]
+    ?? compactAgeMatch?.[1]
+    ?? token.match(/^([mfc])_/i)?.[1];
+  const gender = normalizeDivisionKey(detail?.gender ?? tokenGender)?.toUpperCase() ?? null;
+  const tokenAgeId = dualMatch?.[3]
+    ?? (singleMatch?.[2]?.toLowerCase() === 'age' ? singleMatch[3] : null)
+    ?? compactAgeMatch?.[2]
+    ?? null;
+  const tokenSkillId = dualMatch?.[2]
+    ?? (singleMatch?.[2]?.toLowerCase() === 'skill' ? singleMatch[3] : null)
+    ?? null;
+  const ageId = normalizeDivisionKey(tokenAgeId ?? detail?.ageDivisionTypeId ?? (nameIsOnlyAge ? normalizedName : null));
+  const skillIdCandidate = normalizeDivisionKey(
+    tokenSkillId ?? detail?.skillDivisionTypeId ?? detail?.skillDivisionTypeName,
   );
+  const skillId = compactAgeMatch || (
+    nameIsOnlyAge &&
+    !tokenSkillId &&
+    !detail?.skillDivisionTypeId &&
+    !detail?.skillDivisionTypeName
+  )
+    ? null
+    : skillIdCandidate;
+
+  return {
+    gender: gender && ['M', 'F', 'C'].includes(gender) ? gender : null,
+    ageId,
+    ageLabel: normalizeDivisionKey(detail?.ageDivisionTypeName)
+      ? detail?.ageDivisionTypeName?.trim() ?? null
+      : nameIsOnlyAge ? normalizedName : null,
+    skillId,
+    skillLabel: normalizeDivisionKey(detail?.skillDivisionTypeName)
+      ? detail?.skillDivisionTypeName?.trim() ?? null
+      : null,
+  };
+};
+
+const ageOrder = (value: string): number => {
+  const normalized = normalizeAxisId(value);
+  const underAgeMatch = normalized.match(underAgeRegex);
+  if (underAgeMatch) return Number(underAgeMatch[1] || underAgeMatch[2]);
+  const plusAgeMatch = normalized.match(plusAgeRegex);
+  if (plusAgeMatch) return Number(plusAgeMatch[1]);
+  return Number.MAX_SAFE_INTEGER;
+};
+
+const skillSortOrder = (value: string): number => {
+  const normalized = normalizeAxisId(value);
+  const knownOrder = skillOrder.get(normalized);
+  if (knownOrder !== undefined) return knownOrder;
+  const numberedLevel = normalized.match(/^[a-z]+(\d+)$/)?.[1];
+  return numberedLevel ? 100 + Number(numberedLevel) : 1_000;
+};
+
+const uniqueAxes = (
+  axes: EventDivisionAxes[],
+  key: 'age' | 'skill',
+): Array<{ id: string; label: string }> => {
+  const values = new Map<string, { id: string; label: string }>();
+  axes.forEach((axis) => {
+    const id = key === 'age' ? axis.ageId : axis.skillId;
+    const label = key === 'age' ? axis.ageLabel : axis.skillLabel;
+    if (!id) return;
+    const normalizedId = normalizeAxisId(id);
+    if (!values.has(normalizedId)) {
+      values.set(normalizedId, { id: normalizedId, label: label || compactAxisToken(normalizedId) });
+    }
+  });
+  return Array.from(values.values()).sort((left, right) => {
+    const order = key === 'age'
+      ? ageOrder(left.id) - ageOrder(right.id)
+      : skillSortOrder(left.id) - skillSortOrder(right.id);
+    return order || left.label.localeCompare(right.label);
+  });
+};
+
+const formatAxisRange = (values: Array<{ id: string; label: string }>): string | null => {
+  if (values.length === 0) return null;
+  if (values.length === 1) return compactAxisToken(values[0].label);
+  return `${compactAxisToken(values[0].label)}–${compactAxisToken(values[values.length - 1].label)}`;
+};
+
+const formatGenderRange = (axes: EventDivisionAxes[]): string | null => {
+  const genders = new Set(axes.map((axis) => axis.gender).filter(Boolean));
+  const labels = [
+    ['M', 'Men'],
+    ['F', 'Women'],
+    ['C', 'Coed'],
+  ].filter(([id]) => genders.has(id)).map(([, label]) => label);
+  return labels.length > 0 ? labels.join('/') : null;
+};
+
+export const buildEventDivisionCardLabel = (event: Event): string => {
+  const rows = buildEventDivisionDisplayRows(event);
+  const labels = dedupeLabels(rows.map((row) => row.label));
+  if (rows.length <= 2) {
+    return labels.join(', ');
+  }
+
+  const axes = rows.map(eventDivisionAxes);
+  return [
+    formatGenderRange(axes),
+    formatAxisRange(uniqueAxes(axes, 'age')),
+    formatAxisRange(uniqueAxes(axes, 'skill')),
+    `${rows.length} divisions`,
+  ].filter((value): value is string => Boolean(value)).join(' · ');
 };

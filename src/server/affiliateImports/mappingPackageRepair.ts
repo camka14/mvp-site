@@ -21,6 +21,7 @@ export type AffiliateMappingProducerRepairReason =
   | 'LIVE_SETUP_UNSUPPORTED'
   | 'EVENT_LOCATION_PACKAGE_REJECTION'
   | 'ORGANIZATION_LOCATION_INVALID'
+  | 'SPORT_NAME_INVALID'
   | 'MANUAL_LOGO_REVIEW'
   | 'EVENT_DIVISION_GROUPING_INVALID'
   | 'EVENT_DIVISION_CLASSIFICATION_INVALID'
@@ -90,6 +91,7 @@ const structuredRepairReason = (reasonCodes: string[]): AffiliateMappingProducer
   if (reasonCodes.includes('LIVE_SETUP_UNSUPPORTED')) return 'LIVE_SETUP_UNSUPPORTED';
   if (reasonCodes.includes('EVENT_LOCATION_INVALID')) return 'EVENT_LOCATION_PACKAGE_REJECTION';
   if (reasonCodes.includes('ORGANIZATION_LOCATION_INVALID')) return 'ORGANIZATION_LOCATION_INVALID';
+  if (reasonCodes.includes('SPORT_NAME_INVALID')) return 'SPORT_NAME_INVALID';
   if (reasonCodes.includes('OFFICIAL_LOGO_REPAIR_REQUIRED')) return 'MANUAL_LOGO_REVIEW';
   if (reasonCodes.includes('EVENT_DIVISION_GROUPING_INVALID')) return 'EVENT_DIVISION_GROUPING_INVALID';
   if (reasonCodes.includes('EVENT_DIVISION_CLASSIFICATION_INVALID')) return 'EVENT_DIVISION_CLASSIFICATION_INVALID';
@@ -200,6 +202,9 @@ export const affiliateMappingProducerRepairEligibility = (input: {
 
   const organizationLocationInvalid = /(?:(?:organization|club|facility).{0,180}(?:location|city|region|address|coordinate)|(?:location|city|region|address|coordinate).{0,180}(?:organization|club|facility))/i.test(evidence);
   if (organizationLocationInvalid) return producerRepair('ORGANIZATION_LOCATION_INVALID');
+
+  const sportNameInvalid = /(?:(?:sport|sportName).{0,160}(?:canonical|catalog|name|case|spelling)|(?:canonical|catalog).{0,160}(?:sport|sportName))/i.test(evidence);
+  if (sportNameInvalid) return producerRepair('SPORT_NAME_INVALID');
 
   const divisionGroupingInvalid = /(?:division.{0,180}(?:group|merge|leak|parent event|event card)|(?:group|merge|leak).{0,180}division)/i.test(evidence);
   if (divisionGroupingInvalid) return producerRepair('EVENT_DIVISION_GROUPING_INVALID');

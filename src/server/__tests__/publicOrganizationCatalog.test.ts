@@ -69,6 +69,7 @@ import {
   getPublicOrganizationEventForRegistration,
   getPublicOrganizationRentalSelectionData,
   listPublicOrganizationRentals,
+  listPublicOrganizationDivisions,
   listPublicOrganizationProducts,
   listPublicOrganizationEvents,
   listPublicOrganizationEventPage,
@@ -126,6 +127,57 @@ describe('publicOrganizationCatalog', () => {
     toLeagueEventMock.mockReset();
     buildPublicBracketWidgetViewMock.mockReset();
     loadEventWithRelationsMock.mockReset();
+  });
+
+  it('lists active organization divisions with safe registration URLs', async () => {
+    prismaMock.divisions.findMany.mockResolvedValue([
+      {
+        id: 'division_1',
+        organizationId: 'org_1',
+        eventId: null,
+        scope: 'ORGANIZATION',
+        status: 'ACTIVE',
+        name: 'Girls U14 Premier',
+        gender: 'F',
+        divisionTypeId: 'skill_premier_age_u14',
+        skillDivisionTypeId: 'premier',
+        ageDivisionTypeId: 'u14',
+        registrationUrl: 'https://club.example/register',
+      },
+      {
+        id: 'division_2',
+        organizationId: 'org_1',
+        eventId: null,
+        scope: 'ORGANIZATION',
+        status: 'ACTIVE',
+        name: 'Unsafe',
+        gender: 'C',
+        divisionTypeId: 'skill_open_age_18plus',
+        skillDivisionTypeId: 'open',
+        ageDivisionTypeId: '18plus',
+        registrationUrl: 'javascript:alert(1)',
+      },
+    ]);
+
+    const divisions = await listPublicOrganizationDivisions(publicOrganization);
+
+    expect(divisions).toEqual([
+      expect.objectContaining({
+        id: 'division_1',
+        registrationUrl: 'https://club.example/register',
+      }),
+      expect.objectContaining({
+        id: 'division_2',
+        registrationUrl: null,
+      }),
+    ]);
+    expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: 'org_1',
+        scope: 'ORGANIZATION',
+        status: 'ACTIVE',
+      }),
+    }));
   });
 
   it('does not return page-disabled organizations for public pages', async () => {

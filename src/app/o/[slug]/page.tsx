@@ -8,6 +8,7 @@ import {
   getPublicOrganizationBySlug,
   getPublicOrganizationCatalog,
   type PublicOrganizationEventCard,
+  type PublicOrganizationDivisionCard,
   type PublicOrganizationRentalCard,
   type PublicOrganizationTeamCard,
 } from '@/server/publicOrganizationCatalog';
@@ -204,6 +205,30 @@ function RentalItem({ rental }: { rental: PublicOrganizationRentalCard }) {
   );
 }
 
+function DivisionItem({ division }: { division: PublicOrganizationDivisionCard }) {
+  const content = (
+    <>
+      <h3 className={styles.divisionTitle}>{division.name}</h3>
+      {division.divisionTypeName ? <p className={styles.itemMeta}>{division.divisionTypeName}</p> : null}
+      {division.description ? <p className={styles.itemMeta}>{division.description}</p> : null}
+      {division.registrationUrl ? <span className={styles.itemAction}>Register</span> : null}
+    </>
+  );
+  if (division.registrationUrl) {
+    return (
+      <a
+        href={division.registrationUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={styles.divisionCard}
+      >
+        {content}
+      </a>
+    );
+  }
+  return <article className={styles.divisionCard}>{content}</article>;
+}
+
 export default async function PublicOrganizationPage({ params }: PublicOrganizationPageProps) {
   const { slug } = await params;
   const catalog = await getPublicOrganizationCatalog(slug, { surface: 'page', limit: 8 });
@@ -211,7 +236,7 @@ export default async function PublicOrganizationPage({ params }: PublicOrganizat
     notFound();
   }
 
-  const { organization, events, teams, rentals, products } = catalog;
+  const { organization, events, teams, divisions, rentals, products } = catalog;
   const reviewPayload = await getOrganizationReviewsPayload(organization.id, null, { limit: 6 });
   const pageStyle = {
     '--org-primary': organization.brandPrimaryColor,
@@ -265,6 +290,31 @@ export default async function PublicOrganizationPage({ params }: PublicOrganizat
             }}
           />
         </section>
+        {divisions.length > 0 ? (
+          <section id="divisions" className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div>
+                <h2 className={styles.sectionTitle}>Divisions</h2>
+                <p className={styles.sectionText}>Current organization divisions and registration options.</p>
+              </div>
+            </div>
+            <div className={styles.divisionGrid}>
+              {divisions.slice(0, 2).map((division) => (
+                <DivisionItem key={division.id} division={division} />
+              ))}
+            </div>
+            {divisions.length > 2 ? (
+              <details className={styles.divisionMore}>
+                <summary className={styles.sectionAction}>More ({divisions.length - 2})</summary>
+                <div className={styles.divisionGrid}>
+                  {divisions.slice(2).map((division) => (
+                    <DivisionItem key={division.id} division={division} />
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </section>
+        ) : null}
         <section id="reviews" className={styles.section}>
           <div className={styles.sectionHeader}>
             <div>

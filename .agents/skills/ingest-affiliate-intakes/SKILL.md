@@ -87,6 +87,17 @@ Create or repair everything needed for review:
 - two duplicate-safe review scrapes against a disposable database;
 - a compact result JSON and a source-scoped commit.
 
+Use the exact sport `name` from the current BracketIQ `Sports` catalog whenever
+the stored evidence supports that sport. Treat surface and format variants as
+different sports when the catalog does. Generic `Volleyball` is not a safe
+alias for `Indoor Volleyball`, `Grass Volleyball`, or `Beach Volleyball`, and
+generic `Soccer` must not be converted to an indoor or outdoor variant without
+source evidence. Do not guess. When the source sport does not exist in the
+catalog, preserve its source label in the review-ready mapping, record the gap
+in warnings and unresolved questions, and submit it for independent review.
+Do not fail or discard an otherwise reproducible mapping only to hide an
+unsupported sport. The reviewer will route it to terminal human review.
+
 Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and record the completed evidence search. The independent reviewer may accept that absence; the producer does not approve or publish the organization.
 
 Write event and organization descriptions from stored first-party page content.

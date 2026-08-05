@@ -82,6 +82,7 @@ const producerRepairReasonCodes = new Set([
   'LIVE_SETUP_UNSUPPORTED',
   'EVENT_LOCATION_INVALID',
   'ORGANIZATION_LOCATION_INVALID',
+  'SPORT_NAME_INVALID',
   'EVENT_DIVISION_GROUPING_INVALID',
   'EVENT_DIVISION_CLASSIFICATION_INVALID',
   'EVENT_PRICING_INVALID',
@@ -144,6 +145,14 @@ export const affiliateMappingReviewGuidance = (input: {
       reviewOwner: 'USER',
       reviewQuestion: 'Is this source the same as the conflicting live record, or should both records remain separate?',
       recommendedAction: 'Compare the source identity with the live record. Choose whether to merge, replace, keep separate, or stop this source.',
+    };
+  }
+
+  if (reasonCodes.includes('SPORT_NOT_IN_CATALOG')) {
+    return {
+      reviewOwner: 'USER',
+      reviewQuestion: 'Should this sport be added to the BracketIQ sports catalog?',
+      recommendedAction: 'Review the source sport below. Add a fully configured canonical sport only when BracketIQ should support it; otherwise leave this mapping stopped.',
     };
   }
 

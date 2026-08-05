@@ -15,6 +15,7 @@ import { buildAffiliateOutboundUrl, protectAffiliateRow } from '@/server/affilia
 import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
 import { getOrganizationOwnershipPresentation } from '@/lib/organizationOwnership';
+import { organizationDivisionView } from '@/server/organizationDivisions';
 
 export type PublicCatalogSurface = 'page' | 'widget' | 'any';
 export type PublicWidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products' | 'standings' | 'brackets';
@@ -100,6 +101,14 @@ export type PublicOrganizationRentalCard = {
   detailsUrl: string;
 };
 
+export type PublicOrganizationDivisionCard = {
+  id: string;
+  name: string;
+  divisionTypeName: string | null;
+  description: string | null;
+  registrationUrl: string | null;
+};
+
 export type PublicOrganizationProductCard = {
   id: string;
   name: string;
@@ -114,6 +123,7 @@ export type PublicOrganizationCatalog = {
   events: PublicOrganizationEventCard[];
   eventPageInfo: PublicPaginationInfo;
   teams: PublicOrganizationTeamCard[];
+  divisions: PublicOrganizationDivisionCard[];
   rentals: PublicOrganizationRentalCard[];
   products: PublicOrganizationProductCard[];
 };
@@ -1165,6 +1175,34 @@ export const listPublicOrganizationProducts = async (
   }));
 };
 
+export const listPublicOrganizationDivisions = async (
+  organization: PublicOrganizationSummary,
+): Promise<PublicOrganizationDivisionCard[]> => {
+  const rows = await (prisma as any).divisions.findMany({
+    where: {
+      organizationId: organization.id,
+      eventId: null,
+      scope: 'ORGANIZATION',
+      status: 'ACTIVE',
+    },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map((row: Record<string, any>): PublicOrganizationDivisionCard => {
+    const view = organizationDivisionView(row);
+    return {
+      id: String(view.id),
+      name: String(view.name || 'Division'),
+      divisionTypeName: typeof view.divisionTypeName === 'string' && view.divisionTypeName.trim()
+        ? view.divisionTypeName.trim()
+        : null,
+      description: typeof view.description === 'string' && view.description.trim()
+        ? view.description.trim()
+        : null,
+      registrationUrl: normalizeExternalHttpUrl(view.registrationUrl),
+    };
+  });
+};
+
 export const listPublicOrganizationRentals = async (
   organization: PublicOrganizationSummary,
   options: { limit?: number } = {},
@@ -1610,7 +1648,7 @@ export const getPublicOrganizationCatalog = async (
   if (!organization) {
     return null;
   }
-  const [eventPage, teams, rentals, products] = await Promise.all([
+  const [eventPage, teams, divisions, rentals, products] = await Promise.all([
     listPublicOrganizationEventPage(organization, {
       limit: options.limit,
       page: options.eventPage,
@@ -1625,13 +1663,22 @@ export const getPublicOrganizationCatalog = async (
       limit: options.limit,
       openRegistrationOnly: options.teamOpenRegistrationOnly,
     }),
+    listPublicOrganizationDivisions(organization),
     listPublicOrganizationRentals(organization, { limit: options.limit }),
     listPublicOrganizationProducts(organization, {
       limit: options.limit,
       purchaseMode: options.productPurchaseMode,
     }),
   ]);
-  return { organization, events: eventPage.events, eventPageInfo: eventPage.pageInfo, teams, rentals, products };
+  return {
+    organization,
+    events: eventPage.events,
+    eventPageInfo: eventPage.pageInfo,
+    teams,
+    divisions,
+    rentals,
+    products,
+  };
 };
 
 export const getPublicOrganizationTeamForRegistration = async (

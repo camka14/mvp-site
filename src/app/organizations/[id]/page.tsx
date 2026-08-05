@@ -3652,7 +3652,6 @@ function OrganizationDetailContent() {
                       <OrganizationDivisionsPanel
                         organization={org}
                         summary
-                        onViewAll={() => handleOrganizationTabChange('divisions')}
                         onChanged={(divisions) => setOrg((current) => current ? { ...current, divisions } : current)}
                       />
                     </div>

@@ -83,6 +83,9 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('organization setup');
     expect(goal).toContain('official URLs and logo disposition');
     expect(goal).toContain('two duplicate-safe review scrapes');
+    expect(goal).toContain('Use exact current Sports.name values');
+    expect(goal).toContain('Never infer a volleyball or soccer surface');
+    expect(goal).toContain('unsupported source sport labels');
     expect(goal).toContain('Keep valid organizations reviewable when individual events lack locations');
     expect(goal).toContain('SOURCE_ORGANIZATION fallback with stored evidence');
     expect(goal).toContain('Preserve the exact source division label');

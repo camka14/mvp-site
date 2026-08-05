@@ -175,6 +175,45 @@
   gap: 16px;
 }
 
+.divisionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.divisionCard {
+  display: flex;
+  min-height: 132px;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #d7e3dd;
+  border-radius: 8px;
+  padding: 18px;
+  background: white;
+  color: inherit;
+  text-decoration: none;
+}
+
+.divisionTitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.divisionMore {
+  margin-top: 16px;
+}
+
+.divisionMore > summary {
+  width: fit-content;
+  margin-bottom: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.divisionMore > summary::-webkit-details-marker {
+  display: none;
+}
+
 .review {
   border: 1px solid #d7e3dd;
   border-radius: 8px;

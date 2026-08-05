@@ -95,6 +95,8 @@ export interface Division {
   skillDivisionTypeId?: string;
   ageDivisionTypeId?: string;
   divisionTypeName?: string;
+  skillDivisionTypeName?: string;
+  ageDivisionTypeName?: string;
   /** @deprecated Use skillDivisionTypeId and divisionTypeName for new code. */
   skillLevel?: string;
   ratingType?: DivisionRatingType;

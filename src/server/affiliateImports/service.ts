@@ -102,11 +102,6 @@ const nullableString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const AFFILIATE_SPORT_NAME_ALIASES: Record<string, string> = {
-  soccer: 'Indoor Soccer',
-  volleyball: 'Indoor Volleyball',
-};
-
 const recordValue = (value: unknown): Record<string, unknown> => (
   value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -1178,12 +1173,26 @@ const resolveAffiliateSportId = async (sportName: unknown): Promise<string | nul
   const name = nullableString(sportName);
   if (!name) return null;
   const { sports } = affiliatePrisma();
-  const canonicalName = AFFILIATE_SPORT_NAME_ALIASES[name.toLowerCase()] ?? name;
   const sport = await sports.findFirst({
-    where: { name: { equals: canonicalName, mode: 'insensitive' } },
+    where: { name },
     select: { id: true },
   });
   return sport?.id ?? null;
+};
+
+const assertAffiliateCandidateUsesCanonicalSport = async (
+  candidate: Pick<AffiliateCandidateInput, 'sportName'> | any,
+  targetLabel: 'event' | 'organization' | 'rental facility',
+): Promise<string> => {
+  const sportName = nullableString(candidate.sportName);
+  const sportId = await resolveAffiliateSportId(sportName);
+  if (!sportName || !sportId) {
+    throw new Error(
+      `Affiliate ${targetLabel} cannot be published unless sportName exactly matches a current Sports.name. `
+      + `Received ${sportName ?? 'no sport name'}. Send unsupported sports to human review instead of guessing a replacement.`,
+    );
+  }
+  return sportId;
 };
 
 const geocodeFirstAvailableAddress = async (queries: string[]): Promise<[number, number] | null> => {
@@ -1373,6 +1382,9 @@ const buildAffiliateEventData = async (
   fallbackCoordinates?: unknown,
 ) => {
   const sportId = await resolveAffiliateSportId(candidate.sportName);
+  if (state === 'PUBLISHED' && !sportId) {
+    await assertAffiliateCandidateUsesCanonicalSport(candidate, 'event');
+  }
   const dateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
   const dateDisplayText = dateDisplayTextFromCandidate(candidate);
   const start = eventStartFromCandidate(candidate);
@@ -1720,6 +1732,7 @@ const upsertAffiliateFacilityForCandidate = async (
     normalizeAffiliateCoordinates(existingFacility?.coordinates);
   const status = nullableString(options.status) ?? (candidate.status === 'PUBLISHED' ? 'ACTIVE' : 'DRAFT');
   if (status === 'ACTIVE') {
+    await assertAffiliateCandidateUsesCanonicalSport(candidate, 'rental facility');
     assertAffiliateCoordinatesForPublication({
       coordinates,
       targetLabel: 'rental facility',
@@ -1827,6 +1840,7 @@ const buildAffiliateOrganizationData = async (
   const status = options.status ?? 'UNLISTED';
   const publicPageEnabled = options.publicPageEnabled === true;
   if (status === 'LISTED' || publicPageEnabled) {
+    await assertAffiliateCandidateUsesCanonicalSport(candidate, 'organization');
     assertAffiliateCoordinatesForPublication({
       coordinates,
       targetLabel: 'organization',
