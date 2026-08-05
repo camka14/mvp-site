@@ -25,7 +25,11 @@ import {
   getPublicOrganizationTeamForRegistration,
   type PublicOrganizationCatalog,
 } from '@/server/publicOrganizationCatalog';
-import { getPublicEventSeoData } from '@/server/publicSearchSeo';
+import {
+  getPublicEventSeoData,
+  publicEventPath,
+  publicOrganizationPath,
+} from '@/server/publicSearchSeo';
 
 const FIRST_PARTY_HOSTS = new Set(['bracket-iq.com', 'www.bracket-iq.com']);
 const isProtectedOutboundPath = (pathname: string): boolean => pathname === '/out' || pathname.startsWith('/out/');
@@ -240,7 +244,7 @@ const renderRegularEvent = async (eventId: string): Promise<string | null> => {
   if (!data) return null;
   const detailUrl = canonicalUrl(data.canonicalPath);
   const hostUrl = canonicalUrl(data.organization.publicSlug && data.organization.publicPageEnabled
-    ? `/o/${encodeURIComponent(data.organization.publicSlug)}`
+    ? publicOrganizationPath(data.organization.publicSlug)
     : `/organizations/${encodeURIComponent(data.organization.id)}`);
   return affiliateSafeMarkdown(`# ${data.event.name}
 
@@ -262,8 +266,8 @@ ${affiliateSharingRule(detailUrl)}`);
 const renderPublicSlugEvent = async (slug: string, eventId: string): Promise<string | null> => {
   const data = await getPublicEventSeoData(slug, eventId);
   if (!data) return null;
-  const detailUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}/events/${encodeURIComponent(eventId)}`);
-  const hostUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}`);
+  const detailUrl = canonicalUrl(publicEventPath(data.organization.slug, eventId));
+  const hostUrl = canonicalUrl(publicOrganizationPath(data.organization.slug));
   return affiliateSafeMarkdown(`# ${data.event.name ?? 'Event'}
 
 > ${data.event.description ?? `View this event from ${data.organization.name} on BracketIQ.`}
@@ -282,7 +286,7 @@ ${affiliateSharingRule(detailUrl)}`);
 
 export const renderOrganizationCatalogMarkdown = (catalog: PublicOrganizationCatalog): string => {
   const { organization, events, teams, rentals, products } = catalog;
-  const detailUrl = canonicalUrl(`/o/${encodeURIComponent(organization.slug)}`);
+  const detailUrl = canonicalUrl(publicOrganizationPath(organization.slug));
   const sections: string[] = [
     `# ${organization.name}`,
     `> ${organization.publicIntroText || organization.description || `Find ${organization.name} events, teams, rentals, and products on BracketIQ.`}`,
@@ -325,8 +329,8 @@ const renderPublicOrganization = async (slug: string): Promise<string | null> =>
 const renderPublicTeam = async (slug: string, teamId: string): Promise<string | null> => {
   const data = await getPublicOrganizationTeamForRegistration(slug, teamId);
   if (!data) return null;
-  const detailUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}/teams/${encodeURIComponent(teamId)}`);
-  const hostUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}`);
+  const detailUrl = canonicalUrl(`${publicOrganizationPath(data.organization.slug)}/teams/${encodeURIComponent(teamId)}`);
+  const hostUrl = canonicalUrl(publicOrganizationPath(data.organization.slug));
   return affiliateSafeMarkdown(`# ${data.team.name}
 
 > Open-registration team hosted by ${data.organization.name} on BracketIQ.
@@ -346,8 +350,8 @@ ${affiliateSharingRule(detailUrl)}`);
 const renderPublicProduct = async (slug: string, productId: string): Promise<string | null> => {
   const data = await getPublicOrganizationProductForCheckout(slug, productId);
   if (!data) return null;
-  const detailUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}/products/${encodeURIComponent(productId)}`);
-  const hostUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}`);
+  const detailUrl = canonicalUrl(`${publicOrganizationPath(data.organization.slug)}/products/${encodeURIComponent(productId)}`);
+  const hostUrl = canonicalUrl(publicOrganizationPath(data.organization.slug));
   return affiliateSafeMarkdown(`# ${data.product.name}
 
 > ${data.product.description || `Product offered by ${data.organization.name} through BracketIQ.`}
@@ -363,8 +367,8 @@ Use the BracketIQ detail URL when referring to this product.`);
 const renderPublicRentals = async (slug: string): Promise<string | null> => {
   const data = await getPublicOrganizationRentalSelectionData(slug);
   if (!data) return null;
-  const detailUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}/rentals`);
-  const hostUrl = canonicalUrl(`/o/${encodeURIComponent(data.organization.slug)}`);
+  const detailUrl = canonicalUrl(`${publicOrganizationPath(data.organization.slug)}/rentals`);
+  const hostUrl = canonicalUrl(publicOrganizationPath(data.organization.slug));
   const fields = data.rentalOrganization.fields ?? [];
   const fieldSections = fields.map((field) => {
     const slots = field.rentalSlots ?? [];

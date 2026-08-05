@@ -1,4 +1,5 @@
 import type { Event, Field, TimeSlot } from '@/types';
+import { buildPublicOrganizationPath } from '@/lib/publicOrganizationSlug';
 
 const TEMPLATE_RENTAL_RESOURCE_PREFIX = 'BRACKETIQ_TEMPLATE_RENTAL_RESOURCE:';
 
@@ -97,7 +98,7 @@ export const buildTemplateRentalResourceHref = (
   hint: TemplateRentalResourceHint,
 ): string | null => {
   if (hint.organizationSlug) {
-    return `/o/${encodeURIComponent(hint.organizationSlug)}/rentals`;
+    return `${buildPublicOrganizationPath(hint.organizationSlug)}/rentals`;
   }
   if (hint.organizationId) {
     return `/organizations/${encodeURIComponent(hint.organizationId)}/facilities`;

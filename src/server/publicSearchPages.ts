@@ -7,6 +7,7 @@ import {
   normalizeOrganizationOwnershipStatus,
 } from '@/lib/organizationOwnership';
 import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
+import { buildPublicOrganizationPath } from '@/lib/publicOrganizationSlug';
 import { SITE_URL } from '@/lib/siteUrl';
 import type {
   OrganizationClaimVerificationLevel,
@@ -455,7 +456,7 @@ export const regularEventPath = (eventId: string): string => (
 
 const publicOrganizationPath = (organization: SearchableOrganization): string => (
   organization.slug && organization.publicPageEnabled
-    ? `/o/${encodeURIComponent(organization.slug)}`
+    ? buildPublicOrganizationPath(organization.slug)
     : regularOrganizationPath(organization.id)
 );
 
@@ -1419,7 +1420,7 @@ export const getRegularOrganizationSeoData = async (organizationId: string): Pro
     name,
     description,
     canonicalPath: publicSlug && publicPageEnabled
-      ? `/o/${encodeURIComponent(publicSlug)}`
+      ? buildPublicOrganizationPath(publicSlug)
       : regularOrganizationPath(id),
     logoUrl: row.logoId
       ? `/api/files/${encodeURIComponent(String(row.logoId))}/preview?w=240&h=240`

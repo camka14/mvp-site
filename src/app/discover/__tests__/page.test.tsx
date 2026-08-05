@@ -178,6 +178,7 @@ describe('Discover organization loading', () => {
   it('loads the first organization page once and clears the loading state', async () => {
     const { container } = renderWithMantine(<DiscoverPage />);
 
+    expect(screen.getByRole('heading', { name: 'Discover', level: 1 })).toBeInTheDocument();
     expect(await screen.findByTestId('organization-card')).toHaveTextContent('Rose City Sports');
     await waitFor(() => {
       expect(screen.queryByText('Loading organizations...')).not.toBeInTheDocument();

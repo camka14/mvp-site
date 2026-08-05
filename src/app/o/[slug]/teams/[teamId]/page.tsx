@@ -1,5 +1,9 @@
-import { notFound } from 'next/navigation';
-import { getPublicOrganizationTeamForRegistration } from '@/server/publicOrganizationCatalog';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
+import {
+  getDisabledPublicOrganizationRedirectPath,
+  getPublicOrganizationTeamForRegistration,
+  getPublicOrganizationRedirectPath,
+} from '@/server/publicOrganizationCatalog';
 import PublicTeamRegistrationClient from './PublicTeamRegistrationClient';
 
 export const dynamic = 'force-dynamic';
@@ -10,8 +14,21 @@ export default async function PublicTeamRegistrationPage({
   params: Promise<{ slug: string; teamId: string }>;
 }) {
   const { slug, teamId } = await params;
+  const canonicalRedirectPath = await getPublicOrganizationRedirectPath(slug, {
+    suffix: `/teams/${encodeURIComponent(teamId)}`,
+  });
+  if (canonicalRedirectPath) {
+    if (canonicalRedirectPath.startsWith('/o/')) {
+      permanentRedirect(canonicalRedirectPath);
+    }
+    redirect(canonicalRedirectPath);
+  }
   const data = await getPublicOrganizationTeamForRegistration(slug, teamId);
   if (!data) {
+    const redirectPath = await getDisabledPublicOrganizationRedirectPath(slug);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
     notFound();
   }
 

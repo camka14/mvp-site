@@ -11,6 +11,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useApp } from '@/app/providers';
+import { buildPublicOrganizationPath } from '@/lib/publicOrganizationSlug';
 import FieldsTabContent from '@/app/organizations/[id]/FieldsTabContent';
 import RentalReservationCheckout from '@/components/rentals/RentalReservationCheckout';
 import type { Organization } from '@/types';
@@ -23,7 +24,7 @@ type PublicRentalSelectionClientProps = {
 export default function PublicRentalSelectionClient({ slug, organization }: PublicRentalSelectionClientProps) {
   const router = useRouter();
   const { user, loading: authLoading } = useApp();
-  const returnHref = `/o/${encodeURIComponent(slug)}`;
+  const returnHref = buildPublicOrganizationPath(slug);
   const fieldsCount = organization.fields?.length ?? 0;
 
   return (

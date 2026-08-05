@@ -66,6 +66,8 @@ jest.mock('@/server/repositories/events', () => ({
 import {
   getPublicBracketWidgetPage,
   getPublicOrganizationBySlug,
+  getDisabledPublicOrganizationRedirectPath,
+  getPublicOrganizationRedirectPath,
   getPublicOrganizationEventForRegistration,
   getPublicOrganizationRentalSelectionData,
   listPublicOrganizationRentals,
@@ -196,6 +198,54 @@ describe('publicOrganizationCatalog', () => {
       publicWidgetsEnabled: true,
       publicCompletionRedirectUrl: 'https://client.example.com/thanks',
     }));
+  });
+
+  it('returns the regular organization profile path for a disabled public slug', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_disabled',
+      publicPageEnabled: false,
+    });
+
+    await expect(getDisabledPublicOrganizationRedirectPath('scsoccer'))
+      .resolves.toBe('/organizations/org_disabled');
+  });
+
+  it('does not redirect enabled or unknown public slugs', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({
+      id: 'org_enabled',
+      publicPageEnabled: true,
+    });
+    await expect(getDisabledPublicOrganizationRedirectPath('scsoccer')).resolves.toBeNull();
+
+    prismaMock.organizations.findUnique.mockResolvedValueOnce(null);
+    await expect(getDisabledPublicOrganizationRedirectPath('missing')).resolves.toBeNull();
+  });
+
+  it('redirects legacy underscore URLs to the canonical hyphen URL', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_enabled',
+      publicSlug: 'river-city-sports',
+      publicPageEnabled: true,
+    });
+
+    await expect(getPublicOrganizationRedirectPath('River_City_Sports'))
+      .resolves.toBe('/o/river-city-sports');
+    await expect(getPublicOrganizationRedirectPath('River_City_Sports', {
+      suffix: '/events/event_1?slotId=slot_1',
+    })).resolves.toBe('/o/river-city-sports/events/event_1?slotId=slot_1');
+  });
+
+  it('redirects disabled canonical and legacy URLs to the regular profile', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_disabled',
+      publicSlug: 'river-city-sports',
+      publicPageEnabled: false,
+    });
+
+    await expect(getPublicOrganizationRedirectPath('river-city-sports'))
+      .resolves.toBe('/organizations/org_disabled');
+    await expect(getPublicOrganizationRedirectPath('river_city_sports'))
+      .resolves.toBe('/organizations/org_disabled');
   });
 
   it('publishes organization ownership status without exposing the owner', async () => {

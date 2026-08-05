@@ -147,7 +147,7 @@ function OrganizationsPageContent() {
       <Container fluid py="xl">
         <Group justify="space-between" align="center" mb="lg">
           <div>
-            <Title order={2} mb={4}>Organizations</Title>
+            <Title order={1} size="h2" mb={4}>Organizations</Title>
             <Text c="dimmed">Manage your organizations and dashboards</Text>
           </div>
           <Button

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { getAuthSecret } from '@/lib/authServer';
 import { prisma } from '@/lib/prisma';
+import { buildPublicOrganizationPath } from '@/lib/publicOrganizationSlug';
 import { organizationDomainPolicyForUrl, type OrganizationDomainPolicy } from '@/server/organizationClaims/domainPolicy';
 
 const MATCH_TOKEN_TTL_SECONDS = 10 * 60;
@@ -490,7 +491,7 @@ const toMatchView = (params: {
 
   const actions = availableActionsForOwnership(organization.ownershipStatus);
   const profileUrl = organization.publicPageEnabled && organization.publicSlug
-    ? `/o/${encodeURIComponent(organization.publicSlug)}`
+    ? buildPublicOrganizationPath(organization.publicSlug)
     : `/organizations/${encodeURIComponent(organization.id)}`;
 
   return {

@@ -1241,7 +1241,7 @@ function DiscoverPageContent() {
       <Navigation />
       <Container fluid py="xl" className="discover-shell">
         <div className="discover-page-header mb-8">
-          <Title order={2} mb={6} className="discover-title">
+          <Title order={1} size="h2" mb={6} className="discover-title">
             Discover
           </Title>
           <Text c="dimmed" className="discover-subtitle">

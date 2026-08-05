@@ -162,7 +162,7 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
         <Container fluid>
           <Group justify="space-between" mb="md">
             <div>
-              <Title order={2}>{displayName}</Title>
+              <Title order={1} size="h2">{displayName}</Title>
               <Text size="sm" c="dimmed">Admin user profile</Text>
             </div>
             <Button component="a" href="/admin" variant="default">

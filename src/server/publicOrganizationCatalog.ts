@@ -11,6 +11,11 @@ import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
 import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
 import { getFieldDisplayName, getFieldResolvedLocation } from '@/lib/fieldUtils';
 import { normalizeExternalHttpUrl } from '@/lib/externalUrl';
+import {
+  buildPublicEventPath,
+  buildPublicOrganizationPath,
+  normalizePublicOrganizationSlug,
+} from '@/lib/publicOrganizationSlug';
 import { buildAffiliateOutboundUrl, protectAffiliateRow } from '@/server/affiliateOutbound';
 import { attachFacilitiesToFieldRows } from '@/server/fieldFacilityPayload';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
@@ -199,7 +204,7 @@ const PUBLIC_EVENT_TYPE_LABELS: Record<string, string> = {
   WEEKLY_EVENT: 'Weekly Event',
 };
 
-const normalizeSlug = (value: string): string => value.trim().toLowerCase();
+const normalizeSlug = normalizePublicOrganizationSlug;
 
 const normalizeStringArray = (value: unknown): string[] => (
   Array.isArray(value)
@@ -533,7 +538,7 @@ const imageUrl = (fileId: unknown, width: number = 640, height: number = 360): s
 );
 
 const formatEventDetailsUrl = (slug: string, eventId: string): string => (
-  `/o/${encodeURIComponent(slug)}/events/${encodeURIComponent(eventId)}`
+  buildPublicEventPath(slug, eventId)
 );
 
 const formatEventOccurrenceDetailsUrl = (
@@ -547,7 +552,7 @@ const formatEventOccurrenceDetailsUrl = (
 };
 
 const formatTeamRegistrationUrl = (slug: string, teamId: string): string => (
-  `/o/${encodeURIComponent(slug)}/teams/${encodeURIComponent(teamId)}`
+  `${buildPublicOrganizationPath(slug)}/teams/${encodeURIComponent(teamId)}`
 );
 
 const getPublicTeamOccupancyByTeamId = async (teamIds: string[]): Promise<Map<string, number>> => {
@@ -788,6 +793,53 @@ export const getPublicOrganizationBySlug = async (
     return null;
   }
   return organization;
+};
+
+export const getPublicOrganizationRedirectPath = async (
+  slugInput: string,
+  options: { suffix?: string } = {},
+): Promise<string | null> => {
+  const canonicalSlug = normalizeSlug(slugInput);
+  const requestedSlug = slugInput.trim();
+  if (!canonicalSlug) {
+    return null;
+  }
+
+  const row = await (prisma as any).organizations.findUnique({
+    where: { publicSlug: canonicalSlug },
+    select: { id: true, publicSlug: true, publicPageEnabled: true },
+  });
+  if (!row) {
+    return null;
+  }
+
+  if (row.publicPageEnabled !== true) {
+    return `/organizations/${encodeURIComponent(String(row.id))}`;
+  }
+
+  const storedSlug = normalizeSlug(String(row.publicSlug ?? canonicalSlug));
+  return requestedSlug !== storedSlug
+    ? `${buildPublicOrganizationPath(storedSlug)}${options.suffix ?? ''}`
+    : null;
+};
+
+export const getDisabledPublicOrganizationRedirectPath = async (
+  slugInput: string,
+): Promise<string | null> => {
+  const slug = normalizeSlug(slugInput);
+  if (!slug) {
+    return null;
+  }
+
+  const row = await (prisma as any).organizations.findUnique({
+    where: { publicSlug: slug },
+    select: { id: true, publicPageEnabled: true },
+  });
+  if (!row || row.publicPageEnabled === true) {
+    return null;
+  }
+
+  return `/organizations/${encodeURIComponent(String(row.id))}`;
 };
 
 const getSportsById = async (sportIds: string[]): Promise<Map<string, string>> => {
@@ -1171,7 +1223,7 @@ export const listPublicOrganizationProducts = async (
     description: typeof product.description === 'string' ? product.description : null,
     priceCents: normalizePriceCents(product.priceCents),
     period: normalizeProductPeriodForClient(product.period),
-    detailsUrl: `/o/${encodeURIComponent(organization.slug)}/products/${encodeURIComponent(String(product.id))}`,
+    detailsUrl: `${buildPublicOrganizationPath(organization.slug)}/products/${encodeURIComponent(String(product.id))}`,
   }));
 };
 
@@ -1248,7 +1300,7 @@ export const listPublicOrganizationRentals = async (
       priceCents: typeof slot.price === 'number' ? slot.price : 0,
       start: toIsoString(slot.startDate),
       end: toIsoString(slot.endDate),
-      detailsUrl: `/o/${encodeURIComponent(organization.slug)}/rentals`,
+      detailsUrl: `${buildPublicOrganizationPath(organization.slug)}/rentals`,
     };
   });
 };

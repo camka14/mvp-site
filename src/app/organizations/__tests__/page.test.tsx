@@ -81,6 +81,12 @@ describe('OrganizationsPage', () => {
     useAppMock.mockReturnValue(verifiedUserContext());
   });
 
+  it('renders the organizations page title as an H1', () => {
+    renderPage();
+
+    expect(screen.getByRole('heading', { name: 'Organizations', level: 1 })).toBeInTheDocument();
+  });
+
   it('blocks unverified users from opening the create organization modal', () => {
     useAppMock.mockReturnValue({
       ...verifiedUserContext(),

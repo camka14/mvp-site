@@ -1,9 +1,14 @@
 import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { getPublicOrganizationBySlug } from '@/server/publicOrganizationCatalog';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
+import {
+  getDisabledPublicOrganizationRedirectPath,
+  getPublicOrganizationBySlug,
+  getPublicOrganizationRedirectPath,
+} from '@/server/publicOrganizationCatalog';
 import type { PublicCompletionKind } from '@/lib/publicCompletionRedirect';
+import { publicOrganizationPath } from '@/server/publicSearchSeo';
 import styles from '../PublicOrganizationPage.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -41,8 +46,23 @@ export default async function PublicCompletionPage({
 }) {
   const { slug } = await params;
   const query = await searchParams;
+  const queryType = Array.isArray(query?.type) ? query.type[0] : query?.type;
+  const completionQuery = queryType ? `?type=${encodeURIComponent(queryType)}` : '';
+  const canonicalRedirectPath = await getPublicOrganizationRedirectPath(slug, {
+    suffix: `/complete${completionQuery}`,
+  });
+  if (canonicalRedirectPath) {
+    if (canonicalRedirectPath.startsWith('/o/')) {
+      permanentRedirect(canonicalRedirectPath);
+    }
+    redirect(canonicalRedirectPath);
+  }
   const organization = await getPublicOrganizationBySlug(slug, { surface: 'page' });
   if (!organization) {
+    const redirectPath = await getDisabledPublicOrganizationRedirectPath(slug);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
     notFound();
   }
 
@@ -66,7 +86,7 @@ export default async function PublicCompletionPage({
             You will be emailed a receipt. If you do not receive one, email{' '}
             <a href={`mailto:${supportEmail}`}>{supportEmail}</a>.
           </p>
-          <Link href={`/o/${encodeURIComponent(organization.slug)}`} className={styles.button}>
+          <Link href={publicOrganizationPath(organization.slug)} className={styles.button}>
             Back to organization
           </Link>
         </div>

@@ -2,6 +2,11 @@ import type { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
 import { buildDiscoverEventsHref, sportNameToSlug } from '@/lib/discoverFilters';
 import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
+import {
+  buildPublicEventPath,
+  buildPublicOrganizationPath,
+  normalizePublicOrganizationSlug,
+} from '@/lib/publicOrganizationSlug';
 import { SITE_URL } from '@/lib/siteUrl';
 
 const FALLBACK_IMAGE_URL = '/BIQ_drawing.svg';
@@ -70,7 +75,7 @@ export type PublicEventSportDirectory = {
   events: PublicEventDirectoryEvent[];
 };
 
-const normalizeSlug = (value: string): string => value.trim().toLowerCase();
+const normalizeSlug = normalizePublicOrganizationSlug;
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -130,13 +135,9 @@ export const absoluteUrl = (pathOrUrl: string): string => {
   return `${SITE_URL}${path}`;
 };
 
-export const publicOrganizationPath = (slug: string): string => (
-  `/o/${encodeURIComponent(slug)}`
-);
+export const publicOrganizationPath = buildPublicOrganizationPath;
 
-export const publicEventPath = (slug: string, eventId: string): string => (
-  `${publicOrganizationPath(slug)}/events/${encodeURIComponent(eventId)}`
-);
+export const publicEventPath = buildPublicEventPath;
 
 export const publicEventDirectoryPath = (): string => '/find-events';
 

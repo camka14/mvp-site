@@ -2,14 +2,19 @@ import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
-import { getPublicOrganizationEventForRegistration } from '@/server/publicOrganizationCatalog';
+import {
+  getDisabledPublicOrganizationRedirectPath,
+  getPublicOrganizationEventForRegistration,
+  getPublicOrganizationRedirectPath,
+} from '@/server/publicOrganizationCatalog';
 import {
   absoluteUrl,
   createPublicEventMetaDescription,
   createPublicEventStructuredData,
   getPublicEventSeoData,
+  publicOrganizationPath,
   publicEventPath,
 } from '@/server/publicSearchSeo';
 import styles from '../../PublicOrganizationPage.module.css';
@@ -81,8 +86,24 @@ export default async function PublicEventRegistrationPage({
   const slotId = typeof query?.slotId === 'string' ? query.slotId.trim() : '';
   const occurrenceDate = typeof query?.occurrenceDate === 'string' ? query.occurrenceDate.trim() : '';
   const selectedOccurrence = slotId && occurrenceDate ? { slotId, occurrenceDate } : null;
+  const occurrenceQuery = new URLSearchParams();
+  if (slotId) occurrenceQuery.set('slotId', slotId);
+  if (occurrenceDate) occurrenceQuery.set('occurrenceDate', occurrenceDate);
+  const canonicalRedirectPath = await getPublicOrganizationRedirectPath(slug, {
+    suffix: `/events/${encodeURIComponent(eventId)}${occurrenceQuery.toString() ? `?${occurrenceQuery.toString()}` : ''}`,
+  });
+  if (canonicalRedirectPath) {
+    if (canonicalRedirectPath.startsWith('/o/')) {
+      permanentRedirect(canonicalRedirectPath);
+    }
+    redirect(canonicalRedirectPath);
+  }
   const result = await getPublicOrganizationEventForRegistration(slug, eventId);
   if (!result) {
+    const redirectPath = await getDisabledPublicOrganizationRedirectPath(slug);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
     notFound();
   }
 
@@ -94,7 +115,7 @@ export default async function PublicEventRegistrationPage({
   return (
     <main className={styles.registrationShell} style={pageStyle}>
       <header className={styles.registrationHeader}>
-        <Link href={`/o/${encodeURIComponent(result.organization.slug)}`} className={styles.registrationBrand}>
+        <Link href={publicOrganizationPath(result.organization.slug)} className={styles.registrationBrand}>
           <Image src={result.organization.logoUrl} alt="" width={76} height={76} className={styles.logo} unoptimized />
           <div>
             <p className={styles.eyebrow}>Registration</p>

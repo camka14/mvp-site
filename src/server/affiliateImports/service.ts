@@ -10,6 +10,7 @@ import {
 } from '@/lib/divisionTypes';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
+import { slugifyPublicOrganizationName } from '@/lib/publicOrganizationSlug';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { geocodeAddressToCoordinates, isValidGeocodeCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
@@ -1763,13 +1764,7 @@ const upsertAffiliateFacilityForCandidate = async (
 };
 
 const slugifyForPublicSlug = (value: string): string =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/['’]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'club';
+  slugifyPublicOrganizationName(value, 80) || 'club';
 
 const affiliateOrganizationIdForCandidate = (candidate: any, source: AffiliateScrapeSourceRow): string => {
   const sourceKey = nullableString(source.sourceKey) ?? nullableString(source.id) ?? 'source';

@@ -1,3 +1,5 @@
+import { buildPublicOrganizationPath } from '@/lib/publicOrganizationSlug';
+
 export type PublicCompletionKind = 'event' | 'rental' | 'product' | 'team';
 
 type ClientRouter = {
@@ -6,7 +8,7 @@ type ClientRouter = {
 
 export const getPublicCompletionPath = (slug: string, kind: PublicCompletionKind): string => {
   const params = new URLSearchParams({ type: kind });
-  return `/o/${encodeURIComponent(slug)}/complete?${params.toString()}`;
+  return `${buildPublicOrganizationPath(slug)}/complete?${params.toString()}`;
 };
 
 export const normalizePublicCompletionRedirectUrl = (value?: string | null): string | null => {

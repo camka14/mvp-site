@@ -1,3 +1,5 @@
+import { normalizePublicOrganizationSlug } from '@/lib/publicOrganizationSlug';
+
 export const PUBLIC_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
@@ -29,7 +31,7 @@ export const normalizePublicSlug = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     throw new Error('Public slug must be a string.');
   }
-  const normalized = value.trim().toLowerCase();
+  const normalized = normalizePublicOrganizationSlug(value);
   if (!normalized) {
     return null;
   }

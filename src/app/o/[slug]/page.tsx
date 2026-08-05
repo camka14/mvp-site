@@ -2,11 +2,13 @@ import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
 import {
   getPublicOrganizationBySlug,
   getPublicOrganizationCatalog,
+  getDisabledPublicOrganizationRedirectPath,
+  getPublicOrganizationRedirectPath,
   type PublicOrganizationEventCard,
   type PublicOrganizationDivisionCard,
   type PublicOrganizationRentalCard,
@@ -231,8 +233,19 @@ function DivisionItem({ division }: { division: PublicOrganizationDivisionCard }
 
 export default async function PublicOrganizationPage({ params }: PublicOrganizationPageProps) {
   const { slug } = await params;
+  const canonicalRedirectPath = await getPublicOrganizationRedirectPath(slug);
+  if (canonicalRedirectPath) {
+    if (canonicalRedirectPath.startsWith('/o/')) {
+      permanentRedirect(canonicalRedirectPath);
+    }
+    redirect(canonicalRedirectPath);
+  }
   const catalog = await getPublicOrganizationCatalog(slug, { surface: 'page', limit: 8 });
   if (!catalog) {
+    const redirectPath = await getDisabledPublicOrganizationRedirectPath(slug);
+    if (redirectPath) {
+      redirect(redirectPath);
+    }
     notFound();
   }
 

@@ -3573,7 +3573,7 @@ function OrganizationDetailContent() {
                 )}
                 <div>
                   <Group gap="md" align="center" mb={2}>
-                    <Title order={2} className="discover-title">{org.name}</Title>
+                    <Title order={1} size="h2" className="discover-title">{org.name}</Title>
                     {canToggleHomePagePreference && (
                       <Checkbox
                         label="Set as home page"

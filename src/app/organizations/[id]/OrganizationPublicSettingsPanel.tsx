@@ -26,6 +26,7 @@ import { eventService } from '@/lib/eventService';
 import { organizationService, type PublicSlugCheckResult } from '@/lib/organizationService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { slugifyPublicOrganizationName } from '@/lib/publicOrganizationSlug';
 import type { Event, EventType, Organization } from '@/types';
 
 type OrganizationPublicSettingsPanelProps = {
@@ -33,15 +34,7 @@ type OrganizationPublicSettingsPanelProps = {
   onUpdated: (organization: Organization) => void | Promise<void>;
 };
 
-const slugify = (value: string): string => (
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 63)
-    .replace(/-+$/g, '')
-);
+const slugify = slugifyPublicOrganizationName;
 
 const splitDomains = (value: string): string[] => (
   value
