@@ -23,9 +23,9 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 - [x] (2026-08-05 17:50Z) Changed both database defaults to `AFFILIATE_IMPORTED / UNCLAIMED`. Added a claimed-affiliate evidence constraint as `NOT VALID` so it protects new writes without blocking deployment on historical rows.
 - [x] (2026-08-05 17:50Z) Replaced the unsafe backfill behavior with claim-aware repair categories, a reviewed digest requirement, an advisory lock, row locks, compare-and-set updates, provenance rechecks, and rollback snapshots.
 - [x] (2026-08-05 18:04Z) Applied the additive migration to the local Docker database. Verified fail-closed defaults, false-claim rejection, valid claimed-affiliate evidence, the digest-bound repair, and an idempotent second audit. Passed 108 focused tests, TypeScript, Prisma validation and generation, the production build, the full CI suite, and API route coverage for 315 files.
-- [ ] Validate the organization-page claim action in a local browser after the user explicitly authorizes starting the local web process.
-- [ ] Obtain explicit production-change authorization, take a backup, deploy the tested revision, run the production dry run, review its report, and apply the guarded repair.
-- [ ] Verify the live API, organization page, claim wizard entry, representative first-party organizations, and post-repair audit.
+- [x] (2026-08-05 19:01Z) Superseded the pending local browser check with a rendered production browser check. The CYO page showed “Unclaimed profile” and “Claim this profile.” The claim action opened the ownership wizard and its sign-in link retained the organization-specific return path.
+- [x] (2026-08-05 18:58Z) Used the explicit production authorization to take a verified PostgreSQL backup, deploy a descendant of the tested revision, confirm all 172 migrations, review the production dry-run digest, and apply the guarded repair. The write repaired 914 rows and skipped zero rows.
+- [x] (2026-08-05 19:01Z) Verified the live API, rendered organization page, claim wizard entry, representative BracketIQ first-party organization, healthy application image, and zero-candidate post-repair audit.
 
 ## Surprises & Discoveries
 
@@ -55,6 +55,9 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 
 - Observation: A safe database origin default removes the need to edit 161 historical setup scripts.
   Evidence: The complete organization-creation inventory found only the normal API, the E2E seed, the shared affiliate publisher, source setup scripts, generated setup code, and the live sync utility. The API is already explicit. The seed is now explicit. Every remaining omitted creation path is an affiliate producer. A default of `AFFILIATE_IMPORTED / UNCLAIMED` therefore fails closed and keeps legacy setup reruns from changing accepted claims.
+
+- Observation: Affiliate ingestion increased the production repair set after the initial baseline.
+  Evidence: The reviewed production dry run found 1,452 affiliate-evidenced organizations. It classified 914 with the exact false-default signature, preserved 538 already-safe rows, and sent zero rows to manual review. The expected digest prevented the write from relying on the earlier counts.
 
 ## Decision Log
 
@@ -92,11 +95,15 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 
 ## Outcomes & Retrospective
 
-Planning, diagnosis, local implementation, and automated validation are complete. No production database row, process, or deployment changed. The implementation uses fail-closed database defaults, explicit primary producer state, a claimed-affiliate check constraint, and a guarded repair command. The final focused run passed 108 tests in 8 suites. The full CI suite and API route coverage passed. Prisma validation, client generation, TypeScript, and the production build passed.
+Planning, diagnosis, implementation, automated validation, deployment, and production remediation are complete. The implementation uses fail-closed database defaults, explicit primary producer state, a claimed-affiliate check constraint, and a guarded repair command. The final focused run passed 108 tests in 8 suites. The full CI suite and API route coverage passed. Prisma validation, client generation, TypeScript, and the production build passed.
 
 The local migration and database contract checks passed. Omitted ownership fields produced `AFFILIATE_IMPORTED / UNCLAIMED / NONE`. PostgreSQL rejected a claimed affiliate without evidence and accepted the state after both claim fields were present. A disposable false-default fixture produced one repair candidate. The reviewed digest write repaired one row. The second audit produced zero repair candidates. The disposable source and organization were removed. The final full local audit preserved all 178 affiliate organizations with zero repair and zero manual-review rows. Local CYO remained `AFFILIATE_IMPORTED / UNCLAIMED`.
 
-At final completion, record the number of organizations in each `originType / ownershipStatus` group. Also record the number preserved because of claim history, the number sent to manual review, and the exact post-repair result for CYO / Camp Howard Sports.
+Production ran image `ghcr.io/camka14/mvp-site:d0470cdba400e91d771619d0709501b131a30afb`, which contains the tested ownership commits. The application was healthy, all 172 Prisma migrations were applied, and the homepage, readiness endpoint, organization API, and organization page returned HTTP 200. Before migration and repair, the operator stored a 68 MB custom-format PostgreSQL backup at `/opt/bracketiq/backups/ownership-remediation-20260805T182641Z.dump`. Its SHA-256 is `7eb379e1d66b8af0f5ccf0e3d65f3737a958173f737042332d77522332c566f4`.
+
+The production dry run found 1,452 affiliate-evidenced organizations. It classified 914 as `REPAIR_FALSE_DEFAULT_CLAIM`, 538 as `PRESERVE` because their ownership state was already safe, and zero as `MANUAL_REVIEW`. No row was preserved because of claim or claim-event history in this run. The reviewed digest was `d9fc261b621cfe57b7d37dcaa20e600d4704083b4a5789309014746cfac0b3ce`. The digest-bound write repaired all 914 candidates and skipped zero state-changed rows. Its pre-change and final rollback snapshots each contain 914 rows. The post-repair audit classified zero rows for repair, preserved all 1,452 affiliate-evidenced rows, and sent zero rows to manual review.
+
+The final production organization groups were 3 `FIRST_PARTY / CLAIMED` rows and 1,577 `AFFILIATE_IMPORTED / UNCLAIMED` rows. The representative BracketIQ first-party organization remained claimed. CYO / Camp Howard Sports returned `AFFILIATE_IMPORTED / UNCLAIMED / NONE` with no claim timestamps. Its rendered page showed “Unclaimed profile” and “Claim this profile.” The claim action opened `/organizations/affiliate_org_cyo_camp_howard_sports/claim`, and the anonymous sign-in action retained that path in its `next` query parameter.
 
 ## Context and Orientation
 
