@@ -8,7 +8,7 @@ This plan is a focused remediation for the ownership-state rollout described in 
 
 An affiliate organization that nobody has claimed must show “Claim this profile” on its organization page. It must not show “Claimed profile,” receive a claimed-profile trust boost, or require an ownership dispute. A Razumly administrator can remain the required internal placeholder owner, but that internal account does not prove public ownership.
 
-After this repair, every affiliate organization creation path writes an explicit unclaimed state. The database uses an unclaimed state as its safe fallback. A guarded production repair changes only historical false claims that have no claim evidence. The repair preserves every real claim, pending claim, dispute, suspension, and ownership transfer. The public event and organization cards remain unchanged. Only the organization page presents the claim action, as the current product requires.
+After this repair, primary affiliate organization creation paths write an explicit unclaimed state. Legacy affiliate creation paths receive the same fail-closed database defaults. A guarded production repair changes only historical false claims that have no claim evidence. The repair preserves every real claim, pending claim, dispute, suspension, and ownership transfer. The public event and organization cards remain unchanged. Only the organization page presents the claim action, as the current product requires.
 
 The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its organization page must stop showing “Claimed profile.” Its public API must return `originType: "AFFILIATE_IMPORTED"`, `ownershipStatus: "UNCLAIMED"`, and `claimable: true`.
 
@@ -18,10 +18,10 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 - [x] (2026-08-05 03:18Z) Inspected the exact production row, migration defaults, claim evidence, affiliate provenance, shared importer, source-specific setup script, and existing repair command.
 - [x] (2026-08-05 03:18Z) Counted 1,201 production organizations with affiliate evidence. Of these, 775 had the same false-claim signature and none had an `OrganizationClaims` record. Treat these numbers as a dated baseline because affiliate ingestion continues to add rows.
 - [x] (2026-08-05 03:18Z) Inventoried 161 setup scripts that create or upsert affiliate source organizations without explicit ownership fields.
-- [ ] Add regression tests that reproduce the unsafe defaults and preserve real claim states.
-- [ ] Add one shared affiliate ownership initializer and use it in every affiliate organization creation producer.
-- [ ] Change the database ownership default from `CLAIMED` to `UNCLAIMED` and add a claimed-affiliate evidence constraint.
-- [ ] Make the audit and repair command claim-aware, compare-and-set, digest-bound, and safe against concurrent claims.
+- [x] (2026-08-05 17:50Z) Added regression tests for the false-default signature, claim preservation, safe migration defaults, generated setup code, live synchronization, and explicit first-party creation. The focused run passed 44 tests in 5 suites.
+- [x] (2026-08-05 17:50Z) Added the shared affiliate ownership initializer. Applied it to the shared candidate publisher and generated setup code. Made live sync inserts explicit and made conflict updates preserve ownership fields.
+- [x] (2026-08-05 17:50Z) Changed both database defaults to `AFFILIATE_IMPORTED / UNCLAIMED`. Added a claimed-affiliate evidence constraint as `NOT VALID` so it protects new writes without blocking deployment on historical rows.
+- [x] (2026-08-05 17:50Z) Replaced the unsafe backfill behavior with claim-aware repair categories, a reviewed digest requirement, an advisory lock, row locks, compare-and-set updates, provenance rechecks, and rollback snapshots.
 - [ ] Validate migration replay, focused tests, TypeScript, the production build, and local browser behavior.
 - [ ] Obtain explicit production-change authorization, take a backup, deploy the tested revision, run the production dry run, review its report, and apply the guarded repair.
 - [ ] Verify the live API, organization page, claim wizard entry, representative first-party organizations, and post-repair audit.
@@ -52,18 +52,17 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 - Observation: Production ownership data can change between audit and repair.
   Evidence: Affiliate ingestion continued while the read-only production audit ran. A dry-run report and a later write must therefore use a stable digest and row-level state checks instead of trusting counts alone.
 
+- Observation: A safe database origin default removes the need to edit 161 historical setup scripts.
+  Evidence: The complete organization-creation inventory found only the normal API, the E2E seed, the shared affiliate publisher, source setup scripts, generated setup code, and the live sync utility. The API is already explicit. The seed is now explicit. Every remaining omitted creation path is an affiliate producer. A default of `AFFILIATE_IMPORTED / UNCLAIMED` therefore fails closed and keeps legacy setup reruns from changing accepted claims.
+
 ## Decision Log
 
 - Decision: Treat `Organizations.ownershipStatus` as the public ownership authority.
   Rationale: `ownerId` must remain non-null and can point to an internal administrator. An email domain, Stripe state, organization ID prefix, or administrator access does not prove ownership.
   Date/Author: 2026-08-05 / Codex
 
-- Decision: Change the database default for `ownershipStatus` from `CLAIMED` to `UNCLAIMED`.
-  Rationale: An omitted ownership field must fail closed. A missing value can temporarily show a claim action, but it must never grant public trust. The normal first-party creation route already writes `FIRST_PARTY / CLAIMED` explicitly.
-  Date/Author: 2026-08-05 / Codex
-
-- Decision: Keep the existing `originType` default for compatibility, but require every known creation path to write both ownership fields explicitly.
-  Rationale: The ownership default fixes the trust error even if a producer is missed. Explicit source initialization preserves correct affiliate provenance. A source-contract test prevents new omissions.
+- Decision: Change both database defaults to `AFFILIATE_IMPORTED / UNCLAIMED`.
+  Rationale: All current first-party creation paths can and do write `FIRST_PARTY / CLAIMED` explicitly. All identified omitted paths create affiliate profiles. Fail-closed defaults fix the 161 historical setup scripts without broad mechanical edits. The shared importer, generator, and sync insert path still write explicit affiliate ownership values for clarity.
   Date/Author: 2026-08-05 / Codex
 
 - Decision: Add a database check for claimed affiliate organizations.
@@ -92,7 +91,7 @@ The visible acceptance example is `affiliate_org_cyo_camp_howard_sports`. Its or
 
 ## Outcomes & Retrospective
 
-Planning and diagnosis are complete. No application code, database row, process, or deployment changed during this planning phase. The expected outcome is a small ownership-state invariant, broad mechanical producer coverage, a guarded repair command, and one reviewed production data correction. Update this section after each milestone with the actual test counts, migration result, dry-run digest, repaired row count, skipped row count, and live verification result.
+Planning, diagnosis, and local implementation are complete through the first focused validation pass. No production database row, process, or deployment changed. The implementation uses fail-closed database defaults, explicit primary producer state, a claimed-affiliate check constraint, and a guarded repair command. The first focused run passed 44 tests in 5 suites. Prisma validation, client generation, and TypeScript also passed. The local CYO row was already `AFFILIATE_IMPORTED / UNCLAIMED`, so its scoped audit returned `PRESERVE` with no write.
 
 At final completion, record the number of organizations in each `originType / ownershipStatus` group. Also record the number preserved because of claim history, the number sent to manual review, and the exact post-repair result for CYO / Camp Howard Sports.
 
@@ -131,25 +130,25 @@ Add pure repair classification tests under `src/server/organizationClaims/__test
 
 Add a migration contract test under `src/lib/__tests__/`. It must assert that the new SQL migration sets the ownership default to `UNCLAIMED` and adds the claimed-affiliate evidence constraint. Add a first-party creation route regression that proves `POST /api/organizations` still writes `FIRST_PARTY`, `CLAIMED`, `claimedAt`, and `claimedByUserId` explicitly.
 
-Add a source-contract test at `src/server/affiliateImports/__tests__/affiliateOrganizationOwnershipContract.test.ts`. It must find every TypeScript file under `scripts/` that contains both an organization upsert and an affiliate source create or upsert. It must require the shared affiliate initializer in the organization create payload. It must also inspect `src/server/affiliateImports/agentTemplates/sourceFiles.ts` and `scripts/sync-affiliate-organizations-to-live.ts`.
+Add a source-contract test at `src/server/affiliateImports/__tests__/affiliateOrganizationOwnershipContract.test.ts`. It must verify the shared initializer, generated setup code, explicit live-sync insert state, and live-sync ownership exclusions. The migration contract covers legacy setup scripts that omit the fields because those scripts now receive the fail-closed database defaults.
 
 This milestone is accepted when the new tests fail against the current checkout for the exact reasons described above.
 
-### Milestone 2: Make every new affiliate organization explicitly unclaimed
+### Milestone 2: Make every new affiliate organization unclaimed
 
 Create `src/server/affiliateImports/organizationOwnership.ts`. Export one immutable initializer for a new affiliate organization. It returns `originType: AFFILIATE_IMPORTED`, `ownershipStatus: UNCLAIMED`, `claimVerificationLevel: NONE`, and null ownership evidence fields. Do not include `ownerId`; each producer still supplies the required placeholder owner.
 
-Use this initializer in `upsertAffiliateOrganizationForCandidate` in `src/server/affiliateImports/service.ts`. Use it in the generated setup code in `src/server/affiliateImports/agentTemplates/sourceFiles.ts`. Apply a mechanical update to every current setup script identified by the source-contract test. Put the initializer only in the `create` payload. Do not add it to ordinary `update` payloads because a later setup rerun must preserve `CLAIM_PENDING`, `CLAIMED`, `DISPUTED`, `SUSPENDED`, and all claim evidence.
+Use this initializer in `upsertAffiliateOrganizationForCandidate` in `src/server/affiliateImports/service.ts`. Use it in the generated setup code in `src/server/affiliateImports/agentTemplates/sourceFiles.ts`. Do not mechanically edit the 161 historical setup scripts. Their omitted fields now receive the fail-closed database defaults. Do not add ownership fields to ordinary `update` payloads because a later setup rerun must preserve `CLAIM_PENDING`, `CLAIMED`, `DISPUTED`, `SUSPENDED`, and all claim evidence.
 
 Update `scripts/sync-affiliate-organizations-to-live.ts`. New live inserts must write `AFFILIATE_IMPORTED / UNCLAIMED / NONE` and null claim evidence. Conflict updates must exclude `ownerId`, `originType`, `ownershipStatus`, claim evidence, verified domain state, and all other claimant-controlled ownership fields. The sync must not copy a local unclaimed state over a live claim.
 
 Update `prisma/seed.e2e.ts` so its first-party seed writes `FIRST_PARTY`, `CLAIMED`, `claimedAt`, `claimedByUserId`, and `NONE` explicitly. Keep `POST /api/organizations` unchanged except for tests because it already writes the complete first-party state.
 
-This milestone is accepted when every known producer passes the source-contract test and a newly created affiliate source organization is unclaimed even before a backfill runs.
+This milestone is accepted when explicit primary producers pass the source-contract test and a legacy setup script that omits the fields receives `AFFILIATE_IMPORTED / UNCLAIMED` from the database.
 
 ### Milestone 3: Add database defense in depth
 
-Change `Organizations.ownershipStatus` in `prisma/schema.prisma` from `@default(CLAIMED)` to `@default(UNCLAIMED)`. Create a new additive migration. The migration changes the database column default for future inserts. It does not update existing rows.
+Change `Organizations.originType` and `Organizations.ownershipStatus` in `prisma/schema.prisma` to `@default(AFFILIATE_IMPORTED)` and `@default(UNCLAIMED)`. Create a new additive migration. The migration changes the database column defaults for future inserts. It does not update existing rows.
 
 Add a named check constraint with this meaning: an organization with `originType = AFFILIATE_IMPORTED` and `ownershipStatus = CLAIMED` must have non-null `claimedAt` and `claimedByUserId`. Do not require a positive verification level because legacy or administrator-reviewed claims can validly use `NONE`. Confirm that claim acceptance, upheld disputes, and restored claimed states retain the existing claim timestamps.
 
@@ -273,7 +272,7 @@ Document exact production commands only when the implementation reaches Mileston
 
 ## Validation and Acceptance
 
-Creation safety is accepted when every known affiliate producer writes `AFFILIATE_IMPORTED / UNCLAIMED / NONE`, a missed producer receives the safe unclaimed database default, and the source-contract test rejects new setup code that omits the shared initializer.
+Creation safety is accepted when primary affiliate producers write `AFFILIATE_IMPORTED / UNCLAIMED / NONE`, legacy omitted paths receive the same fail-closed database defaults, and every first-party producer writes `FIRST_PARTY / CLAIMED` explicitly.
 
 Database safety is accepted when a false claimed affiliate insert fails the new check, a real claim acceptance succeeds, and first-party creation remains explicitly claimed.
 
@@ -291,7 +290,7 @@ No mobile code change is expected. The mobile organization page consumes the sam
 
 The source initializer is safe to repeat because it affects only organization creation. Existing organization updates do not write ownership fields.
 
-The migration changes a default and adds a constraint. It does not repair rows. It is safe to deploy before the data write because existing false rows are stored as `FIRST_PARTY / CLAIMED` and do not violate the affiliate-only constraint. New omitted ownership values become unclaimed.
+The migration changes two defaults and adds a `NOT VALID` constraint. It does not repair rows. PostgreSQL enforces a `NOT VALID` check on new and updated rows but does not scan historical rows during deployment. New omitted ownership values become affiliate and unclaimed. First-party producers must remain explicit.
 
 The repair is dry-run by default. A write requires `--write` and the exact reviewed digest. It uses row locks and compare-and-set conditions. A rerun after success must change zero rows.
 

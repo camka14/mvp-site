@@ -128,10 +128,12 @@ type RunAffiliateSourceScrape =
 
 let prisma: PrismaClientInstance;
 let runAffiliateSourceScrape: RunAffiliateSourceScrape;
+let affiliateOrganizationInitialOwnership: () => Record<string, unknown>;
 
 const loadAppModules = async () => {
   ({ prisma } = await import('../src/lib/prisma'));
   ({ runAffiliateSourceScrape } = await import('../src/server/affiliateImports/service'));
+  ({ affiliateOrganizationInitialOwnership } = await import('../src/server/affiliateImports/organizationOwnership'));
 };
 
 const OWNER_EMAIL = 'samuel.r@razumly.com';
@@ -168,6 +170,7 @@ const upsertPrivateOrganization = async (ownerId: string) => {
       publicPageEnabled: false,
       status: 'UNLISTED',
       logoId: null,
+      ...affiliateOrganizationInitialOwnership(),
       ...organization,
     },
     update: organization,

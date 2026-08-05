@@ -2586,8 +2586,8 @@ model Organizations {
   verificationReviewStatus           OrganizationsVerificationReviewStatusEnum @default(NONE)
   verificationReviewNotes            String?
   verificationReviewUpdatedAt        DateTime?
-  originType                         OrganizationOriginTypeEnum                @default(FIRST_PARTY)
-  ownershipStatus                    OrganizationOwnershipStatusEnum           @default(CLAIMED)
+  originType                         OrganizationOriginTypeEnum                @default(AFFILIATE_IMPORTED)
+  ownershipStatus                    OrganizationOwnershipStatusEnum           @default(UNCLAIMED)
   claimedAt                          DateTime?
   claimedByUserId                    String?
   claimVerificationLevel             OrganizationClaimVerificationLevelEnum    @default(NONE)

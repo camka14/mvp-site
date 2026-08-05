@@ -55,6 +55,13 @@ const ORGANIZATION_COLUMNS = [
   'verificationReviewStatus',
   'verificationReviewNotes',
   'verificationReviewUpdatedAt',
+  'originType',
+  'ownershipStatus',
+  'claimedAt',
+  'claimedByUserId',
+  'claimVerificationLevel',
+  'ownershipVerifiedAt',
+  'ownershipVerificationLastCheckedAt',
   'coordinates',
   'publicSlug',
   'publicPageEnabled',
@@ -441,12 +448,28 @@ const writeLiveState = async (
     const insertColumns = ORGANIZATION_COLUMNS.map(quoteIdentifier).join(', ');
     const placeholders = ORGANIZATION_COLUMNS.map((_, index) => `$${index + 1}`).join(', ');
     const updateColumns = ORGANIZATION_COLUMNS
-      .filter((column) => column !== 'id' && column !== 'createdAt')
+      .filter((column) => ![
+        'id',
+        'createdAt',
+        'ownerId',
+        'originType',
+        'ownershipStatus',
+        'claimedAt',
+        'claimedByUserId',
+        'claimVerificationLevel',
+        'ownershipVerifiedAt',
+        'ownershipVerificationLastCheckedAt',
+      ].includes(column))
       .map((column) => `${quoteIdentifier(column)} = EXCLUDED.${quoteIdentifier(column)}`)
       .join(', ');
     for (const organization of organizations) {
       const values = ORGANIZATION_COLUMNS.map((column) => {
         if (column === 'ownerId') return liveOwnerId;
+        if (column === 'originType') return 'AFFILIATE_IMPORTED';
+        if (column === 'ownershipStatus') return 'UNCLAIMED';
+        if (column === 'claimedAt' || column === 'claimedByUserId') return null;
+        if (column === 'claimVerificationLevel') return 'NONE';
+        if (column === 'ownershipVerifiedAt' || column === 'ownershipVerificationLastCheckedAt') return null;
         if (column === 'updatedAt') return new Date();
         if (column === 'coordinates' && organization[column] != null) {
           return JSON.stringify(organization[column]);

@@ -1,157 +1,409 @@
 /**
- * Classifies organization ownership without mutating by default.
- * Existing affiliate-imported profiles initialize as unclaimed; historical
- * owner and staff IDs are reported for context but are not treated as claims.
+ * Audits and repairs the historical false ownership defaults on affiliate
+ * organizations. The command is read-only unless --write is present. A write
+ * also requires the exact digest from a reviewed dry-run report.
  *
  * Usage:
  *   npm run affiliate:org-claims:audit
  *   npm run affiliate:org-claims:audit -- --org=<organization-id>
- *   npm run affiliate:org-claims:audit -- --write
- *   npm run affiliate:org-claims:audit -- --live
- *   npm run affiliate:org-claims:audit -- --live --write
+ *   npm run affiliate:org-claims:audit -- --write --expected-digest=<sha256>
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dotenv from 'dotenv';
-import { classifyOrganizationClaimState } from '../src/server/organizationClaims/classification';
-import { organizationDomainPolicyForUrl } from '../src/server/organizationClaims/domainPolicy';
+import { Client } from 'pg';
+import {
+  classifyOwnershipRepair,
+  type OwnershipRepairAction,
+  type OwnershipRepairInput,
+  type OwnershipRepairReason,
+} from '../src/server/organizationClaims/ownershipRepair';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
 
-const useLive = process.argv.includes('--live');
+if (process.argv.includes('--live')) {
+  throw new Error(
+    '--live is no longer supported. Run this command in the approved runtime environment with its DATABASE_URL.',
+  );
+}
+
 const shouldWrite = process.argv.includes('--write');
 const organizationArg = process.argv.find((argument) => argument.startsWith('--org='));
 const organizationIdFilter = organizationArg?.slice('--org='.length).trim() || null;
-
-if (useLive) {
-  if (!process.env.DATABASE_URL_LIVE?.trim()) {
-    throw new Error('--live requires DATABASE_URL_LIVE.');
-  }
-  process.env.DATABASE_URL = process.env.DATABASE_URL_LIVE;
-  process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
-}
-
+const digestArg = process.argv.find((argument) => argument.startsWith('--expected-digest='));
+const expectedDigest = digestArg?.slice('--expected-digest='.length).trim().toLowerCase() || null;
 const OUTPUT_DIR = path.join(process.cwd(), 'output', 'affiliate-organization-claims');
-const MANAGEMENT_TYPES = new Set(['HOST', 'STAFF']);
+const REPAIR_LOCK_NAME = 'bracketiq:affiliate-organization-ownership-repair:v1';
 
-type UrlEvidence = {
-  url: string;
-  source: string;
-  priority: number;
-  eligibleForPrimary: boolean;
+type AffiliateEvidenceReason =
+  | 'AFFILIATE_SOURCE_CONFIGURATION'
+  | 'PUBLISHED_AFFILIATE_CANDIDATE'
+  | 'AFFILIATE_EVENT'
+  | 'AFFILIATE_TEAM'
+  | 'AFFILIATE_FACILITY';
+
+type OwnershipFields = {
+  originType: string;
+  ownershipStatus: string;
+  claimedAt: Date | null;
+  claimedByUserId: string | null;
+  claimVerificationLevel: string;
+  ownershipVerifiedAt: Date | null;
+  ownershipVerificationLastCheckedAt: Date | null;
 };
 
-type DirectDomainEvidence = UrlEvidence & {
-  canonicalUrl: string;
-  host: string;
-  registrableDomain: string;
+type AuditOrganization = OwnershipFields & {
+  id: string;
+  name: string;
+  ownerId: string;
 };
 
 type AuditRow = {
   organizationId: string;
   organizationName: string;
-  currentOriginType: string;
-  currentOwnershipStatus: string;
-  originType: 'FIRST_PARTY' | 'AFFILIATE_IMPORTED';
-  ownershipStatus: 'UNCLAIMED' | 'CLAIMED' | 'REVIEW_REQUIRED';
-  legacyClaimMethod: 'LEGACY_OWNER' | null;
-  ownerAccountExists: boolean;
+  affiliateEvidenceReasons: AffiliateEvidenceReason[];
   ownerIsRazumlyAdmin: boolean;
-  externalManagementCount: number;
-  directDomains: string[];
-  sharedPlatforms: string[];
-  invalidUrlCount: number;
-  primaryDomain: string | null;
-  primaryDomainUrl: string | null;
-  primaryDomainSource: string | null;
-  reasons: string[];
-  organizationChanged: boolean;
-  domainChanged: boolean;
-  legacyClaimCreated: boolean;
+  claimCount: number;
+  ownershipClaimEventCount: number;
+  domainCount: number;
+  primaryDomainHost: string | null;
+  current: OwnershipFields;
+  desired: OwnershipFields;
+  action: OwnershipRepairAction;
+  reasons: OwnershipRepairReason[];
 };
 
-const pushMap = <T>(map: Map<string, T[]>, key: string | null | undefined, value: T): void => {
-  if (!key) return;
-  map.set(key, [...(map.get(key) ?? []), value]);
+type RepairAuditRow = AuditRow & {
+  currentOwnerId: string;
 };
 
-const deterministicId = (prefix: string, ...parts: string[]): string => (
-  `${prefix}_${createHash('sha256').update(parts.join('|')).digest('hex').slice(0, 24)}`
-);
+type RollbackRow = {
+  organizationId: string;
+  ownerId: string;
+  original: OwnershipFields;
+};
+
+const pushEvidence = (
+  map: Map<string, Set<AffiliateEvidenceReason>>,
+  organizationId: string | null | undefined,
+  reason: AffiliateEvidenceReason,
+): void => {
+  if (!organizationId) return;
+  const values = map.get(organizationId) ?? new Set<AffiliateEvidenceReason>();
+  values.add(reason);
+  map.set(organizationId, values);
+};
+
+const countByOrganization = (rows: Array<{ organizationId: string }>): Map<string, number> => {
+  const counts = new Map<string, number>();
+  rows.forEach(({ organizationId }) => {
+    counts.set(organizationId, (counts.get(organizationId) ?? 0) + 1);
+  });
+  return counts;
+};
 
 const csvCell = (value: unknown): string => {
   const text = Array.isArray(value) ? value.join(' | ') : String(value ?? '');
   return `"${text.replace(/"/g, '""')}"`;
 };
 
-const uniqueSorted = (values: string[]): string[] => Array.from(new Set(values)).sort();
-
-const mapWithConcurrency = async <T, R>(
-  values: T[],
-  concurrency: number,
-  mapper: (value: T) => Promise<R>,
-): Promise<R[]> => {
-  const results = new Array<R>(values.length);
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, values.length) }, async () => {
-    while (cursor < values.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await mapper(values[index]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
+const serializeDate = (value: Date | string | null): string | null => {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 };
 
-const organizationDataChanged = (
-  organization: {
-    originType: string;
-    ownershipStatus: string;
-    claimedAt: Date | null;
-    claimedByUserId: string | null;
-    claimVerificationLevel: string;
-    ownershipVerifiedAt: Date | null;
-    ownershipVerificationLastCheckedAt: Date | null;
-    ownerId: string;
+const stableOwnershipFields = (value: OwnershipFields) => ({
+  originType: value.originType,
+  ownershipStatus: value.ownershipStatus,
+  claimedAt: serializeDate(value.claimedAt),
+  claimedByUserId: value.claimedByUserId,
+  claimVerificationLevel: value.claimVerificationLevel,
+  ownershipVerifiedAt: serializeDate(value.ownershipVerifiedAt),
+  ownershipVerificationLastCheckedAt: serializeDate(value.ownershipVerificationLastCheckedAt),
+});
+
+const repairInputFor = (
+  organization: AuditOrganization,
+  input: {
+    hasAffiliateEvidence: boolean;
+    ownerIsRazumlyAdmin: boolean;
+    claimCount: number;
+    ownershipClaimEventCount: number;
   },
-  classification: ReturnType<typeof classifyOrganizationClaimState>,
-): boolean => {
-  if (
-    organization.originType !== classification.originType
-    || organization.ownershipStatus !== classification.ownershipStatus
-  ) {
-    return true;
-  }
-  if (classification.legacyClaimMethod === 'LEGACY_OWNER') {
-    return !organization.claimedAt
-      || organization.claimedByUserId !== organization.ownerId
-      || organization.claimVerificationLevel !== 'NONE'
-      || Boolean(
-        organization.ownershipVerifiedAt
-        || organization.ownershipVerificationLastCheckedAt,
-      );
-  }
-  if (classification.originType === 'AFFILIATE_IMPORTED') {
-    return Boolean(
-      organization.claimedAt
-      || organization.claimedByUserId
-      || organization.claimVerificationLevel !== 'NONE'
-      || organization.ownershipVerifiedAt
-      || organization.ownershipVerificationLastCheckedAt,
+): OwnershipRepairInput => ({
+  hasAffiliateEvidence: input.hasAffiliateEvidence,
+  originType: organization.originType,
+  ownershipStatus: organization.ownershipStatus,
+  claimedAt: organization.claimedAt,
+  claimedByUserId: organization.claimedByUserId,
+  claimVerificationLevel: organization.claimVerificationLevel,
+  ownershipVerifiedAt: organization.ownershipVerifiedAt,
+  ownershipVerificationLastCheckedAt: organization.ownershipVerificationLastCheckedAt,
+  ownerIsRazumlyAdmin: input.ownerIsRazumlyAdmin,
+  claimCount: input.claimCount,
+  ownershipClaimEventCount: input.ownershipClaimEventCount,
+});
+
+const desiredOwnershipFields = (organization: AuditOrganization, action: OwnershipRepairAction): OwnershipFields => (
+  action === 'REPAIR_FALSE_DEFAULT_CLAIM'
+    ? {
+      originType: 'AFFILIATE_IMPORTED',
+      ownershipStatus: 'UNCLAIMED',
+      claimedAt: null,
+      claimedByUserId: null,
+      claimVerificationLevel: 'NONE',
+      ownershipVerifiedAt: null,
+      ownershipVerificationLastCheckedAt: null,
+    }
+    : {
+      originType: organization.originType,
+      ownershipStatus: organization.ownershipStatus,
+      claimedAt: organization.claimedAt,
+      claimedByUserId: organization.claimedByUserId,
+      claimVerificationLevel: organization.claimVerificationLevel,
+      ownershipVerifiedAt: organization.ownershipVerifiedAt,
+      ownershipVerificationLastCheckedAt: organization.ownershipVerificationLastCheckedAt,
+    }
+);
+
+const databaseFingerprint = (databaseUrl: string): string => {
+  const parsed = new URL(databaseUrl);
+  const port = parsed.port || '5432';
+  const databaseName = parsed.pathname.replace(/^\//, '') || '(default)';
+  return `${parsed.hostname}:${port}/${databaseName}`;
+};
+
+const reportDigest = (rows: RepairAuditRow[]): string => createHash('sha256')
+  .update(JSON.stringify(rows.map((row) => ({
+    organizationId: row.organizationId,
+    currentOwnerId: row.currentOwnerId,
+    affiliateEvidenceReasons: row.affiliateEvidenceReasons,
+    ownerIsRazumlyAdmin: row.ownerIsRazumlyAdmin,
+    claimCount: row.claimCount,
+    ownershipClaimEventCount: row.ownershipClaimEventCount,
+    current: stableOwnershipFields(row.current),
+    action: row.action,
+    reasons: row.reasons,
+  }))))
+  .digest('hex');
+
+const writeReportFiles = async (
+  baseName: string,
+  report: Record<string, unknown> & { rows: AuditRow[] },
+): Promise<void> => {
+  await fs.mkdir(OUTPUT_DIR, { recursive: true });
+  await Promise.all([
+    fs.writeFile(
+      path.join(OUTPUT_DIR, `${baseName}.json`),
+      `${JSON.stringify(report, null, 2)}\n`,
+      'utf8',
+    ),
+    fs.writeFile(
+      path.join(OUTPUT_DIR, `${baseName}.csv`),
+      [
+        [
+          'organizationId',
+          'organizationName',
+          'affiliateEvidenceReasons',
+          'originType',
+          'ownershipStatus',
+          'ownerIsRazumlyAdmin',
+          'claimCount',
+          'ownershipClaimEventCount',
+          'domainCount',
+          'primaryDomainHost',
+          'action',
+          'reasons',
+        ].map(csvCell).join(','),
+        ...report.rows.map((row) => [
+          row.organizationId,
+          row.organizationName,
+          row.affiliateEvidenceReasons,
+          row.current.originType,
+          row.current.ownershipStatus,
+          row.ownerIsRazumlyAdmin,
+          row.claimCount,
+          row.ownershipClaimEventCount,
+          row.domainCount,
+          row.primaryDomainHost,
+          row.action,
+          row.reasons,
+        ].map(csvCell).join(',')),
+      ].join('\n').concat('\n'),
+      'utf8',
+    ),
+  ]);
+};
+
+const repairRows = async (
+  databaseUrl: string,
+  candidates: RepairAuditRow[],
+): Promise<{ repaired: string[]; skippedStateChanged: string[]; rollback: RollbackRow[] }> => {
+  const client = new Client({ connectionString: databaseUrl });
+  const repaired: string[] = [];
+  const skippedStateChanged: string[] = [];
+  const rollback: RollbackRow[] = [];
+  await client.connect();
+  try {
+    const lockResult = await client.query<{ acquired: boolean }>(
+      'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+      [REPAIR_LOCK_NAME],
     );
+    if (!lockResult.rows[0]?.acquired) {
+      throw new Error('Another affiliate ownership repair is running.');
+    }
+
+    for (const candidate of candidates) {
+      await client.query('BEGIN');
+      try {
+        const locked = await client.query<AuditOrganization>(
+          `SELECT id, name, "ownerId", "originType", "ownershipStatus", "claimedAt",
+                  "claimedByUserId", "claimVerificationLevel", "ownershipVerifiedAt",
+                  "ownershipVerificationLastCheckedAt"
+             FROM "Organizations"
+            WHERE id = $1
+            FOR UPDATE`,
+          [candidate.organizationId],
+        );
+        const organization = locked.rows[0];
+        if (!organization || organization.ownerId !== candidate.currentOwnerId) {
+          skippedStateChanged.push(candidate.organizationId);
+          await client.query('ROLLBACK');
+          continue;
+        }
+        const history = await client.query<{
+          claimCount: number;
+          eventCount: number;
+          hasAffiliateEvidence: boolean;
+        }>(
+          `SELECT
+             (SELECT count(*)::int FROM "OrganizationClaims" WHERE "organizationId" = $1) AS "claimCount",
+             (SELECT count(*)::int FROM "OrganizationClaimEvents" WHERE "organizationId" = $1) AS "eventCount",
+             (
+               EXISTS (SELECT 1 FROM "AffiliateScrapeSources" WHERE "organizationId" = $1)
+               OR EXISTS (SELECT 1 FROM "AffiliateImportCandidates" WHERE "publishedOrganizationId" = $1)
+               OR EXISTS (
+                 SELECT 1 FROM "Events"
+                  WHERE "organizationId" = $1
+                    AND ("sourceType" = 'AFFILIATE_IMPORT' OR COALESCE("affiliateUrl", '') <> '')
+               )
+               OR EXISTS (
+                 SELECT 1 FROM "Teams"
+                  WHERE "organizationId" = $1
+                    AND ("sourceType" = 'AFFILIATE_IMPORT' OR COALESCE("affiliateUrl", '') <> '')
+               )
+               OR EXISTS (
+                 SELECT 1 FROM "Facilities"
+                  WHERE "organizationId" = $1 AND COALESCE("affiliateUrl", '') <> ''
+               )
+             ) AS "hasAffiliateEvidence"`,
+          [candidate.organizationId],
+        );
+        const decision = classifyOwnershipRepair(repairInputFor(organization, {
+          hasAffiliateEvidence: Boolean(history.rows[0]?.hasAffiliateEvidence),
+          ownerIsRazumlyAdmin: candidate.ownerIsRazumlyAdmin,
+          claimCount: Number(history.rows[0]?.claimCount ?? 0),
+          ownershipClaimEventCount: Number(history.rows[0]?.eventCount ?? 0),
+        }));
+        if (decision.action !== 'REPAIR_FALSE_DEFAULT_CLAIM') {
+          skippedStateChanged.push(candidate.organizationId);
+          await client.query('ROLLBACK');
+          continue;
+        }
+        const update = await client.query(
+          `UPDATE "Organizations"
+              SET "originType" = 'AFFILIATE_IMPORTED',
+                  "ownershipStatus" = 'UNCLAIMED',
+                  "claimedAt" = NULL,
+                  "claimedByUserId" = NULL,
+                  "claimVerificationLevel" = 'NONE',
+                  "ownershipVerifiedAt" = NULL,
+                  "ownershipVerificationLastCheckedAt" = NULL,
+                  "updatedAt" = NOW()
+            WHERE id = $1
+              AND "ownerId" = $2
+              AND "originType" = 'FIRST_PARTY'
+              AND "ownershipStatus" = 'CLAIMED'
+              AND "claimedAt" IS NULL
+              AND "claimedByUserId" IS NULL
+              AND "claimVerificationLevel" = 'NONE'
+              AND "ownershipVerifiedAt" IS NULL
+              AND "ownershipVerificationLastCheckedAt" IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM "OrganizationClaims" WHERE "organizationId" = $1
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM "OrganizationClaimEvents" WHERE "organizationId" = $1
+              )
+              AND (
+                EXISTS (SELECT 1 FROM "AffiliateScrapeSources" WHERE "organizationId" = $1)
+                OR EXISTS (SELECT 1 FROM "AffiliateImportCandidates" WHERE "publishedOrganizationId" = $1)
+                OR EXISTS (
+                  SELECT 1 FROM "Events"
+                   WHERE "organizationId" = $1
+                     AND ("sourceType" = 'AFFILIATE_IMPORT' OR COALESCE("affiliateUrl", '') <> '')
+                )
+                OR EXISTS (
+                  SELECT 1 FROM "Teams"
+                   WHERE "organizationId" = $1
+                     AND ("sourceType" = 'AFFILIATE_IMPORT' OR COALESCE("affiliateUrl", '') <> '')
+                )
+                OR EXISTS (
+                  SELECT 1 FROM "Facilities"
+                   WHERE "organizationId" = $1 AND COALESCE("affiliateUrl", '') <> ''
+                )
+              )
+          RETURNING id`,
+          [candidate.organizationId, organization.ownerId],
+        );
+        if (update.rowCount !== 1) {
+          skippedStateChanged.push(candidate.organizationId);
+          await client.query('ROLLBACK');
+          continue;
+        }
+        rollback.push({
+          organizationId: candidate.organizationId,
+          ownerId: organization.ownerId,
+          original: {
+            originType: organization.originType,
+            ownershipStatus: organization.ownershipStatus,
+            claimedAt: organization.claimedAt,
+            claimedByUserId: organization.claimedByUserId,
+            claimVerificationLevel: organization.claimVerificationLevel,
+            ownershipVerifiedAt: organization.ownershipVerifiedAt,
+            ownershipVerificationLastCheckedAt: organization.ownershipVerificationLastCheckedAt,
+          },
+        });
+        await client.query('COMMIT');
+        repaired.push(candidate.organizationId);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    }
+    return { repaired, skippedStateChanged, rollback };
+  } finally {
+    await client.query('SELECT pg_advisory_unlock(hashtext($1))', [REPAIR_LOCK_NAME]).catch(() => undefined);
+    await client.end();
   }
-  return false;
 };
 
 const main = async (): Promise<void> => {
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  if (!databaseUrl) throw new Error('DATABASE_URL is required.');
+  if (shouldWrite && !expectedDigest) {
+    throw new Error('--write requires --expected-digest=<sha256> from a reviewed dry run.');
+  }
+  if (expectedDigest && !/^[a-f0-9]{64}$/.test(expectedDigest)) {
+    throw new Error('--expected-digest must be a 64-character SHA-256 digest.');
+  }
+
   const [{ prisma }, { evaluateRazumlyAdminAccess }] = await Promise.all([
     import('../src/lib/prisma'),
     import('../src/server/razumlyAdmin'),
   ]);
-
   const organizationWhere = organizationIdFilter ? { id: organizationIdFilter } : undefined;
   const [
     organizations,
@@ -160,19 +412,16 @@ const main = async (): Promise<void> => {
     events,
     teams,
     facilities,
-    staffMembers,
-    managementPermissionRows,
-    existingDomains,
-    existingLegacyClaims,
+    claims,
+    claimEvents,
+    domains,
   ] = await Promise.all([
     prisma.organizations.findMany({
       where: organizationWhere,
       select: {
         id: true,
-        createdAt: true,
         name: true,
         ownerId: true,
-        website: true,
         originType: true,
         ownershipStatus: true,
         claimedAt: true,
@@ -183,53 +432,33 @@ const main = async (): Promise<void> => {
       },
       orderBy: { id: 'asc' },
     }),
-    prisma.affiliateScrapeSources.findMany({
-      select: { organizationId: true, baseUrl: true, listUrl: true },
-    }),
+    prisma.affiliateScrapeSources.findMany({ select: { organizationId: true } }),
     prisma.affiliateImportCandidates.findMany({
       where: { publishedOrganizationId: { not: null } },
-      select: { publishedOrganizationId: true, listingKind: true, officialActionUrl: true },
+      select: { publishedOrganizationId: true },
     }),
     prisma.events.findMany({
       where: {
         organizationId: { not: null },
         OR: [{ sourceType: 'AFFILIATE_IMPORT' }, { affiliateUrl: { notIn: [''] } }],
       },
-      select: { organizationId: true, sourceUrl: true, affiliateUrl: true },
+      select: { organizationId: true },
     }),
     prisma.canonicalTeams.findMany({
       where: {
         organizationId: { not: null },
         OR: [{ sourceType: 'AFFILIATE_IMPORT' }, { affiliateUrl: { notIn: [''] } }],
       },
-      select: { organizationId: true, sourceUrl: true, affiliateUrl: true },
+      select: { organizationId: true },
     }),
     prisma.facilities.findMany({
       where: { affiliateUrl: { notIn: [''] } },
-      select: { organizationId: true, affiliateUrl: true },
+      select: { organizationId: true },
     }),
-    prisma.staffMembers.findMany({
-      select: { organizationId: true, userId: true, types: true, roleId: true },
-    }),
-    prisma.organizationRolePermissions.findMany({
-      where: { permission: 'organization.manage' },
-      select: { organizationRoleId: true },
-    }),
+    prisma.organizationClaims.findMany({ select: { organizationId: true } }),
+    prisma.organizationClaimEvents.findMany({ select: { organizationId: true } }),
     prisma.organizationDomains.findMany({
-      select: {
-        id: true,
-        organizationId: true,
-        url: true,
-        host: true,
-        registrableDomain: true,
-        source: true,
-        isPrimary: true,
-        isSharedPlatform: true,
-      },
-    }),
-    prisma.organizationClaims.findMany({
-      where: { method: 'LEGACY_OWNER', status: 'APPROVED' },
-      select: { id: true, organizationId: true, claimantUserId: true },
+      select: { organizationId: true, host: true, isPrimary: true },
     }),
   ]);
 
@@ -237,333 +466,153 @@ const main = async (): Promise<void> => {
     throw new Error(`Organization ${organizationIdFilter} was not found.`);
   }
 
-  const affiliateOrganizationIds = new Set<string>();
-  const evidenceByOrganization = new Map<string, UrlEvidence[]>();
-  const addEvidence = (
-    organizationId: string | null | undefined,
-    url: string | null | undefined,
-    source: string,
-    priority: number,
-    eligibleForPrimary: boolean,
-  ): void => {
-    if (!organizationId || !url?.trim()) return;
-    affiliateOrganizationIds.add(organizationId);
-    pushMap(evidenceByOrganization, organizationId, {
-      url: url.trim(),
-      source,
-      priority,
-      eligibleForPrimary,
-    });
-  };
+  const evidenceByOrganization = new Map<string, Set<AffiliateEvidenceReason>>();
+  sources.forEach((row) => pushEvidence(
+    evidenceByOrganization,
+    row.organizationId,
+    'AFFILIATE_SOURCE_CONFIGURATION',
+  ));
+  candidates.forEach((row) => pushEvidence(
+    evidenceByOrganization,
+    row.publishedOrganizationId,
+    'PUBLISHED_AFFILIATE_CANDIDATE',
+  ));
+  events.forEach((row) => pushEvidence(evidenceByOrganization, row.organizationId, 'AFFILIATE_EVENT'));
+  teams.forEach((row) => pushEvidence(evidenceByOrganization, row.organizationId, 'AFFILIATE_TEAM'));
+  facilities.forEach((row) => pushEvidence(
+    evidenceByOrganization,
+    row.organizationId,
+    'AFFILIATE_FACILITY',
+  ));
 
-  sources.forEach((source) => {
-    if (!source.organizationId) return;
-    affiliateOrganizationIds.add(source.organizationId);
-    addEvidence(source.organizationId, source.baseUrl, 'AFFILIATE_SOURCE_BASE_URL', 1, true);
-    addEvidence(source.organizationId, source.listUrl, 'AFFILIATE_SOURCE_LIST_URL', 8, false);
+  const claimCounts = countByOrganization(claims);
+  const eventCounts = countByOrganization(claimEvents);
+  const domainsByOrganization = new Map<string, typeof domains>();
+  domains.forEach((domain) => {
+    domainsByOrganization.set(domain.organizationId, [
+      ...(domainsByOrganization.get(domain.organizationId) ?? []),
+      domain,
+    ]);
   });
-  candidates.forEach((candidate) => {
-    if (!candidate.publishedOrganizationId) return;
-    affiliateOrganizationIds.add(candidate.publishedOrganizationId);
-    addEvidence(
-      candidate.publishedOrganizationId,
-      candidate.officialActionUrl,
-      'AFFILIATE_CANDIDATE_OFFICIAL_ACTION',
-      3,
-      candidate.listingKind === 'CLUB',
-    );
-  });
-  events.forEach((event) => {
-    if (!event.organizationId) return;
-    affiliateOrganizationIds.add(event.organizationId);
-    addEvidence(event.organizationId, event.sourceUrl, 'AFFILIATE_EVENT_SOURCE_URL', 4, true);
-    addEvidence(event.organizationId, event.affiliateUrl, 'AFFILIATE_EVENT_ACTION_URL', 6, false);
-  });
-  teams.forEach((team) => {
-    if (!team.organizationId) return;
-    affiliateOrganizationIds.add(team.organizationId);
-    addEvidence(team.organizationId, team.sourceUrl, 'AFFILIATE_TEAM_SOURCE_URL', 5, true);
-    addEvidence(team.organizationId, team.affiliateUrl, 'AFFILIATE_TEAM_ACTION_URL', 7, false);
-  });
-  facilities.forEach((facility) => {
-    affiliateOrganizationIds.add(facility.organizationId);
-    addEvidence(facility.organizationId, facility.affiliateUrl, 'AFFILIATE_FACILITY_ACTION_URL', 9, false);
-  });
-  organizations.forEach((organization) => {
-    if (affiliateOrganizationIds.has(organization.id)) {
-      addEvidence(organization.id, organization.website, 'ORGANIZATION_WEBSITE', 0, true);
-    }
-  });
+  const affiliateOrganizations = organizations.filter((organization) => (
+    evidenceByOrganization.has(organization.id)
+  ));
+  const adminResults = await Promise.all(affiliateOrganizations.map(async (organization) => [
+    organization.ownerId,
+    await evaluateRazumlyAdminAccess(organization.ownerId),
+  ] as const));
+  const adminByUserId = new Map(adminResults);
 
-  const managementRoleIds = new Set(managementPermissionRows.map((row) => row.organizationRoleId));
-  const managementStaffByOrganization = new Map<string, typeof staffMembers>();
-  staffMembers.forEach((staffMember) => {
-    const legacyManager = staffMember.types.some((type) => MANAGEMENT_TYPES.has(type.toUpperCase()));
-    if (legacyManager || (staffMember.roleId && managementRoleIds.has(staffMember.roleId))) {
-      pushMap(managementStaffByOrganization, staffMember.organizationId, staffMember);
-    }
-  });
-
-  const relevantUserIds = uniqueSorted([
-    ...organizations.map((organization) => organization.ownerId),
-    ...Array.from(managementStaffByOrganization.values()).flat().map((staffMember) => staffMember.userId),
-  ]);
-  const adminResults = await mapWithConcurrency(
-    relevantUserIds,
-    12,
-    async (userId) => [userId, await evaluateRazumlyAdminAccess(userId)] as const,
-  );
-  const adminStatusByUserId = new Map(adminResults);
-  const domainsByOrganization = new Map<string, typeof existingDomains>();
-  existingDomains.forEach((domain) => pushMap(domainsByOrganization, domain.organizationId, domain));
-  const legacyClaimsByOrganization = new Map(existingLegacyClaims.map((claim) => [claim.organizationId, claim]));
-
-  const rows: AuditRow[] = [];
-  for (const organization of organizations) {
-    const isAffiliate = affiliateOrganizationIds.has(organization.id);
-    const externalManagementUserIds = (managementStaffByOrganization.get(organization.id) ?? [])
-      .filter((staffMember) => !adminStatusByUserId.get(staffMember.userId)?.allowed)
-      .map((staffMember) => staffMember.userId);
-    const directEvidence: DirectDomainEvidence[] = [];
-    const sharedPlatforms: string[] = [];
-    let invalidUrlCount = 0;
-    for (const evidence of evidenceByOrganization.get(organization.id) ?? []) {
-      try {
-        const policy = organizationDomainPolicyForUrl(evidence.url);
-        if (policy.isSharedPlatform) {
-          sharedPlatforms.push(policy.registrableDomain);
-          continue;
-        }
-        if (evidence.eligibleForPrimary) {
-          directEvidence.push({
-            ...evidence,
-            canonicalUrl: policy.canonicalUrl,
-            host: policy.host,
-            registrableDomain: policy.registrableDomain,
-          });
-        }
-      } catch {
-        invalidUrlCount += 1;
-      }
-    }
-
-    directEvidence.sort((left, right) => (
-      left.priority - right.priority
-      || left.canonicalUrl.localeCompare(right.canonicalUrl)
-    ));
-    const directDomains = uniqueSorted(directEvidence.map((evidence) => evidence.registrableDomain));
-    const classification = classifyOrganizationClaimState({
-      isAffiliate,
-      ownerAccountExists: adminStatusByUserId.get(organization.ownerId)?.reason !== 'missing_user',
-      ownerIsRazumlyAdmin: Boolean(adminStatusByUserId.get(organization.ownerId)?.allowed),
-      externalManagementUserIds,
-      directRegistrableDomains: directDomains,
-    });
-    const primaryEvidence = classification.primaryDomain
-      ? directEvidence.find((evidence) => evidence.registrableDomain === classification.primaryDomain) ?? null
-      : null;
-    const currentPrimary = (domainsByOrganization.get(organization.id) ?? [])
-      .find((domain) => domain.isPrimary) ?? null;
-    const desiredDomainChanged = Boolean(primaryEvidence) && (
-      !currentPrimary
-      || currentPrimary.url !== primaryEvidence?.canonicalUrl
-      || currentPrimary.host !== primaryEvidence?.host
-      || currentPrimary.registrableDomain !== primaryEvidence?.registrableDomain
-      || currentPrimary.source !== primaryEvidence?.source
-      || currentPrimary.isSharedPlatform
-    );
-    const desiredOrganizationChanged = organizationDataChanged(organization, classification);
-    const existingLegacyClaim = legacyClaimsByOrganization.get(organization.id);
-    const shouldCreateLegacyClaim = classification.legacyClaimMethod === 'LEGACY_OWNER'
-      && (!existingLegacyClaim || existingLegacyClaim.claimantUserId !== organization.ownerId);
-    const claimedAt = organization.claimedAt ?? organization.createdAt ?? new Date();
-
-    if (shouldWrite && (desiredOrganizationChanged || desiredDomainChanged || shouldCreateLegacyClaim)) {
-      await prisma.$transaction(async (transaction) => {
-        await transaction.organizations.update({
-          where: { id: organization.id },
-          data: classification.legacyClaimMethod === 'LEGACY_OWNER'
-            ? {
-              originType: classification.originType,
-              ownershipStatus: classification.ownershipStatus,
-              claimedAt,
-              claimedByUserId: organization.ownerId,
-              claimVerificationLevel: 'NONE',
-              ownershipVerifiedAt: null,
-              ownershipVerificationLastCheckedAt: null,
-            }
-            : classification.originType === 'AFFILIATE_IMPORTED'
-              ? {
-                originType: classification.originType,
-                ownershipStatus: classification.ownershipStatus,
-                claimedAt: null,
-                claimedByUserId: null,
-                claimVerificationLevel: 'NONE',
-                ownershipVerifiedAt: null,
-                ownershipVerificationLastCheckedAt: null,
-              }
-              : {
-                originType: classification.originType,
-                ownershipStatus: classification.ownershipStatus,
-              },
-        });
-
-        if (primaryEvidence && desiredDomainChanged) {
-          await transaction.organizationDomains.updateMany({
-            where: { organizationId: organization.id, isPrimary: true },
-            data: { isPrimary: false },
-          });
-          await transaction.organizationDomains.upsert({
-            where: {
-              organizationId_host: {
-                organizationId: organization.id,
-                host: primaryEvidence.host,
-              },
-            },
-            create: {
-              id: deterministicId('org_domain', organization.id, primaryEvidence.host),
-              organizationId: organization.id,
-              url: primaryEvidence.canonicalUrl,
-              host: primaryEvidence.host,
-              registrableDomain: primaryEvidence.registrableDomain,
-              source: primaryEvidence.source,
-              isPrimary: true,
-              isSharedPlatform: false,
-            },
-            update: {
-              url: primaryEvidence.canonicalUrl,
-              registrableDomain: primaryEvidence.registrableDomain,
-              source: primaryEvidence.source,
-              isPrimary: true,
-              isSharedPlatform: false,
-            },
-          });
-        }
-
-        if (shouldCreateLegacyClaim) {
-          await transaction.organizationClaims.create({
-            data: {
-              id: deterministicId('org_claim_legacy', organization.id, organization.ownerId),
-              organizationId: organization.id,
-              claimantUserId: organization.ownerId,
-              requestType: 'INITIAL_CLAIM',
-              status: 'APPROVED',
-              method: 'LEGACY_OWNER',
-              verificationLevel: 'NONE',
-              submittedAt: claimedAt,
-              decidedAt: claimedAt,
-              acceptedAt: claimedAt,
-              userDecisionMessage: 'Existing owner preserved during affiliate ownership backfill.',
-            },
-          });
-        }
-      });
-    }
-
-    rows.push({
+  const rows: RepairAuditRow[] = affiliateOrganizations.map((organization) => {
+    const affiliateEvidenceReasons = Array.from(
+      evidenceByOrganization.get(organization.id) ?? [],
+    ).sort() as AffiliateEvidenceReason[];
+    const ownerIsRazumlyAdmin = Boolean(adminByUserId.get(organization.ownerId)?.allowed);
+    const claimCount = claimCounts.get(organization.id) ?? 0;
+    const ownershipClaimEventCount = eventCounts.get(organization.id) ?? 0;
+    const decision = classifyOwnershipRepair(repairInputFor(organization, {
+      hasAffiliateEvidence: true,
+      ownerIsRazumlyAdmin,
+      claimCount,
+      ownershipClaimEventCount,
+    }));
+    const organizationDomains = domainsByOrganization.get(organization.id) ?? [];
+    return {
       organizationId: organization.id,
       organizationName: organization.name,
-      currentOriginType: organization.originType,
-      currentOwnershipStatus: organization.ownershipStatus,
-      originType: classification.originType,
-      ownershipStatus: classification.ownershipStatus,
-      legacyClaimMethod: classification.legacyClaimMethod,
-      ownerAccountExists: adminStatusByUserId.get(organization.ownerId)?.reason !== 'missing_user',
-      ownerIsRazumlyAdmin: Boolean(adminStatusByUserId.get(organization.ownerId)?.allowed),
-      externalManagementCount: uniqueSorted(externalManagementUserIds).length,
-      directDomains,
-      sharedPlatforms: uniqueSorted(sharedPlatforms),
-      invalidUrlCount,
-      primaryDomain: classification.primaryDomain,
-      primaryDomainUrl: primaryEvidence?.canonicalUrl ?? null,
-      primaryDomainSource: primaryEvidence?.source ?? null,
-      reasons: classification.reasons,
-      organizationChanged: desiredOrganizationChanged,
-      domainChanged: desiredDomainChanged,
-      legacyClaimCreated: shouldCreateLegacyClaim,
-    });
-  }
+      currentOwnerId: organization.ownerId,
+      affiliateEvidenceReasons,
+      ownerIsRazumlyAdmin,
+      claimCount,
+      ownershipClaimEventCount,
+      domainCount: organizationDomains.length,
+      primaryDomainHost: organizationDomains.find((domain) => domain.isPrimary)?.host ?? null,
+      current: desiredOwnershipFields(organization, 'PRESERVE'),
+      desired: desiredOwnershipFields(organization, decision.action),
+      action: decision.action,
+      reasons: decision.reasons,
+    };
+  });
 
-  const counts = rows.reduce<Record<string, number>>((result, row) => {
-    result[row.ownershipStatus] = (result[row.ownershipStatus] ?? 0) + 1;
-    return result;
-  }, {});
-  const affectedOrganizationIds = rows
-    .filter((row) => row.organizationChanged || row.domainChanged || row.legacyClaimCreated)
-    .map((row) => row.organizationId);
-  const stableDigest = createHash('sha256')
-    .update(JSON.stringify(rows.map((row) => ({
-      organizationId: row.organizationId,
-      originType: row.originType,
-      ownershipStatus: row.ownershipStatus,
-      primaryDomain: row.primaryDomain,
-      reasons: row.reasons,
-    }))))
-    .digest('hex');
+  const digest = reportDigest(rows);
   const generatedAt = new Date().toISOString();
+  const stamp = generatedAt.replace(/[:.]/g, '-');
+  const targetFingerprint = databaseFingerprint(databaseUrl);
+  const counts = rows.reduce<Record<OwnershipRepairAction, number>>((result, row) => {
+    result[row.action] += 1;
+    return result;
+  }, {
+    REPAIR_FALSE_DEFAULT_CLAIM: 0,
+    PRESERVE: 0,
+    MANUAL_REVIEW: 0,
+  });
+  const reportRows: AuditRow[] = rows.map(({ currentOwnerId: _currentOwnerId, ...row }) => row);
   const report = {
     generatedAt,
-    database: useLive ? 'live' : 'local',
+    databaseFingerprint: targetFingerprint,
     mode: shouldWrite ? 'write' : 'dry-run',
     organizationIdFilter,
+    digest,
     counts,
-    affectedOrganizationIds,
-    stableDigest,
-    rows,
+    repairableOrganizationIds: rows
+      .filter((row) => row.action === 'REPAIR_FALSE_DEFAULT_CLAIM')
+      .map((row) => row.organizationId),
+    rows: reportRows,
   };
+  const baseName = `${stamp}-${shouldWrite ? 'write' : 'dry-run'}`;
+  await writeReportFiles(baseName, report);
 
-  await fs.mkdir(OUTPUT_DIR, { recursive: true });
-  const stamp = generatedAt.replace(/[:.]/g, '-');
-  const baseName = `${stamp}-${useLive ? 'live' : 'local'}-${shouldWrite ? 'write' : 'dry-run'}`;
-  await Promise.all([
-    fs.writeFile(path.join(OUTPUT_DIR, `${baseName}.json`), `${JSON.stringify(report, null, 2)}\n`, 'utf8'),
-    fs.writeFile(
-      path.join(OUTPUT_DIR, `${baseName}.csv`),
-      [
-        [
-          'organizationId',
-          'organizationName',
-          'originType',
-          'ownershipStatus',
-          'ownerAccountExists',
-          'ownerIsRazumlyAdmin',
-          'externalManagementCount',
-          'directDomains',
-          'sharedPlatforms',
-          'primaryDomain',
-          'reasons',
-          'organizationChanged',
-          'domainChanged',
-          'legacyClaimCreated',
-        ].map(csvCell).join(','),
-        ...rows.map((row) => [
-          row.organizationId,
-          row.organizationName,
-          row.originType,
-          row.ownershipStatus,
-          row.ownerAccountExists,
-          row.ownerIsRazumlyAdmin,
-          row.externalManagementCount,
-          row.directDomains,
-          row.sharedPlatforms,
-          row.primaryDomain,
-          row.reasons,
-          row.organizationChanged,
-          row.domainChanged,
-          row.legacyClaimCreated,
-        ].map(csvCell).join(',')),
-      ].join('\n').concat('\n'),
+  if (shouldWrite && expectedDigest !== digest) {
+    throw new Error(
+      `Ownership audit digest changed. Expected ${expectedDigest}; current digest is ${digest}. No rows changed.`,
+    );
+  }
+
+  let writeResult = { repaired: [] as string[], skippedStateChanged: [] as string[] };
+  if (shouldWrite) {
+    const candidatesToRepair = rows.filter((row) => row.action === 'REPAIR_FALSE_DEFAULT_CLAIM');
+    await fs.writeFile(
+      path.join(OUTPUT_DIR, `${baseName}-pre-change-rollback.json`),
+      `${JSON.stringify({
+        generatedAt,
+        databaseFingerprint: targetFingerprint,
+        sourceDigest: digest,
+        rows: candidatesToRepair.map((row) => ({
+          organizationId: row.organizationId,
+          ownerId: row.currentOwnerId,
+          original: stableOwnershipFields(row.current),
+        })),
+      }, null, 2)}\n`,
       'utf8',
-    ),
-  ]);
+    );
+    const result = await repairRows(databaseUrl, candidatesToRepair);
+    writeResult = {
+      repaired: result.repaired,
+      skippedStateChanged: result.skippedStateChanged,
+    };
+    await fs.writeFile(
+      path.join(OUTPUT_DIR, `${baseName}-rollback.json`),
+      `${JSON.stringify({
+        generatedAt,
+        databaseFingerprint: targetFingerprint,
+        sourceDigest: digest,
+        rows: result.rollback.map((row) => ({
+          ...row,
+          original: stableOwnershipFields(row.original),
+        })),
+      }, null, 2)}\n`,
+      'utf8',
+    );
+  }
 
   console.log(JSON.stringify({
-    database: report.database,
+    databaseFingerprint: targetFingerprint,
     mode: report.mode,
-    organizations: rows.length,
+    affiliateOrganizations: rows.length,
     counts,
-    affectedOrganizationIds,
-    stableDigest,
+    digest,
+    repaired: writeResult.repaired.length,
+    skippedStateChanged: writeResult.skippedStateChanged.length,
     reportBaseName: baseName,
   }, null, 2));
 };

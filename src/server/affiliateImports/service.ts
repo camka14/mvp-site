@@ -43,6 +43,7 @@ import {
   parseAffiliateScrapeMapping,
   type ScrapePageClient,
 } from './types';
+import { affiliateOrganizationInitialOwnership } from './organizationOwnership';
 
 type AffiliateSourceCreateInput = {
   name: string;
@@ -1919,9 +1920,7 @@ const upsertAffiliateOrganizationForCandidate = async (
       id: organizationId,
       createdAt: new Date(),
       ...data,
-      originType: 'AFFILIATE_IMPORTED',
-      ownershipStatus: 'UNCLAIMED',
-      claimVerificationLevel: 'NONE',
+      ...affiliateOrganizationInitialOwnership(),
     },
     update: {
       ...data,
