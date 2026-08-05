@@ -65,7 +65,7 @@ const buildEventData = (overrides: Partial<EventFormValues> = {}): EventFormValu
     singleDivision: false,
     teamSignup: true,
     splitLeaguePlayoffDivisions: false,
-    sportId: '',
+    sportIds: [],
     sportConfig: null,
     start: '2026-07-20T09:00:00',
     price: 0,

@@ -394,7 +394,7 @@ describe('EventForm dirty state', () => {
     end: '2026-03-12T12:00',
     state: 'DRAFT',
     eventType: 'EVENT',
-    sportId: 'volleyball',
+    sportIds: ['volleyball'],
     sport: { $id: 'volleyball', name: 'Volleyball' },
     sportConfig: { $id: 'volleyball', name: 'Volleyball' },
     price: 0,
@@ -1466,7 +1466,7 @@ describe('EventForm dirty state', () => {
     await waitForStableDirtyState(onDirtyStateChange, false);
   });
 
-  it('does not mark edit mode dirty when sport config hydrates from sportId', async () => {
+  it('does not mark edit mode dirty when sport config hydrates from sportIds', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange, undefined, {
@@ -1531,7 +1531,7 @@ describe('EventForm dirty state', () => {
     renderForm(onDirtyStateChange, undefined, {
       state: 'UNPUBLISHED',
       eventType: 'LEAGUE',
-      sportId: 'volleyball_sets',
+      sportIds: ['volleyball_sets'],
       sport: null,
       sportConfig: null,
       teamSignup: true,

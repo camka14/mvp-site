@@ -86,6 +86,7 @@ export const buildEvent = (overrides: Partial<Event> = {}): Event => {
   if (!leagueScoringConfig.$id) {
     leagueScoringConfig.$id = `league_scoring_${eventCounter}`;
   }
+  const sport = normalizeSport(overrideSport);
 
   return {
     $id: id,
@@ -117,7 +118,8 @@ export const buildEvent = (overrides: Partial<Event> = {}): Event => {
     $createdAt: new Date().toISOString(),
     $updatedAt: new Date().toISOString(),
     eventType: 'LEAGUE',
-    sport: normalizeSport(overrideSport),
+    sport,
+    sportIds: restOverrides.sportIds ?? [sport.$id],
     leagueScoringConfig,
     divisions: [],
     matches: [],

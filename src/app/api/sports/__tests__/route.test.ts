@@ -10,6 +10,8 @@ const prismaMock = {
     deleteMany: jest.fn(),
   },
   events: {
+    findMany: jest.fn(),
+    update: jest.fn(),
     updateMany: jest.fn(),
   },
   divisions: {
@@ -62,10 +64,14 @@ const baseballSkillDivisionTypes = [
 describe('GET /api/sports', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.sports.findMany.mockReset();
+    prismaMock.events.findMany.mockReset();
+    prismaMock.events.update.mockReset();
     prismaMock.$transaction.mockResolvedValue([]);
     prismaMock.sports.createMany.mockResolvedValue({ count: 0 });
     prismaMock.sports.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.events.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.events.update.mockResolvedValue({});
     prismaMock.divisions.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.teams.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.organizations.findMany.mockResolvedValue([]);
@@ -263,12 +269,22 @@ describe('GET /api/sports', () => {
     prismaMock.organizations.findMany.mockResolvedValueOnce([
       { id: 'org_1', sports: ['Soccer', 'Volleyball', 'Basketball'] },
     ]);
+    prismaMock.events.findMany
+      .mockResolvedValueOnce([{ id: 'event_1', sportIds: ['Soccer', 'Volleyball', 'Basketball'] }])
+      .mockResolvedValueOnce([{ id: 'event_1', sportIds: ['Soccer', 'Volleyball', 'Basketball'] }]);
 
     const response = await GET(new NextRequest('http://localhost/api/sports'));
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(prismaMock.events.updateMany).toHaveBeenCalled();
+    expect(prismaMock.events.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'event_1' },
+      data: { sportIds: ['Indoor Soccer', 'Volleyball', 'Basketball'] },
+    });
+    expect(prismaMock.events.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'event_1' },
+      data: { sportIds: ['Soccer', 'Indoor Volleyball', 'Basketball'] },
+    });
     expect(prismaMock.divisions.updateMany).toHaveBeenCalled();
     expect(prismaMock.teams.updateMany).toHaveBeenCalled();
     expect(prismaMock.organizations.update).toHaveBeenCalledWith(

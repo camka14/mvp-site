@@ -45,7 +45,7 @@ describe('publicSearchSeo', () => {
       {
         id: 'event_1',
         organizationId: 'org_1',
-        sportId: 'sport_soccer',
+        sportIds: ['sport_grass_soccer'],
         updatedAt: new Date('2026-06-02T12:00:00.000Z'),
         start: new Date('2026-06-10T12:00:00.000Z'),
       },
@@ -102,7 +102,7 @@ describe('publicSearchSeo', () => {
     prismaMock.events.findMany
       .mockResolvedValueOnce([
         {
-          sportId: 'sport_soccer',
+          sportIds: ['sport_grass_soccer'],
           updatedAt: new Date('2026-06-02T12:00:00.000Z'),
           start: new Date('2026-06-10T12:00:00.000Z'),
         },
@@ -119,21 +119,21 @@ describe('publicSearchSeo', () => {
       ]);
     prismaMock.sports.findMany.mockResolvedValue([
       {
-        id: 'sport_soccer',
-        name: 'Soccer',
+        id: 'sport_grass_soccer',
+        name: 'Grass Soccer',
         updatedAt: new Date('2026-06-01T12:00:00.000Z'),
       },
     ]);
 
-    const directory = await getPublicEventSportDirectory('soccer');
+    const directory = await getPublicEventSportDirectory('grass-soccer');
 
     expect(directory).toEqual({
       sport: expect.objectContaining({
-        name: 'Soccer',
-        slug: 'soccer',
+        name: 'Grass Soccer',
+        slug: 'grass-soccer',
         eventCount: 1,
-        directoryPath: '/find-events/soccer',
-        discoverHref: '/discover?sport=Soccer',
+        directoryPath: '/find-events/grass-soccer',
+        discoverHref: '/discover?sport=Grass+Soccer',
       }),
       events: [
         expect.objectContaining({

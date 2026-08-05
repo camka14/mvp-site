@@ -50,6 +50,7 @@ describe('sendEventRegistrationHostNotification', () => {
       start: new Date('2026-07-15T18:00:00.000Z'),
       timeZone: 'America/Los_Angeles',
       location: 'Main Gym',
+      sportIds: ['soccer'],
       hostId: 'host_1',
       organizationId: 'org_1',
     });
@@ -117,6 +118,7 @@ describe('sendEventRegistrationHostNotification', () => {
       start: new Date('2026-07-15T18:00:00.000Z'),
       timeZone: 'America/Los_Angeles',
       location: 'Main Gym',
+      sportIds: ['soccer'],
       hostId: null,
       organizationId: 'org_1',
     });
@@ -155,7 +157,7 @@ describe('sendEventRegistrationHostNotification', () => {
       start: new Date('2026-07-11T16:00:00.000Z'),
       timeZone: 'America/Los_Angeles',
       location: 'Main Gym',
-      sportId: 'soccer',
+      sportIds: ['soccer'],
       hostId: 'host_1',
       organizationId: 'org_1',
     });

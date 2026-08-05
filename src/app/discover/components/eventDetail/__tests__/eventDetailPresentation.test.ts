@@ -75,7 +75,7 @@ describe('event detail presentation helpers', () => {
         expect(getSportLabel({
             ...buildEvent(),
             sport: '' as unknown as ReturnType<typeof buildEvent>['sport'],
-            sportId: 'pickleball',
+            sportIds: ['pickleball'],
         })).toBe('pickleball');
         expect(formatRegistrationCutoffSummary(25.9)).toBe('25h before start');
         expect(formatRegistrationCutoffSummary(0)).toBe('No cutoff');

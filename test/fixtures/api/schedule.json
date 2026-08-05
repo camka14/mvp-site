@@ -28,6 +28,7 @@
     "registrationCutoffHours": 2,
     "seedColor": 0,
     "eventType": "LEAGUE",
+    "sportIds": ["volleyball"],
     "divisions": [],
     "teams": [
       {

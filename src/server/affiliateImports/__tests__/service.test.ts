@@ -936,7 +936,7 @@ describe('affiliate import service', () => {
         description: 'Indoor basketball league.\n\nPricing details: $850 per team.',
         priceText: '$850.00',
         statusText: 'Confirm current session.',
-        sportId: 'sport_basketball',
+        sportIds: ['sport_basketball'],
       }),
     });
     expect(geocodeAddressToCoordinatesMock).toHaveBeenCalledWith('819 NW Corporate Dr, Troutdale, OR 97060');
@@ -1399,7 +1399,7 @@ describe('affiliate import service', () => {
 
     expect(prismaMock.events.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        sportId: 'Other',
+        sportIds: ['Other'],
         minAge: 5,
         maxAge: 8,
       }),
@@ -2533,7 +2533,7 @@ describe('affiliate import service', () => {
       data: expect.objectContaining({
         name: 'Saving 2nd Base - Fall 2026',
         eventType: 'TOURNAMENT',
-        sportId: 'sport_softball',
+        sportIds: ['sport_softball'],
         priceText: '$400.00',
         teamSignup: true,
         teamSizeLimit: 10,

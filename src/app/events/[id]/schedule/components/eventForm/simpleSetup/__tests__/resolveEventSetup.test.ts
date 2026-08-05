@@ -171,7 +171,7 @@ describe('resolveEventSetupPages', () => {
 
 describe('resolveValidationPage', () => {
     it.each([
-        ['sportId', 'basics'],
+        ['sportIds', 'basics'],
         ['divisionDetails.0.maxParticipants', 'divisions'],
         ['divisionDetails.0.price', 'pricing-registration'],
         ['divisionDetails[1].installmentAmounts[0]', 'pricing-registration'],

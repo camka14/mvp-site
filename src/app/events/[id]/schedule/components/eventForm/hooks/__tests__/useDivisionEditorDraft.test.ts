@@ -63,7 +63,7 @@ const buildEventData = (overrides: Partial<EventFormValues> = {}): EventFormValu
     eventType: 'LEAGUE',
     parentEvent: undefined,
     start: '2026-08-01T18:00:00',
-    sportId: 'volleyball',
+    sportIds: ['volleyball'],
     sportConfig: null,
     price: 3_000,
     maxParticipants: 8,

@@ -140,6 +140,7 @@ describe('public guest event registration route', () => {
         name: 'Spring League',
         teamSignup: true,
         organizationId: 'org_1',
+        sportIds: ['volleyball'],
         start: new Date('2026-04-01T12:00:00.000Z'),
         requiredTemplateIds: [],
         price: 0,
@@ -375,6 +376,7 @@ describe('public guest event registration route', () => {
       event: {
         id: 'event_1',
         name: 'Spring League',
+        sportIds: ['volleyball'],
         teamSignup: true,
         organizationId: 'org_1',
         start: new Date('2026-04-01T12:00:00.000Z'),
@@ -639,6 +641,7 @@ describe('public guest event registration route', () => {
       event: {
         id: 'event_1',
         name: 'Spring League',
+        sportIds: ['volleyball'],
         teamSignup: true,
         organizationId: 'org_1',
         start: new Date('2026-04-01T12:00:00.000Z'),

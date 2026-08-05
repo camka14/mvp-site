@@ -11,7 +11,7 @@ const baseEvent = {
     eventType: 'LEAGUE',
     description: 'A welcoming community league.',
     location: 'River City Sports Club',
-    sportId: 'volleyball',
+    sportIds: ['volleyball'],
     teamSizeLimit: 6,
     includePlayoffs: false,
 } as Event;

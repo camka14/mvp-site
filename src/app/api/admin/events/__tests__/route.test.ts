@@ -46,7 +46,7 @@ describe('GET /api/admin/events', () => {
         name: 'Spring League',
         state: 'UNPUBLISHED',
         organizationId: 'org_1',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         start: new Date('2026-03-01T10:00:00Z'),
       },
     ]);
