@@ -7,6 +7,7 @@ import { preserveAffiliateDisposableDatabaseUrl } from '../src/server/affiliateI
 import { resolvePrismaPgPoolConfig } from '../src/lib/prismaConfig';
 import {
   buildAffiliateAgentIds,
+  parseAffiliateAdvisoryLockId,
   parseAffiliateAgentCount,
 } from '../src/server/affiliateImports/agentPool';
 
@@ -91,12 +92,16 @@ const main = async () => {
   const codexBin = readOption('--codex-bin') ?? process.env.CODEX_CLI_BIN?.trim();
   const fullReviewCohort = readOption('--force-mapping-review-cohort')
     ?? process.env.AFFILIATE_FORCE_MAPPING_REVIEW_COHORT?.trim();
+  const loopLockId = parseAffiliateAdvisoryLockId(
+    readOption('--loop-lock-id') ?? process.env.AFFILIATE_APPROVAL_LOOP_LOCK_ID,
+    APPROVAL_LOOP_LOCK_ID,
+  );
   const { max: _poolMax, ...clientConfig } = resolvePrismaPgPoolConfig();
   const lockClient = new Client(clientConfig);
   await lockClient.connect();
   const lockResult = await lockClient.query<{ locked: boolean }>(
     'SELECT pg_try_advisory_lock($1) AS locked',
-    [APPROVAL_LOOP_LOCK_ID],
+    [loopLockId],
   );
   if (!lockResult.rows.some((row) => row.locked === true)) {
     console.log(JSON.stringify({ lockAcquired: false, launchedGoal: false }, null, 2));
@@ -137,6 +142,7 @@ const main = async () => {
       });
       console.log(JSON.stringify({
         lockAcquired: true,
+        loopLockId,
         reviewerIds,
         agentCount,
         fullReviewCohort: fullReviewCohort ?? null,
@@ -154,7 +160,7 @@ const main = async () => {
   } finally {
     await (prisma as any).$disconnect();
     try {
-      await lockClient.query('SELECT pg_advisory_unlock($1)', [APPROVAL_LOOP_LOCK_ID]);
+      await lockClient.query('SELECT pg_advisory_unlock($1)', [loopLockId]);
     } finally {
       await lockClient.end();
     }

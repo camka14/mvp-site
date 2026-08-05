@@ -1,0 +1,234 @@
+name: bracketiq-affiliate-codex-agents
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-common: &common
+  image: ${AFFILIATE_AGENT_IMAGE:?Set AFFILIATE_AGENT_IMAGE in deployment.env}
+  user: ${AFFILIATE_AGENT_USER:-1001:1001}
+  working_dir: /workspace
+  restart: "${AFFILIATE_AGENT_RESTART_POLICY:-no}"
+  init: true
+  stop_grace_period: 2m
+  networks:
+    - agent
+    - production_backend
+  logging: *default-logging
+
+x-mapper: &mapper
+  <<: *common
+  cpus: ${AFFILIATE_MAPPER_CPU_LIMIT:-1.25}
+  mem_limit: ${AFFILIATE_MAPPER_MEMORY_LIMIT:-3g}
+  mem_reservation: ${AFFILIATE_MAPPER_MEMORY_RESERVATION:-768m}
+  memswap_limit: ${AFFILIATE_MAPPER_MEMORY_SWAP_LIMIT:-3g}
+  pids_limit: ${AFFILIATE_MAPPER_PIDS_LIMIT:-512}
+
+x-reviewer: &reviewer
+  <<: *common
+  cpus: ${AFFILIATE_REVIEWER_CPU_LIMIT:-1.0}
+  mem_limit: ${AFFILIATE_REVIEWER_MEMORY_LIMIT:-2g}
+  mem_reservation: ${AFFILIATE_REVIEWER_MEMORY_RESERVATION:-512m}
+  memswap_limit: ${AFFILIATE_REVIEWER_MEMORY_SWAP_LIMIT:-2g}
+  pids_limit: ${AFFILIATE_REVIEWER_PIDS_LIMIT:-512}
+
+x-coverage: &coverage
+  <<: *common
+  cpus: ${AFFILIATE_COVERAGE_CPU_LIMIT:-1.0}
+  mem_limit: ${AFFILIATE_COVERAGE_MEMORY_LIMIT:-2g}
+  mem_reservation: ${AFFILIATE_COVERAGE_MEMORY_RESERVATION:-512m}
+  memswap_limit: ${AFFILIATE_COVERAGE_MEMORY_SWAP_LIMIT:-2g}
+  pids_limit: ${AFFILIATE_COVERAGE_PIDS_LIMIT:-512}
+
+services:
+  mapper-1:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent
+    command:
+      - npm
+      - run
+      - affiliate:intakes:codex-goal
+      - --
+      - --live
+      - --container-isolated
+      - --worker=codex-luna-vm-1
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+
+  mapper-2:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-2
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-2]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-2:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-2:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-3:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-3
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-3]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-3:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-3:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-4:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-4
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-4]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-4:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-4:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-5:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-5
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-5]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-5:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-5:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-6:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-6
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-6]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-6:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-6:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-7:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-7
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-7]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-7:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-7:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-8:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-8
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-8]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-8:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-8:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-9:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-9
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-9]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-9:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-9:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  mapper-10:
+    <<: *mapper
+    container_name: bracketiq-affiliate-codex-agent-10
+    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-10]
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-10:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-10:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test/node_modules:/workspace/node_modules:ro
+
+  reviewer-1:
+    <<: *reviewer
+    container_name: bracketiq-affiliate-approval-agent-1
+    command:
+      - npm
+      - run
+      - affiliate:approvals:loop
+      - --
+      - --live
+      - --container-isolated
+      - --agent-count=1
+      - --worker=codex-luna-approval-vm-1
+      - --interval-seconds=300
+      - --loop-lock-id=4201072131
+      - --force-mapping-review-cohort=description-quality-v1
+    volumes: &reviewer-volumes
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-approval-container:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-approval-v2:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test:/producer-workspaces/codex-luna-vm-1:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-2:/producer-workspaces/codex-luna-vm-2:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-3:/producer-workspaces/codex-luna-vm-3:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-4:/producer-workspaces/codex-luna-vm-4:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-5:/producer-workspaces/codex-luna-vm-5:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-6:/producer-workspaces/codex-luna-vm-6:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-7:/producer-workspaces/codex-luna-vm-7:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-8:/producer-workspaces/codex-luna-vm-8:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-9:/producer-workspaces/codex-luna-vm-9:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-10:/producer-workspaces/codex-luna-vm-10:ro
+
+  reviewer-2:
+    <<: *reviewer
+    container_name: bracketiq-affiliate-approval-agent-2
+    command:
+      - npm
+      - run
+      - affiliate:approvals:loop
+      - --
+      - --live
+      - --container-isolated
+      - --agent-count=1
+      - --worker=codex-luna-approval-vm-2
+      - --interval-seconds=300
+      - --loop-lock-id=4201072133
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-approval-container-2:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-approval-v2:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-test:/producer-workspaces/codex-luna-vm-1:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-2:/producer-workspaces/codex-luna-vm-2:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-3:/producer-workspaces/codex-luna-vm-3:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-4:/producer-workspaces/codex-luna-vm-4:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-5:/producer-workspaces/codex-luna-vm-5:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-6:/producer-workspaces/codex-luna-vm-6:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-7:/producer-workspaces/codex-luna-vm-7:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-8:/producer-workspaces/codex-luna-vm-8:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-9:/producer-workspaces/codex-luna-vm-9:ro
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-10:/producer-workspaces/codex-luna-vm-10:ro
+
+  coverage:
+    <<: *coverage
+    container_name: bracketiq-affiliate-coverage-agent
+    command:
+      - npm
+      - run
+      - affiliate:coverage:loop
+      - --
+      - --live
+      - --container-isolated
+      - --worker=codex-luna-coverage-vm-1
+      - --interval-seconds=300
+    volumes:
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-coverage-container:/home/codex/.codex
+      - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-coverage:/workspace
+      - ${AFFILIATE_AGENT_ENV_FILE:-/home/bracketiq/.config/bracketiq-affiliate-codex/container.env}:/workspace/.env.local:ro
+
+networks:
+  agent:
+    external: true
+    name: bracketiq-affiliate-codex
+  production_backend:
+    external: true
+    name: bracketiq-production_backend

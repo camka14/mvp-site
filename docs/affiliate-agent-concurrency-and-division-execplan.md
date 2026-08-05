@@ -31,6 +31,10 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-02 18:17Z) Committed and pushed the scoped implementation to `main` without the user's unrelated work.
 - [x] (2026-08-02 18:28Z) Updated the VM checkouts, preserved mapper work, and started mapper 2 in a separate Git worktree and container.
 - [x] (2026-08-02 18:30Z) Verified two unique mapper IDs, one unchanged reviewer, two different active mapping jobs, and no duplicate active claims.
+- [x] (2026-08-05 18:20Z) Verified the upgraded OVH host has 8 vCPUs, 22 GiB usable memory, and 200 GB storage.
+- [x] (2026-08-05 18:32Z) Drained and stopped 10 mapper containers, one two-reviewer container, and one coverage container without releasing active leases.
+- [ ] Split the two reviewers into separate containers with separate loop locks and Codex state directories.
+- [ ] Add and verify CPU, memory, swap, and process limits for every mapper, reviewer, and coverage container.
 
 ## Surprises & Discoveries
 
@@ -45,6 +49,12 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 - Observation: Existing candidate rows already contain normalized division objects.
   Evidence: `candidatePersistenceData` stores `rawPayload.normalizedImport.divisions`, which contains the values produced by `buildAffiliateDivisionDetails`.
+
+- Observation: The two reviewers shared one outer loop and one container.
+  Evidence: The live command used `--agent-count=2`, and `run-affiliate-approval-loop.ts` held one process-wide PostgreSQL advisory lock while both child goals ran.
+
+- Observation: The live agent containers had no Docker resource limits.
+  Evidence: Docker inspection reported zero memory, memory-swap, and NanoCPU limits, with no process limit, on mapper, reviewer, and coverage containers.
 
 ## Decision Log
 
@@ -71,6 +81,14 @@ reviewers and does not start a new pool until every active reviewer exits.
 - Decision: Keep one reviewer for the first live scale change and add mapper 2.
   Rationale: The measured reviewer throughput exceeds mapper throughput. Adding a reviewer now would increase idle review capacity instead of relieving the bottleneck.
   Date/Author: 2026-08-02 / Codex
+
+- Decision: Run each reviewer in its own persistent loop container with a unique advisory lock and Codex state directory.
+  Rationale: A container failure or memory spike must affect only one reviewer. Separate lock ids preserve duplicate-supervisor protection without making the second reviewer exit behind the first reviewer.
+  Date/Author: 2026-08-05 / Codex
+
+- Decision: Limit each mapper to 1.25 CPUs and 3 GiB, and limit each reviewer and coverage worker to 1 CPU and 2 GiB.
+  Rationale: Recent mapper peaks approached 2.4 GiB. These limits leave headroom for normal jobs and prevent one process from consuming the upgraded host. Equal memory and memory-swap limits prevent new agent swap growth.
+  Date/Author: 2026-08-05 / Codex
 
 ## Outcomes & Retrospective
 
@@ -121,9 +139,11 @@ number of distinct Git workspaces. The VM must create a second Git worktree on
 a separate branch and mount it in the second mapper container.
 
 Accept `--agent-count` and `--worker-prefix` in the approval loop. Keep legacy
-`--worker` valid only when the count is one. Start all reviewers in one cycle,
-wait for all of them, reconcile once, and then inspect the queue. Do not start
-a replacement reviewer while the current pool is active.
+`--worker` valid only when the count is one. Accept a positive
+`--loop-lock-id` so separately deployed reviewer loops do not contend for the
+same supervisor lock. Start all reviewers in one cycle, wait for all of them,
+reconcile once, and then inspect the queue. Do not start a replacement reviewer
+while the current pool is active.
 
 For every disposable `EVENT` candidate, inspect
 `rawPayload.normalizedImport.divisions`. Require at least one division. Require

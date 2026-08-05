@@ -1,5 +1,6 @@
 const DEFAULT_AGENT_COUNT = 1;
 const MAX_AGENT_COUNT = 8;
+const MAX_ADVISORY_LOCK_ID = Number.MAX_SAFE_INTEGER;
 
 const workerIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,74}$/;
 
@@ -10,6 +11,17 @@ export const parseAffiliateAgentCount = (
   const parsed = value == null || value === '' ? fallback : Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_AGENT_COUNT) {
     throw new Error(`Affiliate agent count must be an integer from 1 through ${MAX_AGENT_COUNT}.`);
+  }
+  return parsed;
+};
+
+export const parseAffiliateAdvisoryLockId = (
+  value: string | number | null | undefined,
+  fallback: number,
+): number => {
+  const parsed = value == null || value === '' ? fallback : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_ADVISORY_LOCK_ID) {
+    throw new Error('Affiliate advisory lock id must be a positive safe integer.');
   }
   return parsed;
 };

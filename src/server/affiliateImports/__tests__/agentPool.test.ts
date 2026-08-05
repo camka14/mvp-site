@@ -2,6 +2,7 @@
 
 import {
   buildAffiliateAgentIds,
+  parseAffiliateAdvisoryLockId,
   parseAffiliateAgentCount,
   runAffiliateAgentPool,
 } from '../agentPool';
@@ -22,6 +23,17 @@ describe('affiliate agent pool', () => {
       agentIds: ['mapper-1', 'mapper-1'],
       runAgent: async () => undefined,
     })).rejects.toThrow('unique');
+  });
+
+  it('accepts a distinct advisory lock id for each outer agent loop', () => {
+    expect(parseAffiliateAdvisoryLockId(undefined, 4_201_072_131)).toBe(4_201_072_131);
+    expect(parseAffiliateAdvisoryLockId('4201072133', 4_201_072_131)).toBe(4_201_072_133);
+    expect(() => parseAffiliateAdvisoryLockId('0', 4_201_072_131)).toThrow(
+      'positive safe integer',
+    );
+    expect(() => parseAffiliateAdvisoryLockId('1.5', 4_201_072_131)).toThrow(
+      'positive safe integer',
+    );
   });
 
   it('waits for every active agent before resolving the pool', async () => {
