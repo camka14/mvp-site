@@ -21,6 +21,7 @@ The observable result is that Discover and public organization CTAs still open t
 - [x] (2026-07-21 10:52 PDT) Completed a live production smoke test: all 499 affiliate events in a 500-event sample were protected, the interstitial contained no external URL, GPTBot received 403, and a valid browser flow received a 303 without following or printing the destination.
 - [x] (2026-07-21 10:54 PDT) Committed and pushed the scoped implementation and live-smoke fixes, deployed immutable image `3965b80bcf83458eb5bacb67a29a347b134f62dd`, and verified the VPS app, PostgreSQL, and Redis containers are healthy.
 - [x] (2026-07-21 12:10 PDT) Reproduced the production browser failure where immediate Continue submissions returned `Confirmation expired`; added a regression test and a direct redirect path for trusted user-initiated navigations while retaining the proof interstitial as the non-browser fallback.
+- [x] (2026-08-05) Fixed mobile top-level navigation handling: Android Custom Tabs can omit `Sec-Fetch-User`, Safari can omit Fetch Metadata, and some mobile form submissions can omit `Origin` and `Referer` while still providing `Sec-Fetch-Site: same-origin`. Added route regressions for all cases.
 - [ ] Deploy and smoke-test the trusted-navigation redirect without following or printing the external destination.
 
 ## Surprises & Discoveries
@@ -70,8 +71,8 @@ The observable result is that Discover and public organization CTAs still open t
   Rationale: Turnstile can run without Cloudflare proxy hosting and is a useful escalation layer, but it requires user-managed site and secret keys plus server-side Siteverify. The current first-party controls can ship without a new external dependency; suspicious-traffic challenges can be added later if observed abuse warrants the extra friction.
   Date/Author: 2026-07-21 / Codex
 
-- Decision: Redirect a user-initiated top-level browser navigation directly after both view and redirect rate limits pass; retain the destination-free proof interstitial only when Fetch Metadata does not show an activated document navigation.
-  Rationale: The interstitial's cookie/proof handshake created a broken second-click experience without stopping capable browser automation, which can submit the same form. `Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`, and `Sec-Fetch-User: ?1`, combined with the signed target, active-row lookup, crawler screening, and layered rate limits, preserve the useful controls while removing routine friction. A stronger challenge such as Turnstile should be displayed next to the originating CTA only when observed risk warrants it.
+- Decision: Redirect a top-level browser document navigation directly after both view and redirect rate limits pass, even when mobile browsers omit `Sec-Fetch-User`.
+  Rationale: Android Custom Tabs can launch a user-selected URL without preserving the originating app's activation signal, and Safari may omit Fetch Metadata entirely. `Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`, and `Sec-Fetch-Site: same-origin|none` identify a normal top-level navigation when available. A browser-shaped user agent plus an HTML document `Accept` header covers Safari and app-launched browser tabs without treating a default HTTP client request as a navigation. The signed target, active-row lookup, crawler screening, and layered rate limits remain required. The proof interstitial remains the fallback when neither browser signal is present. A same-origin form POST also accepts the Fetch Metadata same-origin signal when mobile omits `Origin` and `Referer`.
   Date/Author: 2026-07-21 / Codex
 
 ## Outcomes & Retrospective

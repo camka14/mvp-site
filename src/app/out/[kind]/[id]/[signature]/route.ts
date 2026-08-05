@@ -74,6 +74,10 @@ const sameOriginPost = (request: NextRequest): boolean => {
     }
   }
 
+  // Some mobile browsers omit both Origin and Referer on a same-origin form
+  // submission, but still send the Fetch Metadata same-origin signal.
+  if (fetchSite === 'same-origin') return true;
+
   const referer = request.headers.get('referer');
   if (!referer) return false;
   try {
@@ -83,12 +87,24 @@ const sameOriginPost = (request: NextRequest): boolean => {
   }
 };
 
-const isUserInitiatedBrowserNavigation = (request: NextRequest): boolean => {
+const isTopLevelBrowserNavigation = (request: NextRequest): boolean => {
+  const fetchMode = request.headers.get('sec-fetch-mode')?.trim().toLowerCase();
+  const fetchDest = request.headers.get('sec-fetch-dest')?.trim().toLowerCase();
   const fetchSite = request.headers.get('sec-fetch-site')?.trim().toLowerCase();
-  return request.headers.get('sec-fetch-mode')?.trim().toLowerCase() === 'navigate'
-    && request.headers.get('sec-fetch-dest')?.trim().toLowerCase() === 'document'
-    && request.headers.get('sec-fetch-user')?.trim() === '?1'
-    && (fetchSite === 'same-origin' || fetchSite === 'none');
+  if (fetchMode === 'navigate'
+    && fetchDest === 'document'
+    && (fetchSite === 'same-origin' || fetchSite === 'none')) {
+    return true;
+  }
+
+  // Safari and app-launched browser tabs may omit Fetch Metadata entirely.
+  // Require a normal browser UA and an HTML document request before treating
+  // that request as a direct navigation.
+  const userAgent = request.headers.get('user-agent')?.trim() ?? '';
+  const accept = request.headers.get('accept')?.toLowerCase() ?? '';
+  return /\bMozilla\/5\.0\b/i.test(userAgent)
+    && /\b(?:AppleWebKit|Chrome|CriOS|Firefox|FxiOS|Safari|Edg|OPR|SamsungBrowser)\b/i.test(userAgent)
+    && /(?:^|,)\s*text\/html(?:\s*;|,|$)/i.test(accept);
 };
 
 const redirectResponse = (destination: string): NextResponse => {
@@ -122,7 +138,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   );
   if (targetLimit) return rateLimitResponse(targetLimit);
 
-  if (isUserInitiatedBrowserNavigation(request)) {
+  if (isTopLevelBrowserNavigation(request)) {
     const redirectClientLimit = await applyRateLimit(request, RATE_LIMIT_POLICIES.affiliateOutboundRedirect);
     if (redirectClientLimit) return rateLimitResponse(redirectClientLimit);
     const redirectTargetLimit = await applyRateLimit(

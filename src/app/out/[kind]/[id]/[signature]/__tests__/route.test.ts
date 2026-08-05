@@ -111,6 +111,68 @@ describe('affiliate outbound route', () => {
     },
   );
 
+  it('redirects a mobile top-level navigation when Sec-Fetch-User is omitted', async () => {
+    const pathname = buildAffiliateOutboundPath('event', 'event_1');
+    const response = await GET(new NextRequest(`https://bracket-iq.com${pathname}`, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'sec-fetch-dest': 'document',
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-site': 'none',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/126.0 Mobile Safari/537.36',
+        'x-forwarded-for': '203.0.113.12',
+      },
+    }), routeContext(pathname));
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('https://partner.example.com/register?campaign=summer');
+    expect(await response.text()).not.toContain("Opening the organizer's website");
+  });
+
+  it('redirects a Safari navigation when Fetch Metadata is omitted', async () => {
+    const pathname = buildAffiliateOutboundPath('event', 'event_1');
+    const response = await GET(new NextRequest(`https://bracket-iq.com${pathname}`, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1',
+        'x-forwarded-for': '203.0.113.14',
+      },
+    }), routeContext(pathname));
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('https://partner.example.com/register?campaign=summer');
+    expect(await response.text()).not.toContain("Opening the organizer's website");
+  });
+
+  it('accepts a same-origin mobile form submission without Origin or Referer', async () => {
+    const pathname = buildAffiliateOutboundPath('event', 'event_1');
+    const url = `https://bracket-iq.com${pathname}`;
+    const getResponse = await GET(new NextRequest(url, {
+      headers: {
+        'user-agent': BROWSER_USER_AGENT,
+        'x-forwarded-for': '203.0.113.13',
+      },
+    }), routeContext(pathname));
+    const html = await getResponse.text();
+    const proof = html.match(/name="proof" value="([^"]+)"/)?.[1];
+    const cookie = getResponse.headers.get('set-cookie')?.split(';')[0];
+
+    const postResponse = await POST(new NextRequest(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: cookie!,
+        'sec-fetch-site': 'same-origin',
+        'user-agent': BROWSER_USER_AGENT,
+        'x-forwarded-for': '203.0.113.13',
+      },
+      body: new URLSearchParams({ proof: proof! }),
+    }), routeContext(pathname));
+
+    expect(postResponse.status).toBe(303);
+    expect(postResponse.headers.get('location')).toBe('https://partner.example.com/register?campaign=summer');
+  });
+
   it('returns 404 for a forged signed path without querying a destination', async () => {
     const pathname = `${buildAffiliateOutboundPath('event', 'event_1').slice(0, -1)}x`;
     const response = await GET(new NextRequest(`https://bracket-iq.com${pathname}`, {
