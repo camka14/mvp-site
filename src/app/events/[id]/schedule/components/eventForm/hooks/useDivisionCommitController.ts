@@ -109,11 +109,11 @@ export const useDivisionCommitController = ({
             return fromCatalog.name;
         }
         return getDivisionTypeById(
-            resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+            resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0]),
             divisionTypeId,
             ratingType,
         )?.name ?? divisionTypeId.toUpperCase();
-    }, [divisionTypeOptions, eventData.sportConfig, eventData.sportId]);
+    }, [divisionTypeOptions, eventData.sportConfig, eventData.sportIds]);
 
     const handleSaveDivisionDetail = useCallback(() => {
         if (divisionEditor.divisionKind === 'PLAYOFF') {
@@ -258,7 +258,7 @@ export const useDivisionCommitController = ({
         }
         const divisionTypeName = buildDivisionName({
             gender,
-            sportInput: resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+            sportInput: resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0]),
             skillDivisionTypeId,
             ageDivisionTypeId,
         });
@@ -363,7 +363,7 @@ export const useDivisionCommitController = ({
         }
 
         const token = buildDivisionToken({ gender, ratingType, divisionTypeId });
-        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId) || undefined;
+        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0]) || undefined;
         const referenceDate = parseDateValue(eventData.start ?? null);
 
         const currentDetails = Array.isArray(eventData.divisionDetails) ? [...eventData.divisionDetails] : [];
@@ -556,7 +556,7 @@ export const useDivisionCommitController = ({
         eventData.price,
         eventData.singleDivision,
         eventData.sportConfig,
-        eventData.sportId,
+        eventData.sportIds,
         eventData.splitLeaguePlayoffDivisions,
         eventData.start,
         eventData.teamSignup,

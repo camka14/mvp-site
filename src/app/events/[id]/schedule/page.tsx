@@ -2985,14 +2985,10 @@ function EventScheduleContent() {
         .map((sport) => [sport.$id, sport]),
     );
 
-    const resolvedSportId = normalizeIdToken(
-      hydratedEvent.sportId
-      || (typeof hydratedEvent.sport === 'string' ? hydratedEvent.sport : (hydratedEvent.sport as Sport | undefined)?.$id),
-    );
+    const resolvedSportId = normalizeIdToken(hydratedEvent.sportIds?.[0]);
     const resolvedSport = resolvedSportId ? sportsById.get(resolvedSportId) ?? null : null;
     if (resolvedSport) {
       hydratedEvent.sport = resolvedSport;
-      hydratedEvent.sportId = resolvedSport.$id;
     }
 
     const hydrateAssignedUsers = async (

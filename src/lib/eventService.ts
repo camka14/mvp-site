@@ -1453,7 +1453,9 @@ class EventService {
       $updatedAt: row.updatedAt ?? row.$updatedAt,
       eventType: (normalizedEventType ?? "EVENT") as EventType,
       sport: row.sport,
-      sportId: row.sportId,
+      sportIds: Array.isArray(row.sportIds)
+        ? row.sportIds.map((value: unknown) => String(value)).filter(Boolean)
+        : [],
       leagueScoringConfigId: row.leagueScoringConfigId,
       organizationId: row.organizationId,
       parentEvent:
@@ -3080,10 +3082,9 @@ class EventService {
     const normalizedState =
       typeof row?.state === "string" ? row.state.toUpperCase() : "";
     const isTemplateEvent = normalizedState === "TEMPLATE";
-    const sportId =
-      (row?.sport && typeof row.sport === "string" ? row.sport : undefined) ??
-      readApiEntityId(row?.sport) ??
-      (typeof row?.sportId === "string" ? row.sportId : undefined);
+    const sportId = Array.isArray(row?.sportIds) && typeof row.sportIds[0] === 'string'
+      ? row.sportIds[0].trim()
+      : undefined;
 
     if (!sportId) {
       if (isTemplateEvent) {
@@ -3359,8 +3360,8 @@ class EventService {
                 throw error;
               }
               row.sport = createSport({
-                $id: typeof row.sportId === "string" && row.sportId.trim().length > 0
-                  ? row.sportId
+                $id: Array.isArray(row.sportIds) && typeof row.sportIds[0] === "string" && row.sportIds[0].trim().length > 0
+                  ? row.sportIds[0]
                   : "other",
                 name: "Other",
               });

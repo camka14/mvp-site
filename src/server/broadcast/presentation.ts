@@ -258,7 +258,7 @@ export const buildMatchPresentationState = async (input: {
       organizerName: true,
       imageId: true,
       organizationId: true,
-      sportId: true,
+      sportIds: true,
       eventType: true,
       pointsToVictory: true,
       matchRulesOverride: true,
@@ -300,7 +300,7 @@ export const buildMatchPresentationState = async (input: {
     event.organizationId
       ? client.organizations.findUnique({ where: { id: event.organizationId }, select: { id: true, name: true, logoId: true } })
       : null,
-    event.sportId ? client.sports.findUnique({ where: { id: event.sportId }, select: { id: true, name: true, matchRulesTemplate: true } }) : null,
+    event.sportIds[0] ? client.sports.findUnique({ where: { id: event.sportIds[0] }, select: { id: true, name: true, matchRulesTemplate: true } }) : null,
     client.divisions.findMany({
       where: { eventId: event.id },
       select: { id: true, key: true, name: true, kind: true, playoffPlacementDivisionIds: true },

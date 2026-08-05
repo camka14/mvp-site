@@ -57,8 +57,8 @@ function getEventSportName(event: Event | null | undefined): string {
     ) {
         return ((rawSport as { name?: string }).name ?? '').trim();
     }
-    if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
-        return event.sportId.trim();
+    if (typeof event.sportIds[0] === 'string' && event.sportIds[0].trim().length > 0) {
+        return event.sportIds[0].trim();
     }
     return '';
 }

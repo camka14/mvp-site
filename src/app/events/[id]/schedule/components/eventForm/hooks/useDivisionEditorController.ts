@@ -55,8 +55,8 @@ export const useDivisionEditorController = ({
     getValues,
 }: UseDivisionEditorControllerParams) => {
     const defaultDivisionTypeSelections = useMemo(
-        () => getDefaultDivisionTypeSelectionsForSport(resolveSportInput(eventData.sportConfig ?? eventData.sportId)),
-        [eventData.sportConfig, eventData.sportId],
+        () => getDefaultDivisionTypeSelectionsForSport(resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0])),
+        [eventData.sportConfig, eventData.sportIds],
     );
     const firstDivisionDetailForDefaults = useMemo(
         () => (Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails[0] : undefined),

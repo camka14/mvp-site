@@ -307,6 +307,7 @@ export const mapSourceEventToTemplateBundle = (
   const sourceOrganizationId = normalizeId(source.organizationId)
     ?? getId(source.organization);
   const isOrganizationTemplate = Boolean(sourceOrganizationId);
+  const sourceSportIds = normalizeStringArray((source as any).sportIds);
 
   return {
     template: {
@@ -317,7 +318,7 @@ export const mapSourceEventToTemplateBundle = (
       ownerUserId: isOrganizationTemplate ? null : normalizeId(source.hostId),
       organizationId: sourceOrganizationId,
       createdByUserId: params.createdByUserId,
-      sportId: normalizeId(source.sportId) ?? getId(source.sport),
+      sportIds: sourceSportIds,
       eventType: getTemplateEventType(source.eventType),
       timeZone: normalizeString(source.timeZone) ?? 'UTC',
       endOffsetMinutesFromEventStart: sourceEndOffset,
@@ -456,7 +457,7 @@ export const listEventTemplates = async (
     sourceEventId: row.sourceEventId,
     ownerUserId: row.ownerUserId,
     organizationId: row.organizationId,
-    sportId: row.sportId,
+    sportIds: normalizeStringArray(row.sportIds),
     eventType: row.eventType,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -644,8 +645,8 @@ export const buildSeedEventFromTemplate = (
     $createdAt: '',
     $updatedAt: '',
     eventType: getTemplateEventType(template.eventType),
-    sport: { $id: template.sportId ?? '', name: '' } as any,
-    sportId: template.sportId ?? '',
+    sport: { $id: template.sportIds?.[0] ?? '', name: '' } as any,
+    sportIds: normalizeStringArray(template.sportIds),
     leagueScoringConfigId: null,
     organizationId: template.organizationId ?? null,
     requiredTemplateIds: normalizeStringArray(template.requiredTemplateIds),

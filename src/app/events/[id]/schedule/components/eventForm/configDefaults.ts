@@ -275,7 +275,7 @@ export const extractTournamentConfigFromEvent = (event?: Partial<Event> | null):
 type DefaultLeagueConfigBase = {
     eventType: Event['eventType'];
     sportConfig?: Sport | null;
-    sportId?: string | null;
+    sportIds: string[];
 };
 
 type BuildDefaultLeagueDataOptions = {
@@ -292,7 +292,7 @@ export const buildDefaultLeagueData = ({
     sportsById,
 }: BuildDefaultLeagueDataOptions): LeagueConfig => {
     const selectedSport = base.sportConfig
-        ?? (base.sportId ? sportsById.get(base.sportId) : null);
+        ?? (base.sportIds[0] ? sportsById.get(base.sportIds[0]) : null);
     const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
     if (
         activeEditingEvent

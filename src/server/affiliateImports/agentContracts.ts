@@ -55,6 +55,7 @@ const affiliateCandidateAssertionSchema = z.object({
   officialActionUrl: z.string().url(),
   sourceUrl: z.string().url().nullable().optional(),
   sportName: nullableNonEmptyStringSchema.optional(),
+  sportNames: z.array(nonEmptyStringSchema).optional(),
   tags: z.array(nonEmptyStringSchema).default([]),
   venueName: nullableNonEmptyStringSchema.optional(),
   address: nullableNonEmptyStringSchema.optional(),

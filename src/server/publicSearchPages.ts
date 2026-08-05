@@ -97,6 +97,7 @@ export type RegularPublicEventSeoData = {
     imageUrl: string;
     eventType: string | null;
     sportName: string | null;
+    sportNames: string[];
     updatedAt?: Date;
   };
   organization: {
@@ -145,7 +146,7 @@ type SearchableEvent = {
   coordinates: PublicSearchCoordinates | null;
   priceCents: number;
   eventType: string | null;
-  sportId: string | null;
+  sportIds: string[];
   organizationId: string;
   imageId: string | null;
   updatedAt?: Date;
@@ -631,7 +632,7 @@ const loadSearchableEvents = async (organizationIds: string[]): Promise<Searchab
       coordinates: true,
       price: true,
       eventType: true,
-      sportId: true,
+      sportIds: true,
       organizationId: true,
       imageId: true,
       updatedAt: true,
@@ -659,7 +660,7 @@ const loadSearchableEvents = async (organizationIds: string[]): Promise<Searchab
       coordinates: normalizeCoordinates(row.coordinates),
       priceCents: typeof row.price === 'number' ? row.price : 0,
       eventType: normalizeString(row.eventType),
-      sportId: normalizeString(row.sportId),
+      sportIds: normalizeStringArray(row.sportIds),
       imageId: normalizeString(row.imageId),
       updatedAt: toDate(row.updatedAt),
     }];
@@ -887,7 +888,7 @@ const buildEventResults = ({
   const dbEventType = eventType ? EVENT_TYPE_TO_DB[eventType] : undefined;
   return events
     .filter(isCurrentSearchEvent)
-    .filter((event) => !sport || Boolean(event.sportId && sport.sportIds.includes(event.sportId)))
+    .filter((event) => !sport || event.sportIds.some((sportId) => sport.sportIds.includes(sportId)))
     .filter((event) => !dbEventType || event.eventType === dbEventType)
     .filter((event) => {
       const organization = organizationsById.get(event.organizationId);
@@ -912,7 +913,7 @@ const buildEventResults = ({
         organizationId: organization.id,
         organizationName: organization.name,
         organizationSlug: organization.slug,
-        sportName: event.sportId ? sportNamesById.get(event.sportId) ?? null : null,
+        sportName: event.sportIds[0] ? sportNamesById.get(event.sportIds[0]) ?? null : null,
         eventType: event.eventType,
         start: toIsoString(event.start),
         location: event.location ?? organization.location,
@@ -1504,7 +1505,7 @@ export const getRegularPublicEventSeoData = async (eventId: string): Promise<Reg
       price: true,
       imageId: true,
       eventType: true,
-      sportId: true,
+      sportIds: true,
       organizationId: true,
       updatedAt: true,
     },
@@ -1534,12 +1535,16 @@ export const getRegularPublicEventSeoData = async (eventId: string): Promise<Reg
     return null;
   }
 
-  const sport = event.sportId
-    ? await (prisma as any).sports.findUnique({
-      where: { id: event.sportId },
-      select: { name: true },
-    }).catch(() => null)
-    : null;
+  const eventSportIds = normalizeStringArray(event.sportIds);
+  const eventSports = eventSportIds.length
+    ? await (prisma as any).sports.findMany({
+      where: { id: { in: eventSportIds } },
+      select: { id: true, name: true },
+    }).catch(() => [])
+    : [];
+  const eventSportNames = eventSportIds.map((sportId) => (
+    eventSports.find((sport: { id: string }) => sport.id === sportId)?.name ?? sportId
+  ));
   const eventName = normalizeString(event.name) ?? 'Event';
   const organizationName = normalizeString(organization.name) ?? 'Organization';
   const start = toIsoString(event.start);
@@ -1574,7 +1579,8 @@ export const getRegularPublicEventSeoData = async (eventId: string): Promise<Reg
       priceCents: typeof event.price === 'number' ? event.price : 0,
       imageUrl,
       eventType: normalizeString(event.eventType),
-      sportName: normalizeString(sport?.name),
+      sportName: eventSportNames[0] ?? null,
+      sportNames: eventSportNames,
       updatedAt: toDate(event.updatedAt),
     },
     organization: {

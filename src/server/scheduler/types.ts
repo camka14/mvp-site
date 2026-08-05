@@ -812,7 +812,7 @@ export class Tournament {
   installmentDueRelativeDays: number[];
   installmentAmounts: number[];
   allowTeamSplitDefault: boolean;
-  sportId: string;
+  sportIds: string[];
   teamSizeLimit: number | null;
   singleDivision: boolean;
   seedColor: number | null;
@@ -895,7 +895,7 @@ export class Tournament {
     installmentDueRelativeDays?: number[];
     installmentAmounts?: number[];
     allowTeamSplitDefault?: boolean;
-    sportId?: string;
+    sportIds?: string[];
     teamSizeLimit?: number | null;
     singleDivision?: boolean;
     seedColor?: number | null;
@@ -977,7 +977,7 @@ export class Tournament {
     this.installmentDueRelativeDays = params.installmentDueRelativeDays ?? [];
     this.installmentAmounts = params.installmentAmounts ?? [];
     this.allowTeamSplitDefault = params.allowTeamSplitDefault ?? false;
-    this.sportId = params.sportId ?? '';
+    this.sportIds = params.sportIds ?? [];
     this.teamSizeLimit = params.teamSizeLimit ?? null;
     this.singleDivision = params.singleDivision ?? false;
     this.seedColor = params.seedColor ?? null;

@@ -14,6 +14,7 @@ import { slugifyPublicOrganizationName } from '@/lib/publicOrganizationSlug';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { geocodeAddressToCoordinates, isValidGeocodeCoordinates } from '@/server/geocoding';
 import { syncEventDivisions } from '@/server/repositories/events';
+import { isMultiSportEventType, validateEventSportIds } from '@/server/eventSports';
 import { syncEventTags } from '@/server/eventTags';
 import { downloadPublicRemoteImage } from '@/server/publicRemoteImage';
 import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage } from './mappingExtractor';
@@ -264,6 +265,7 @@ const candidatePersistenceData = (params: {
     ...(candidate.rawPayload ?? {}),
     tags: tagNames,
     normalizedImport: buildAffiliateImportMetadata(candidate),
+    sportNames: candidateSportNames(candidate),
   };
   return {
     sourceId,
@@ -587,6 +589,29 @@ const rawExtractedCandidateFields = (candidate: any): Record<string, unknown> =>
       ? (detailFields as Record<string, unknown>)
       : {}),
   };
+};
+
+const normalizeAffiliateSportNames = (value: unknown): string[] => {
+  const values = Array.isArray(value) ? value : [value];
+  return Array.from(new Set(
+    values
+      .map((entry) => nullableString(entry))
+      .filter((entry): entry is string => Boolean(entry)),
+  ));
+};
+
+const candidateSportNames = (candidate: any): string[] => {
+  const extracted = rawExtractedCandidateFields(candidate);
+  const rawPayload = recordValue(candidate?.rawPayload);
+  const normalizedImport = recordValue(rawPayload.normalizedImport);
+  const names = normalizeAffiliateSportNames(
+    candidate?.sportNames
+      ?? extracted.sportNames
+      ?? normalizedImport.sportNames,
+  );
+  const primary = nullableString(candidate?.sportName) ?? nullableString(extracted.sportName);
+  if (primary && !names.includes(primary)) names.unshift(primary);
+  return names;
 };
 
 const candidateClubLogoUrl = (candidate: any): string | null => {
@@ -1140,6 +1165,8 @@ const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
     dateDisplayText: dateDisplayTextFromCandidate(candidate),
     evergreen: isEvergreenAffiliateCandidate(candidate),
     tags: buildAffiliateEventTagNames(candidate),
+    sportName: nullableString(candidate.sportName),
+    sportNames: candidateSportNames(candidate),
   };
 };
 
@@ -1227,15 +1254,22 @@ const affiliateCanonicalSportError = (
 };
 
 const assertAffiliateCandidateUsesCanonicalSport = async (
-  candidate: Pick<AffiliateCandidateInput, 'sportName'> | any,
+  candidate: Pick<AffiliateCandidateInput, 'sportName' | 'sportNames'> | any,
   targetLabel: 'event' | 'organization' | 'rental facility' | 'team',
-): Promise<string> => {
-  const sportName = nullableString(candidate.sportName);
-  const sportId = await resolveAffiliateSportId(sportName);
-  if (!sportName || !sportId) {
-    throw affiliateCanonicalSportError(sportName, targetLabel);
+): Promise<string[]> => {
+  const sportNames = candidateSportNames(candidate);
+  const sportIds: string[] = [];
+  for (const sportName of sportNames) {
+    const sportId = await resolveAffiliateSportId(sportName);
+    if (!sportId) {
+      throw affiliateCanonicalSportError(sportName, targetLabel);
+    }
+    sportIds.push(sportId);
   }
-  return sportId;
+  if (!sportIds.length) {
+    throw affiliateCanonicalSportError(null, targetLabel);
+  }
+  return sportIds;
 };
 
 const geocodeFirstAvailableAddress = async (queries: string[]): Promise<[number, number] | null> => {
@@ -1433,17 +1467,28 @@ const buildAffiliateEventData = async (
         ? candidate.endsAt
         : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null)
       : null;
-  const sportId = await resolveAffiliateSportId(candidate.sportName);
-  if (state === 'PUBLISHED' && !sportId) {
-    throw affiliateCanonicalSportError(candidate.sportName, 'event');
+  const eventType = inferAffiliateEventType(candidate);
+  const sportNames = candidateSportNames(candidate);
+  const sportIds: string[] = [];
+  for (const sportName of sportNames) {
+    const sportId = await resolveAffiliateSportId(sportName);
+    if (!sportId) {
+      if (state === 'PUBLISHED') throw affiliateCanonicalSportError(sportName, 'event');
+      continue;
+    }
+    sportIds.push(sportId);
   }
+  if (state === 'PUBLISHED' && !sportIds.length) {
+    throw affiliateCanonicalSportError(sportNames[0], 'event');
+  }
+  validateEventSportIds({ eventType, sportIds });
+  const primarySportId = sportIds[0] ?? null;
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
   const maxParticipants = participantAvailability.maxParticipants;
-  const divisionDetails = buildAffiliateDivisionDetails(candidate, sportId);
+  const divisionDetails = buildAffiliateDivisionDetails(candidate, primarySportId);
   const affiliatePricing = buildAffiliateEventPricing(candidate, divisionDetails);
   const hasSourceDivision = divisionDetails.length > 0;
-  const eventType = inferAffiliateEventType(candidate);
   const teamSignup = inferAffiliateTeamSignup(candidate, eventType);
   const location =
     nullableString(candidate.venueName) ??
@@ -1526,7 +1571,7 @@ const buildAffiliateEventData = async (
     restTimeMinutes: null,
     state,
     pointsToVictory: [],
-    sportId,
+    sportIds,
     timeSlotIds: [],
     fieldIds: [],
     leagueScoringConfigId: null,
@@ -1884,7 +1929,7 @@ const buildAffiliateOrganizationData = async (
       queries: geocodeQueries,
     });
   }
-  const sportName = nullableString(candidate.sportName);
+  const sportNames = candidateSportNames(candidate);
   const description =
     nullableString(candidate.description) ??
     (isCanonicalSourceOrganization ? nullableString(sourceOrganization.description) : null) ??
@@ -1909,7 +1954,7 @@ const buildAffiliateOrganizationData = async (
     address,
     description,
     website,
-    sports: sportName ? [sportName] : [],
+    sports: sportNames,
     status,
     hasStripeAccount: false,
     verificationStatus: 'UNVERIFIED',
@@ -1980,7 +2025,8 @@ const upsertAffiliateEventForCandidate = async (
   await assertSourceOrganization(source);
   const { events } = affiliatePrisma();
   const syncSourceDivisions = async (event: any) => {
-    const divisionDetails = buildAffiliateDivisionDetails(candidate, event?.sportId ?? null);
+    const primarySportId = Array.isArray(event?.sportIds) ? event.sportIds[0] ?? null : null;
+    const divisionDetails = buildAffiliateDivisionDetails(candidate, primarySportId);
     if (divisionDetails.length === 0) {
       return;
     }
@@ -1990,7 +2036,7 @@ const upsertAffiliateEventForCandidate = async (
       fieldIds: [],
       includePlayoffs: false,
       singleDivision: false,
-      sportId: event?.sportId ?? null,
+      sportId: primarySportId,
       referenceDate: event?.start instanceof Date ? event.start : candidateStartDate(candidate),
       organizationId: nullableString(source.organizationId),
       divisionDetails,
@@ -2311,8 +2357,15 @@ export const runAffiliateSourceScrape = async (
           },
         },
       });
-      const sportId = await resolveAffiliateSportId(candidate.sportName);
-      const candidateForPersistence = sportId
+      const sportNames = candidateSportNames(candidate);
+      const sportIds = await Promise.all(sportNames.map((sportName) => resolveAffiliateSportId(sportName)));
+      const inferredEventType = candidate.listingKind === 'EVENT'
+        ? inferAffiliateEventType(candidate)
+        : null;
+      const invalidSportMapping = sportNames.length === 0
+        || sportIds.some((sportId) => !sportId)
+        || (sportNames.length > 1 && !isMultiSportEventType(inferredEventType));
+      const candidateForPersistence = !invalidSportMapping
         ? candidate
         : {
             ...candidate,
@@ -2320,7 +2373,6 @@ export const runAffiliateSourceScrape = async (
               new Set([...(candidate.warnings ?? []), AFFILIATE_SPORT_REVIEW_WARNING]),
             ),
           };
-      const invalidSportMapping = !sportId;
       const quarantineInvalidSport = invalidSportMapping
         && (importMode === 'AUTOMATIC' || existing?.status === 'PUBLISHED');
       const data = candidatePersistenceData({

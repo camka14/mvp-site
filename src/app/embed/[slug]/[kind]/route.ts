@@ -295,7 +295,7 @@ const renderEvents = (catalog: PublicOrganizationCatalog, options: WidgetRenderO
         <span class="label">${escapeHtml(event.eventTypeLabel || formatPublicEventTypeLabel(eventType))}</span>
         <h3>${escapeHtml(event.name)}</h3>
         <p>${escapeHtml(formatDate(event.start))} - ${escapeHtml(event.location)}</p>
-        <p>${escapeHtml(event.sportName ?? 'Sport TBD')} - ${escapeHtml(formatPrice(event.priceCents))}</p>
+        <p>${escapeHtml(event.sportNames?.join(', ') || event.sportName || 'Sport TBD')} - ${escapeHtml(formatPrice(event.priceCents))}</p>
         <strong>Register</strong>
       </a>
     `;

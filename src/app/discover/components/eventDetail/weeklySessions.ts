@@ -112,7 +112,7 @@ export const buildWeeklySessionOptions = (
     const sessions: WeeklySessionOption[] = [];
     const sportInput = typeof event.sport === 'string'
         ? event.sport
-        : event.sport?.name ?? event.sportId ?? null;
+        : event.sport?.name ?? event.sportIds[0] ?? null;
     const divisionNameIndex = buildDivisionDisplayNameIndex(event.divisionDetails);
     const fallbackDivisionNames = resolveDivisionNames(
         Array.isArray(event.divisions) ? event.divisions : [],
@@ -288,7 +288,7 @@ export const resolveSelectedWeeklySessionOption = (
 
     const sportInput = typeof event.sport === 'string'
         ? event.sport
-        : event.sport?.name ?? event.sportId ?? null;
+        : event.sport?.name ?? event.sportIds[0] ?? null;
     const divisionNameIndex = buildDivisionDisplayNameIndex(event.divisionDetails);
     const slotDivisionEntries = Array.isArray(matchingSlot.divisions) && matchingSlot.divisions.length
         ? matchingSlot.divisions

@@ -127,10 +127,13 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
         organizationOfficialsById,
     } = input;
         const finalImageId = source.imageId;
+        const sportIds = Array.from(new Set(
+            (Array.isArray(source.sportIds) ? source.sportIds : [])
+                .map((value) => String(value).trim())
+                .filter(Boolean),
+        ));
+        const sportId = sportIds[0] ?? '';
         const sportSelection = source.sportConfig;
-        const selectedSportId = source.sportId?.trim() || '';
-        const fallbackSportId = (sportSelection?.$id && String(sportSelection.$id)) || '';
-        const sportId = selectedSportId || fallbackSportId;
         const resolvedSport = resolveDraftSportForScoring({
             sportId,
             sportConfig: sportSelection,
@@ -546,7 +549,7 @@ export function buildEventDraft(input: BuildEventDraftInput): Partial<Event> {
                 ? Boolean(source.noFixedEndDateTime)
                 : false,
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
-            sportId: sportId || undefined,
+            sportIds,
             price: eventPriceCents,
             registrationPaymentMode,
             manualPaymentLinks: manualPaymentEnabled

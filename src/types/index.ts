@@ -924,7 +924,7 @@ export interface Event {
   $updatedAt: string;
   eventType: EventType;
   sport: Sport;
-  sportId?: string;
+  sportIds: string[];
   leagueScoringConfigId?: string | null;
   organizationId?: string | null;
   parentEvent?: string | null;

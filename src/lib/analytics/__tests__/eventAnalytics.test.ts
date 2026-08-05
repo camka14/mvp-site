@@ -19,7 +19,7 @@ const event = {
   name: 'River City Pickup',
   eventType: 'WEEKLY_EVENT',
   organizationId: 'org_1',
-  sportId: 'sport_1',
+  sportIds: ['sport_1'],
   sourceType: 'AFFILIATE',
   sourceId: 'source_1',
   teamSignup: false,

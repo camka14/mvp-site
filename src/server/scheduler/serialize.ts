@@ -183,7 +183,7 @@ const serializeEventBase = (event: Tournament | League) => ({
   registrationCutoffHours: event.registrationCutoffHours ?? null,
   seedColor: event.seedColor ?? null,
   eventType: event.eventType,
-  sportId: event.sportId ?? null,
+  sportIds: [...event.sportIds],
   leagueScoringConfigId: (event.leagueScoringConfig as any)?.id ?? null,
   organizationId: event.organizationId ?? null,
   requiredTemplateIds: event.requiredTemplateIds ?? [],
@@ -249,4 +249,3 @@ export const serializeEvent = (event: Tournament | League) => {
 };
 
 export const serializeMatches = (matches: Match[]) => matches.map(serializeMatch);
-

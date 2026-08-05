@@ -501,6 +501,9 @@ export const extractAffiliateCandidatesFromPage = (
           candidate[fieldName] = value.trim();
         }
       });
+      if (Array.isArray(manualCandidate.sportNames)) {
+        candidate.sportNames = manualCandidate.sportNames.map((value) => value.trim()).filter(Boolean);
+      }
 
       return candidate;
     });
@@ -559,6 +562,13 @@ export const extractAffiliateCandidatesFromPage = (
           candidate[fieldName] = value;
         }
       });
+      const sportNamesValue = fieldValues.sportNames;
+      if (sportNamesValue) {
+        candidate.sportNames = sportNamesValue
+          .split(/[,;|]/)
+          .map((value) => normalizeWhitespace(value))
+          .filter(Boolean);
+      }
 
       return candidate;
     })

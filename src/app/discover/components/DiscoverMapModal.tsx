@@ -414,7 +414,7 @@ const eventMatchesSports = (event: Event, selectedSports: string[]): boolean => 
   }
   const selected = new Set(selectedSports.map(normalizeFilterValue));
   const eventSportValues = [
-    event.sportId,
+    event.sportIds,
     event.sport?.name,
   ]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -487,7 +487,7 @@ const getEventSummary = (event: Event): string | null => {
 };
 
 const getEventSportLabel = (event: Event): string => (
-  event.sport?.name?.trim() || event.sportId?.trim() || 'Sport not specified'
+  event.sport?.name?.trim() || event.sportIds[0]?.trim() || 'Sport not specified'
 );
 
 const getEventTypeSportLabel = (event: Event): string => {

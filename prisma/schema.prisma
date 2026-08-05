@@ -2529,7 +2529,7 @@ model Events {
   restTimeMinutes               Int?
   state                         EventsStateEnum?
   pointsToVictory               Int[]
-  sportId                       String?
+  sportIds                      String[]                         @default([])
   timeSlotIds                   String[]
   fieldIds                      String[]
   leagueScoringConfigId         String?
@@ -2558,7 +2558,7 @@ model Events {
 
   @@index([organizationId])
   @@index([hostId])
-  @@index([sportId])
+  @@index([sportIds], type: Gin)
   @@index([parentEvent])
   @@index([sourceType, sourceId])
   @@index([dateDisplayMode])
@@ -2856,7 +2856,6 @@ model EventTemplates {
   ownerUserId                    String?
   organizationId                 String?
   createdByUserId                String
-  sportId                        String?
   eventType                      EventsEventTypeEnum?
   timeZone                       String                           @default("UTC")
   endOffsetMinutesFromEventStart Int?
@@ -2899,6 +2898,7 @@ model EventTemplates {
   setsPerMatch                   Int?
   restTimeMinutes                Int?
   pointsToVictory                Int[]                            @default([])
+  sportIds                       String[]                         @default([])
   officialSchedulingMode         EventsOfficialSchedulingModeEnum @default(SCHEDULE)
   doTeamsOfficiate               Boolean?
   teamOfficialsMaySwap           Boolean?
@@ -2922,7 +2922,6 @@ model EventTemplates {
   @@index([ownerUserId])
   @@index([organizationId])
   @@index([sourceEventId])
-  @@index([sportId])
   @@index([archivedAt])
 }
 

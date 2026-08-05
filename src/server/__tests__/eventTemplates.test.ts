@@ -51,7 +51,7 @@ const buildSourceEvent = (overrides: Partial<Event> = {}): Event => ({
   $updatedAt: '',
   eventType: 'LEAGUE',
   sport: baseSport,
-  sportId: baseSport.$id,
+  sportIds: [baseSport.$id],
   organizationId: null,
   requiredTemplateIds: ['doc_1'],
   allowPaymentPlans: true,

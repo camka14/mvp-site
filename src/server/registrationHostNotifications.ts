@@ -214,7 +214,7 @@ const resolveDivisionLabel = async (
     divisionTypeKey: string | null;
   },
   event: {
-    sportId: string | null;
+    sportIds: string[];
   },
 ): Promise<string | null> => {
   const divisionId = normalizeText(registration.divisionId);
@@ -243,7 +243,7 @@ const resolveDivisionLabel = async (
   return resolveDivisionDisplayName({
     division: divisionForDisplay ?? divisionId ?? divisionType,
     divisionDetails: divisionForDisplay ? [divisionForDisplay] : undefined,
-    sportInput: event.sportId,
+    sportInput: event.sportIds[0],
   });
 };
 
@@ -420,7 +420,7 @@ export const sendEventRegistrationHostNotification = async ({
         start: true,
         timeZone: true,
         location: true,
-        sportId: true,
+        sportIds: true,
         hostId: true,
         organizationId: true,
       },

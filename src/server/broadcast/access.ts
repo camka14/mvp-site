@@ -41,7 +41,7 @@ export const requireManagedBroadcastEvent = async (input: {
       address: true,
       organizerName: true,
       imageId: true,
-      sportId: true,
+      sportIds: true,
       matchRulesOverride: true,
     },
   });
@@ -94,4 +94,3 @@ export const getPublishedBroadcastOverlay = async (overlayId: string) => {
   }
   return overlay;
 };
-

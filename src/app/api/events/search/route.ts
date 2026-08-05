@@ -205,7 +205,7 @@ const resolveOrganizationSearchClauses = async (queryTerm: string): Promise<any[
 };
 
 const getDivisionDetailsForEvents = async (
-  events: Array<{ id: string; sportId?: string | null }>,
+  events: Array<{ id: string; sportIds?: string[] | null }>,
 ): Promise<Map<string, Array<Record<string, unknown>>>> => {
   const eventIds = events.map((event) => event.id).filter(Boolean);
 
@@ -262,14 +262,14 @@ const getDivisionDetailsForEvents = async (
     const details = eventRows.map((row) => {
       const inferred = inferDivisionDetails({
         identifier: row.key ?? row.id,
-        sportInput: row.sportId ?? event.sportId ?? undefined,
+        sportInput: row.sportId ?? event.sportIds?.[0] ?? undefined,
         fallbackName: row.name ?? undefined,
       });
       const divisionTypeId = row.divisionTypeId ?? inferred.divisionTypeId;
       const ratingType = normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType;
       const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
       const divisionTypeName = deriveDivisionTypeDisplayName({
-        sportInput: row.sportId ?? event.sportId ?? undefined,
+        sportInput: row.sportId ?? event.sportIds?.[0] ?? undefined,
         gender,
         ratingType,
         divisionTypeId,
@@ -286,7 +286,7 @@ const getDivisionDetailsForEvents = async (
         divisionTypeName,
         ratingType,
         gender,
-        sportId: row.sportId ?? event.sportId ?? null,
+        sportId: row.sportId ?? event.sportIds?.[0] ?? null,
         price: typeof row.price === 'number' ? row.price : null,
         maxParticipants: typeof row.maxParticipants === 'number' ? row.maxParticipants : null,
       };
@@ -534,7 +534,10 @@ export async function POST(req: NextRequest) {
       if (!sportIds.length) {
         return emptyEventsResponse(offset);
       }
-      where.sportId = { in: sportIds };
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        { sportIds: { hasSome: sportIds } },
+      ];
     }
   }
   const parsedDateFrom = typeof filters.dateFrom === 'string' ? new Date(filters.dateFrom) : null;
@@ -702,7 +705,7 @@ export async function POST(req: NextRequest) {
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
     eventsWithParticipants.map((event) => ({
       id: event.id,
-      sportId: event.sportId,
+      sportIds: event.sportIds,
     })),
   ).catch((error) => {
     console.error('Failed to enrich division details for event search', error);

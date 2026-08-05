@@ -52,7 +52,7 @@ export const eventAnalyticsProperties = (event: Event): AnalyticsProperties => (
   event_type: normalizeString(event.eventType),
   event_name: normalizeString(event.name),
   organization_id: normalizeString(event.organizationId),
-  sport_id: normalizeString(event.sportId),
+  sport_id: normalizeString(event.sportIds[0]),
   source_type: normalizeString(event.sourceType),
   source_id: normalizeString(event.sourceId),
   team_signup: normalizeBooleanString(event.teamSignup),

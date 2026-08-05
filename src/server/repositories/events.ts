@@ -98,6 +98,11 @@ import {
   resolveDivisionCompetitionPhase,
 } from '@/lib/divisionPhaseSettings';
 import type { DivisionPhaseSettingsMap } from '@/types';
+import {
+  normalizeEventSportIds,
+  validateEventSportIds,
+  validateEventSportIdsExist,
+} from '@/server/eventSports';
 
 type PrismaLike = PrismaClient | any;
 
@@ -3063,7 +3068,7 @@ export const loadEventWithRelations = async (
   const { divisions, map: leagueDivisionMap, fieldIdsByDivision } = buildDivisions(
     leagueDivisionIds,
     leagueDivisionRows,
-    event.sportId ?? null,
+    event.sportIds?.[0] ?? null,
   );
   const {
     divisions: playoffDivisions,
@@ -3071,7 +3076,7 @@ export const loadEventWithRelations = async (
   } = buildDivisions(
     playoffDivisionRows.map((row: any) => row.id),
     playoffDivisionRows,
-    event.sportId ?? null,
+    event.sportIds?.[0] ?? null,
     { allowFallback: false, fallbackKind: 'PLAYOFF' },
   );
   const divisionMap = new Map<string, Division>();
@@ -3085,7 +3090,8 @@ export const loadEventWithRelations = async (
     ...divisions,
     ...playoffDivisions,
   ];
-  const fallbackDivision = divisions[0] ?? new Division(DEFAULT_DIVISION_KEY, buildDivisionDisplayName(DEFAULT_DIVISION_KEY, event.sportId ?? null));
+  const primarySportId = event.sportIds?.[0] ?? null;
+  const fallbackDivision = divisions[0] ?? new Division(DEFAULT_DIVISION_KEY, buildDivisionDisplayName(DEFAULT_DIVISION_KEY, primarySportId));
 
   const participantIds = includeTeamRegistrations
     ? await getEventParticipantIdsForEvent(event.id, client)
@@ -3100,9 +3106,9 @@ export const loadEventWithRelations = async (
   const timeSlotIds = ensureStringArray(event.timeSlotIds);
   const [eventOfficialRows, sportRow] = await Promise.all([
     loadEventOfficialRows(client, event.id),
-    event.sportId && typeof (client as any).sports?.findUnique === 'function'
+    primarySportId && typeof (client as any).sports?.findUnique === 'function'
       ? (client as any).sports.findUnique({
-          where: { id: event.sportId },
+          where: { id: primarySportId },
           select: { officialPositionTemplates: true, matchRulesTemplate: true } as any,
         })
       : Promise.resolve(null),
@@ -3398,7 +3404,7 @@ export const loadEventWithRelations = async (
     installmentDueRelativeDays: normalizeInstallmentRelativeDayList((event as any).installmentDueRelativeDays),
     installmentAmounts: ensureNumberArray(event.installmentAmounts),
     allowTeamSplitDefault: Boolean(event.allowTeamSplitDefault),
-    sportId: event.sportId ?? '',
+    sportIds: ensureStringArray(event.sportIds),
     teamSizeLimit: event.teamSizeLimit ?? null,
     singleDivision: Boolean(event.singleDivision),
     seedColor: event.seedColor ?? null,
@@ -4714,7 +4720,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       officialSchedulingMode: true as any,
       matchRulesOverride: true as any,
       autoCreatePointMatchIncidents: true,
-      sportId: true,
+      sportIds: true,
       coordinates: true,
       timeZone: true,
     },
@@ -4796,12 +4802,26 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : '';
   const normalizedAffiliateUrl = payloadIncludesAffiliateUrl ? payloadAffiliateUrl : existingAffiliateUrl;
   const isAffiliateExternalEvent = normalizedAffiliateUrl.length > 0;
+  const existingEventType = typeof existingEvent?.eventType === 'string'
+    ? existingEvent.eventType.toUpperCase()
+    : null;
+  const payloadEventType = typeof payload.eventType === 'string'
+    ? payload.eventType.toUpperCase()
+    : null;
+  const nextEventType = payloadEventType ?? existingEventType;
+  const effectiveSportIds = normalizeEventSportIds(
+    Object.prototype.hasOwnProperty.call(payload, 'sportIds')
+      ? payload.sportIds
+      : existingEvent?.sportIds,
+  );
+  validateEventSportIds({ eventType: nextEventType ?? 'EVENT', sportIds: effectiveSportIds });
+  await validateEventSportIdsExist(client, effectiveSportIds);
+  const primarySportId = effectiveSportIds[0] ?? null;
   const [existingEventOfficialRows, sportRow] = await Promise.all([
     existingEvent ? loadEventOfficialRows(client, id) : Promise.resolve([]),
-    (normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId))
-      && typeof (client as any).sports?.findUnique === 'function'
+    primarySportId && typeof (client as any).sports?.findUnique === 'function'
       ? (client as any).sports.findUnique({
-          where: { id: normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId) ?? '' },
+          where: { id: primarySportId },
           select: { officialPositionTemplates: true } as any,
         })
       : Promise.resolve(null),
@@ -4894,13 +4914,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       installmentAmounts: [],
     };
   };
-  const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, payload.sportId, 'LEAGUE')
+  const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, primarySportId, 'LEAGUE')
     .map(normalizeDivisionBilling);
-  let normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, payload.sportId, 'PLAYOFF')
+  let normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, primarySportId, 'PLAYOFF')
     .map(normalizeDivisionBilling);
   const payloadDivisionIds = normalizeDivisionIdentifierList(payload.divisions, id);
   const divisionIdsFromDetails = normalizedDivisionDetails.map((detail) => detail.id);
-  const fallbackDivisionIds = defaultDivisionKeysForSport(payload.sportId)
+  const fallbackDivisionIds = defaultDivisionKeysForSport(primarySportId)
     .map((divisionKey) => buildDivisionId(id, divisionKey));
   const normalizedEventDivisionIds = payloadDivisionIds.length
     ? payloadDivisionIds
@@ -4908,9 +4928,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? divisionIdsFromDetails
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
-  const payloadEventType = typeof payload.eventType === 'string'
-    ? payload.eventType.toUpperCase()
-    : null;
   const includePlayoffsOrPools = coerceBoolean(
     Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')
       ? payload.includePlayoffsOrPools
@@ -5057,10 +5074,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     incomingDivisionFieldMap,
   );
 
-  const existingEventType = typeof existingEvent?.eventType === 'string'
-    ? existingEvent.eventType.toUpperCase()
-    : null;
-  const nextEventType = payloadEventType ?? existingEventType;
   if (nextEventType === 'TRYOUT') {
     if (!resolvedOrganizationId || !organizationAccess) {
       throw new Error('Tryout events must belong to an organization.');
@@ -5271,7 +5284,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       : typeof (existingEvent as any)?.autoCreatePointMatchIncidents === 'boolean'
         ? Boolean((existingEvent as any).autoCreatePointMatchIncidents)
         : undefined;
-  const normalizedSportId = normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId);
   const normalizedTaxHandling = normalizeEventTaxHandling(
     Object.prototype.hasOwnProperty.call(payload, 'taxHandling')
       ? payload.taxHandling
@@ -5335,7 +5347,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     restTimeMinutes: payload.restTimeMinutes ?? null,
     state: payload.state ?? null,
     pointsToVictory: ensureNumberArray(payload.pointsToVictory),
-    sportId: normalizedSportId,
+    sportIds: effectiveSportIds,
     timeSlotIds,
     fieldIds,
     leagueScoringConfigId: resolvedLeagueScoringConfigId,
@@ -5449,7 +5461,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     fieldIds,
     includePlayoffs: includePlayoffsOrPools,
     singleDivision: singleDivisionEnabled,
-    sportId: normalizedSportId,
+    sportId: primarySportId,
     referenceDate: start,
     organizationId: payload.organizationId ?? null,
     divisionFieldMap,
@@ -5551,7 +5563,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ) ?? normalizedEventDivisionIds[0] ?? DEFAULT_DIVISION_KEY;
     const inferredTeamDivision = inferDivisionDetails({
       identifier: normalizedTeamDivision,
-      sportInput: payload.sportId ?? undefined,
+      sportInput: primarySportId ?? undefined,
     });
     const normalizedTeamDivisionTypeId = normalizeDivisionKey(team.divisionTypeId)
       ?? inferredTeamDivision.divisionTypeId;

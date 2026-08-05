@@ -139,7 +139,7 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
       start: new Date('2026-07-01T12:00:00.000Z'),
       minAge: null,
       maxAge: null,
-      sportId: 'volleyball',
+      sportIds: ['volleyball'],
       registrationByDivisionType: false,
       requiredTemplateIds: [],
       organizationId: null,

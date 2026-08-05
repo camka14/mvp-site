@@ -163,7 +163,7 @@ const buildTournamentBracketDisplayRows = (
     return dedupeDivisions(explicitBracketRows);
   }
 
-  const sportInput = event.sport?.name ?? event.sportId ?? undefined;
+  const sportInput = event.sport?.name ?? event.sportIds[0] ?? undefined;
   const detailIndexes = indexDivisions(details);
   const detailsByAlias = new Map<string, Division>();
   details.forEach((detail) => {
@@ -274,7 +274,7 @@ type EventDivisionDisplayRow = {
 const buildEventDivisionDisplayRows = (event: Event): EventDivisionDisplayRow[] => {
   const details = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
   const playoffDetails = Array.isArray(event.playoffDivisionDetails) ? event.playoffDivisionDetails : [];
-  const sportInput = event.sport?.name ?? event.sportId ?? undefined;
+  const sportInput = event.sport?.name ?? event.sportIds[0] ?? undefined;
 
   if (hasTournamentPoolPlay(event, details)) {
     return buildTournamentBracketDisplayRows(event, details, playoffDetails).map((detail) => ({

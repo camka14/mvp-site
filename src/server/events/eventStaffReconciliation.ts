@@ -224,7 +224,7 @@ export const loadEventStaffSnapshot = async (
       hostId: true,
       assistantHostIds: true,
       fieldIds: true,
-      sportId: true,
+      sportIds: true,
       officialPositions: true,
     },
   });
@@ -351,7 +351,7 @@ const resolveOfficialPositions = async (
   client: EventStaffTransactionClient | typeof import('@/lib/prisma').prisma,
   event: {
     id: string;
-    sportId?: string | null;
+    sportIds?: string[];
     officialPositions?: unknown;
   },
   needsFallback: boolean,
@@ -360,7 +360,7 @@ const resolveOfficialPositions = async (
   if (explicitPositions.length) {
     return explicitPositions;
   }
-  const sportId = normalizeId(event.sportId);
+  const sportId = normalizeId(event.sportIds?.[0]);
   const sport = sportId && typeof (client as any).sports?.findUnique === 'function'
     ? await (client as any).sports.findUnique({
         where: { id: sportId },
@@ -424,7 +424,7 @@ export const reconcileEventStaffDesiredState = async (
       hostId: true,
       organizationId: true,
       fieldIds: true,
-      sportId: true,
+      sportIds: true,
       officialPositions: true,
     },
   });

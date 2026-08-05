@@ -210,7 +210,7 @@ export const EventFormDivisionSection = ({
                 {eventData.eventType === 'TRYOUT' ? (
                     <TryoutDivisionSelector
                         organizationId={organizationId}
-                        preferredSportId={eventData.sportId}
+                        preferredSportId={eventData.sportIds[0]}
                         selectedDivisions={eventData.divisionDetails ?? []}
                         maxPriceCents={maxPriceCents}
                         disabled={isImmutableField('divisions')}

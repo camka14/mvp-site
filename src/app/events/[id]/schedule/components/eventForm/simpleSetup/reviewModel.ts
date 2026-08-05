@@ -450,7 +450,7 @@ export const buildSimpleSetupReviewModel = ({
             imageUrl: selectedImageUrl || undefined,
             rows: [
                 { label: 'Event name', value: eventData.name?.trim() || 'Not specified' },
-                { label: 'Sport', value: eventData.sportConfig?.name ?? eventData.sportId?.trim() ?? 'Not specified' },
+                { label: 'Sports', value: eventData.sportConfig?.name ?? (eventData.sportIds.join(', ') || 'Not specified') },
                 { label: 'Tags', value: joinOrNone(eventData.tags.map((tag) => tag.name)) },
                 { label: 'Description', value: eventData.description?.trim() || 'None' },
             ],

@@ -604,7 +604,7 @@ export function useCreateEventFlow({
         start,
         end,
         eventType: 'EVENT',
-        sportId: '',
+        sportIds: defaultSport?.$id ? [defaultSport.$id] : [],
         sport: defaultSport,
         price: 0,
         maxParticipants: 10,

@@ -68,6 +68,11 @@ import { getEventTagsForEventIds, syncEventTags, syncEventTypeTagsForEvent } fro
 import { deleteOrArchiveEvent, toDeleteOrArchiveResponse } from '@/server/deletion/archivePolicy';
 import { refreshBroadcastPresentationForEvent } from '@/server/broadcast/presentation';
 import { resolveRelationalEventDivisionIds } from '@/lib/eventApiDivisionIds';
+import {
+  normalizeEventSportIds,
+  validateEventSportIds,
+  validateEventSportIdsExist,
+} from '@/server/eventSports';
 
 export const dynamic = 'force-dynamic';
 const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'DRAFT']);
@@ -121,7 +126,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'restTimeMinutes',
   'state',
   'pointsToVictory',
-  'sportId',
+  'sportIds',
   'timeSlotIds',
   'fieldIds',
   'leagueScoringConfigId',
@@ -278,9 +283,9 @@ const buildEventOfficialResponse = async (event: any) => {
     typeof (prisma as any).eventOfficials?.findMany === 'function'
       ? (prisma as any).eventOfficials.findMany({ where: { eventId: event.id }, orderBy: { createdAt: 'asc' } })
       : Promise.resolve([]),
-    event.sportId && typeof (prisma as any).sports?.findUnique === 'function'
+    event.sportIds?.[0] && typeof (prisma as any).sports?.findUnique === 'function'
       ? (prisma as any).sports.findUnique({
-          where: { id: event.sportId },
+          where: { id: event.sportIds[0] },
           select: { officialPositionTemplates: true } as any,
         })
       : Promise.resolve(null),
@@ -1977,7 +1982,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         ? normalizeDivisionDetailsInput(
           payload.divisionDetails,
           eventId,
-          (payload.sportId ?? existing.sportId ?? null) as string | null,
+          (payload.sportIds?.[0] ?? existing.sportIds?.[0] ?? null) as string | null,
           nextStartForNormalization ?? existing.start,
           'LEAGUE',
         )
@@ -1986,7 +1991,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         ? normalizeDivisionDetailsInput(
             payload.playoffDivisionDetails,
             eventId,
-            (payload.sportId ?? existing.sportId ?? null) as string | null,
+            (payload.sportIds?.[0] ?? existing.sportIds?.[0] ?? null) as string | null,
             nextStartForNormalization ?? existing.start,
             'PLAYOFF',
           )
@@ -2133,6 +2138,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const targetEventType = typeof targetEventTypeRaw === 'string'
         ? targetEventTypeRaw.toUpperCase()
         : targetEventTypeRaw;
+      const effectiveSportIds = normalizeEventSportIds(
+        Object.prototype.hasOwnProperty.call(data, 'sportIds')
+          ? data.sportIds
+          : (existing as any).sportIds,
+      );
+      validateEventSportIds({ eventType: targetEventType ?? 'EVENT', sportIds: effectiveSportIds });
+      await validateEventSportIdsExist(tx, effectiveSportIds);
+      data.sportIds = effectiveSportIds;
       if (targetEventType === 'TRYOUT') {
         const organizationId = normalizeEntityId(data.organizationId ?? existing.organizationId);
         if (!organizationId) {
@@ -2390,7 +2403,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       ) {
         data.fieldIds = nextFieldIds;
       }
-      const nextSportId = normalizeEntityId(data.sportId ?? existing.sportId ?? null);
+      const nextSportId = normalizeEntityId(data.sportIds?.[0] ?? existing.sportIds?.[0] ?? null);
       const [existingEventOfficialRows, sportRow] = await Promise.all([
         typeof (tx as any).eventOfficials?.findMany === 'function'
           ? (tx as any).eventOfficials.findMany({ where: { eventId }, orderBy: { createdAt: 'asc' } })
@@ -2511,7 +2524,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         || hasTimeSlotPayload
         || Object.prototype.hasOwnProperty.call(payload, 'divisions')
         || Object.prototype.hasOwnProperty.call(payload, 'fieldIds')
-        || Object.prototype.hasOwnProperty.call(payload, 'sportId')
+        || Object.prototype.hasOwnProperty.call(payload, 'sportIds')
         || Object.prototype.hasOwnProperty.call(payload, 'organizationId');
 
       let currentDivisionFieldMap: Record<string, string[]> = {};
@@ -2819,7 +2832,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         && (
           hasEventOfficialsInput
           || hasOfficialPositionsInput
-          || Object.prototype.hasOwnProperty.call(payload, 'sportId')
+          || Object.prototype.hasOwnProperty.call(payload, 'sportIds')
           || existingEventOfficialRows.length === 0
         )
       );
@@ -2919,7 +2932,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           fieldIds: nextFieldIds,
           includePlayoffs: Boolean(data.includePlayoffs ?? existing.includePlayoffs),
           singleDivision: nextSingleDivision,
-          sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
+          sportId: (data.sportIds?.[0] ?? existing.sportIds?.[0] ?? null) as string | null,
           referenceDate: (data.start ?? existing.start ?? null) as Date | null,
           organizationId: (data.organizationId ?? existing.organizationId ?? null) as string | null,
           divisionFieldMap: nextDivisionFieldMap,

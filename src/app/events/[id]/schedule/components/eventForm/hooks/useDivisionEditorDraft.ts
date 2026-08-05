@@ -70,7 +70,7 @@ export const useDivisionEditorDraft = ({
         maxParticipants: eventData.maxParticipants,
         price: eventData.price,
         sportConfig: eventData.sportConfig,
-        sportId: eventData.sportId,
+        sportIds: eventData.sportIds,
     }), [
         eventData.allowPaymentPlans,
         eventData.eventType,
@@ -81,7 +81,7 @@ export const useDivisionEditorDraft = ({
         eventData.maxParticipants,
         eventData.price,
         eventData.sportConfig,
-        eventData.sportId,
+        eventData.sportIds,
     ]);
     const [divisionEditor, setDivisionEditor] = useState<DivisionEditorState>(() => (
         buildInitialDivisionEditorState({
@@ -209,9 +209,9 @@ export const useDivisionEditorDraft = ({
     const updateDivisionEditorSelection = useCallback((
         updates: Partial<Pick<DivisionEditorState, 'gender' | 'skillDivisionTypeId' | 'ageDivisionTypeId'>>,
     ) => {
-        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
+        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0]);
         setDivisionEditor((previous) => updateDivisionEditorSelectionState(previous, updates, sportInput));
-    }, [eventData.sportConfig, eventData.sportId]);
+    }, [eventData.sportConfig, eventData.sportIds]);
 
     const handleEditDivisionDetail = useCallback((divisionId: string) => {
         const detail = (eventData.divisionDetails || []).find((entry) => entry.id === divisionId);

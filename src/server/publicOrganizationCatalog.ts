@@ -69,6 +69,7 @@ export type PublicOrganizationEventCard = {
   eventType: string;
   eventTypeLabel: string;
   sportName: string | null;
+  sportNames: string[];
   priceCents: number;
   imageUrl: string;
   divisionLabels: string[];
@@ -953,7 +954,10 @@ const mapPublicOrganizationEventCards = async (
   events: Array<Record<string, any>>,
 ): Promise<PublicOrganizationEventCard[]> => {
   const sportsById = await getSportsById(
-    events.map((event: Record<string, any>) => (typeof event.sportId === 'string' ? event.sportId : '')),
+    events.flatMap((event: Record<string, any>) => {
+      const ids = normalizeIdList(event.sportIds);
+      return ids;
+    }),
   );
   const divisionLabelsByEventId = await getDivisionLabelsByEventId(events);
 
@@ -968,7 +972,11 @@ const mapPublicOrganizationEventCards = async (
       location: String(event.location ?? organization.location ?? 'Location TBD'),
       eventType,
       eventTypeLabel: formatPublicEventTypeLabel(eventType),
-      sportName: typeof event.sportId === 'string' ? sportsById.get(event.sportId) ?? event.sportId : null,
+      sportName: normalizeIdList(event.sportIds)[0]
+        ? sportsById.get(normalizeIdList(event.sportIds)[0]) ?? normalizeIdList(event.sportIds)[0]
+        : null,
+      sportNames: normalizeIdList(event.sportIds)
+        .map((sportId) => sportsById.get(sportId) ?? sportId),
       priceCents: typeof event.price === 'number' ? event.price : 0,
       imageUrl: typeof event.imageId === 'string' && event.imageId.trim().length > 0
         ? imageUrl(event.imageId)
@@ -1783,8 +1791,8 @@ export const getPublicOrganizationEventForRegistration = async (
   const participantIds = await getEventParticipantIdsForEvent(eventId, prisma);
   const teamIds = participantIds.teamIds;
   const [sport, divisionDetails, playoffDivisionDetails, fields, timeSlots, teams, officialIds] = await Promise.all([
-    typeof event.sportId === 'string'
-      ? (prisma as any).sports.findUnique({ where: { id: event.sportId } })
+    typeof event.sportIds?.[0] === 'string'
+      ? (prisma as any).sports.findUnique({ where: { id: event.sportIds[0] } })
       : Promise.resolve(null),
     (prisma as any).divisions.findMany({
       where: { eventId, kind: { not: 'PLAYOFF' } },

@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         sourceEventId: bundle.template.sourceEventId,
         ownerUserId: bundle.template.ownerUserId,
         organizationId: bundle.template.organizationId,
-        sportId: bundle.template.sportId,
+        sportIds: bundle.template.sportIds,
         eventType: bundle.template.eventType,
       },
     },

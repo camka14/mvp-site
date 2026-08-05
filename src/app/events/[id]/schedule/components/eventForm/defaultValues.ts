@@ -66,13 +66,22 @@ export const buildEventFormDefaultValues = ({
 
     const base = (() => {
         const initial = applyImmutableDefaults(mapEventToFormState(activeEditingEvent));
-        const normalizedSportId = typeof initial.sportId === 'string' ? initial.sportId.trim() : '';
+        const normalizedSportId = Array.isArray(initial.sportIds) && typeof initial.sportIds[0] === 'string'
+            ? initial.sportIds[0].trim()
+            : '';
         if (normalizedSportId) {
-            initial.sportId = normalizedSportId;
+            initial.sportIds = Array.isArray(initial.sportIds) && initial.sportIds.length
+                ? Array.from(new Set(initial.sportIds.map(String).filter(Boolean)))
+                : [normalizedSportId];
+            if (!initial.sportIds.includes(normalizedSportId)) {
+                initial.sportIds = [normalizedSportId, ...initial.sportIds];
+            }
             const hydratedSport = sportsById.get(normalizedSportId);
             if (hydratedSport) {
                 initial.sportConfig = hydratedSport;
             }
+        } else {
+            initial.sportIds = [];
         }
         if (!initial.location && defaultLocationLabel) {
             initial.location = defaultLocationLabel;

@@ -887,7 +887,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           name: teamPayload.name,
           division: divisionSelection.selection.divisionName ?? 'Open',
           divisionTypeId: divisionSelection.selection.divisionTypeId,
-          sport: event.sportId ?? null,
+          sport: event.sportIds[0] ?? null,
           teamSize: teamPayload.teamSize ?? Math.max(2, playerIds.length),
           profileImageId: null,
           organizationId: null,
@@ -964,7 +964,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           pending: [],
           teamSize,
           profileImageId: null,
-          sport: event.sportId ?? null,
+          sport: event.sportIds[0] ?? null,
         },
       });
 

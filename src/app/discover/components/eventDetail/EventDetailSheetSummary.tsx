@@ -63,7 +63,7 @@ export function EventDetailSheetSummary({
                         </div>
                         <div>
                             <span className="text-sm text-gray-600">Sport</span>
-                            <p className="font-medium">{sportName || event.sportId || 'TBD'}</p>
+                            <p className="font-medium">{sportName || event.sportIds.join(', ') || 'TBD'}</p>
                         </div>
                         {hasAgeRange ? (
                             <div>

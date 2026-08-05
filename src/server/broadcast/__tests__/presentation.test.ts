@@ -23,7 +23,7 @@ describe('broadcast match presentation projection', () => {
           organizerName: 'River City Sports Club',
           imageId: null,
           organizationId: 'org_1',
-          sportId: 'Beach Volleyball',
+          sportIds: ['Beach Volleyball'],
           eventType: 'TOURNAMENT',
           pointsToVictory: [],
           divisionDetails: [{ id: 'event_1__division__open', key: 'open', name: 'Open' }],
@@ -111,7 +111,7 @@ describe('broadcast match presentation projection', () => {
     const client = {
       events: { findUnique: jest.fn().mockResolvedValue({
         id: 'event_1', name: 'Open', location: null, address: null, organizerName: null,
-        imageId: null, organizationId: null, sportId: null, eventType: 'TOURNAMENT',
+        imageId: null, organizationId: null, sportIds: [], eventType: 'TOURNAMENT',
         pointsToVictory: [], divisionDetails: [], matchRulesOverride: null, archivedAt: null,
       }) },
       matches: { findFirst: jest.fn().mockResolvedValue({

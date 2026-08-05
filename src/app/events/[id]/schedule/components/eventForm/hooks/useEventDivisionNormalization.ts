@@ -80,7 +80,10 @@ export const useEventDivisionNormalization = ({
         if (sportsLoading) {
             return;
         }
-        const selectedSportId = String(getValues('sportId') ?? '').trim();
+        const selectedSportIds = getValues('sportIds');
+        const selectedSportId = String(
+            (Array.isArray(selectedSportIds) ? selectedSportIds[0] : '') ?? '',
+        ).trim();
         const currentSportConfig = getValues('sportConfig') as Sport | null | undefined;
         const currentSportConfigId = currentSportConfig && typeof currentSportConfig === 'object'
             ? String((currentSportConfig as any).$id ?? '')
@@ -101,7 +104,7 @@ export const useEventDivisionNormalization = ({
         if (!selected && currentSportConfig) {
             setValue('sportConfig', null, { shouldDirty: false, shouldValidate: false });
         }
-    }, [eventData.sportId, getValues, setValue, sportsLoading, sportsById]);
+    }, [eventData.sportIds, getValues, setValue, sportsLoading, sportsById]);
 
     useEffect(() => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
@@ -118,14 +121,14 @@ export const useEventDivisionNormalization = ({
         if (!stringArraysEqual(idsFromDetails, currentDivisionIds)) {
             setValue('divisions', idsFromDetails, { shouldDirty: false, shouldValidate: true });
         }
-    }, [eventData.$id, eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, getValues, setValue]);
+    }, [eventData.$id, eventData.divisionDetails, eventData.sportConfig, eventData.sportIds, eventData.start, getValues, setValue]);
 
     useEffect(() => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
         if (!currentDetails.length) {
             return;
         }
-        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportId);
+        const sportInput = resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0]);
         const referenceDate = parseDateValue(eventData.start ?? null);
         const nextDetails = currentDetails.map((detail) => applyDivisionAgeCutoff({
             ...detail,
@@ -146,7 +149,7 @@ export const useEventDivisionNormalization = ({
         if (changed) {
             setValue('divisionDetails', nextDetails, { shouldDirty: false, shouldValidate: false });
         }
-    }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportId, eventData.start, setValue]);
+    }, [eventData.divisionDetails, eventData.sportConfig, eventData.sportIds, eventData.start, setValue]);
 
     useEffect(() => {
         if (eventData.eventType === 'LEAGUE') {
@@ -222,14 +225,14 @@ export const useEventDivisionNormalization = ({
 
     useEffect(() => {
         const selectedSport = (
-            eventData.sportId ? sportsById.get(eventData.sportId) : null
+            eventData.sportIds[0] ? sportsById.get(eventData.sportIds[0]) : null
         ) ?? eventData.sportConfig;
         const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
         setLeagueData((previous) => {
             const normalized = normalizeLeagueConfigForSetMode(previous, requiresSets);
             return leagueConfigEqual(previous, normalized) ? previous : normalized;
         }, { shouldDirty: false });
-    }, [eventData.sportConfig, eventData.sportId, setLeagueData, sportsById]);
+    }, [eventData.sportConfig, eventData.sportIds, setLeagueData, sportsById]);
 
     useEffect(() => {
         setDivisionEditor((previous) => {
@@ -249,7 +252,7 @@ export const useEventDivisionNormalization = ({
 
     useEffect(() => {
         const selectedSport = (
-            eventData.sportId ? sportsById.get(eventData.sportId) : null
+            eventData.sportIds[0] ? sportsById.get(eventData.sportIds[0]) : null
         ) ?? eventData.sportConfig;
         const requiresSets = Boolean(selectedSport?.usePointsPerSetWin);
         if (requiresSets) {
@@ -336,7 +339,7 @@ export const useEventDivisionNormalization = ({
         eventData.divisionDetails,
         eventData.playoffDivisionDetails,
         eventData.sportConfig,
-        eventData.sportId,
+        eventData.sportIds,
         playoffData,
         setPlayoffData,
         setValue,

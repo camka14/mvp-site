@@ -55,6 +55,31 @@ export async function GET(_req: NextRequest) {
       });
     });
 
+    const eventCandidatesBySport = await Promise.all(deprecatedSports.map(async (sport) => {
+      const targetName = DEPRECATED_SPORT_TARGET_BY_NAME[normalizeCanonicalSportName(sport.name)];
+      const targetSport = targetName ? sportsByNameLower.get(normalizeCanonicalSportName(targetName)) : null;
+      if (!targetSport) return [];
+      const events = await prisma.events.findMany({
+        where: {
+          OR: [
+            { sportIds: { has: sport.id } },
+            { sportIds: { has: sport.name } },
+          ],
+        },
+        select: { id: true, sportIds: true },
+      });
+      return events.map((event) => prisma.events.update({
+        where: { id: event.id },
+        data: {
+          sportIds: Array.from(new Set(event.sportIds.map((sportId) => (
+            sportId === sport.id || normalizeCanonicalSportName(sportId) === normalizeCanonicalSportName(sport.name)
+              ? targetSport.id
+              : sportId
+          )))),
+        },
+      }));
+    }));
+
     const remapOperations = deprecatedSports.flatMap((sport) => {
       const targetName = DEPRECATED_SPORT_TARGET_BY_NAME[normalizeCanonicalSportName(sport.name)];
       const targetSport = targetName ? sportsByNameLower.get(normalizeCanonicalSportName(targetName)) : null;
@@ -62,15 +87,6 @@ export async function GET(_req: NextRequest) {
         return [];
       }
       return [
-        prisma.events.updateMany({
-          where: {
-            OR: [
-              { sportId: sport.id },
-              { sportId: { equals: sport.name, mode: 'insensitive' } },
-            ],
-          },
-          data: { sportId: targetSport.id },
-        }),
         prisma.divisions.updateMany({
           where: {
             OR: [
@@ -87,8 +103,12 @@ export async function GET(_req: NextRequest) {
       ];
     });
 
-    if (organizationUpdates.length > 0 || remapOperations.length > 0) {
-      await prisma.$transaction([...organizationUpdates, ...remapOperations]);
+    if (organizationUpdates.length > 0 || eventCandidatesBySport.flat().length > 0 || remapOperations.length > 0) {
+      await prisma.$transaction([
+        ...organizationUpdates,
+        ...eventCandidatesBySport.flat(),
+        ...remapOperations,
+      ]);
     }
 
     await prisma.sports.deleteMany({

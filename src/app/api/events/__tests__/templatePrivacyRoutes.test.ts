@@ -636,7 +636,7 @@ describe('event template privacy routes', () => {
       {
         id: 'event_1',
         name: 'Split Division Event',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         userIds: [],
       },
     ]);
@@ -648,7 +648,7 @@ describe('event template privacy routes', () => {
         name: 'Open',
         price: 3500,
         maxParticipants: 8,
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         sortOrder: 0,
       },
       {
@@ -658,7 +658,7 @@ describe('event template privacy routes', () => {
         name: 'Advanced',
         price: 5000,
         maxParticipants: 10,
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         sortOrder: 1,
       },
     ];
@@ -712,7 +712,7 @@ describe('event template privacy routes', () => {
       {
         id: 'event_2',
         name: 'Search Split Division Event',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
       },
     ]);
     const divisionRows = [
@@ -785,7 +785,7 @@ describe('event template privacy routes', () => {
         id: 'event_2',
         name: 'Search Split Division Event',
         divisions: ['event_2__division__open'],
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
       },
     ]);
     prismaMock.divisions.findMany
@@ -940,7 +940,7 @@ describe('event template privacy routes', () => {
         id: 'event_1',
         name: 'Split Division Event',
         divisions: ['event_1__division__open'],
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
       },
     ]);
     prismaMock.divisions.findMany

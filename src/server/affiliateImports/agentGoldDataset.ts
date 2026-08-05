@@ -79,6 +79,7 @@ const candidateAssertionSchema = z.object({
   officialActionUrl: z.string().url(),
   sourceUrl: z.string().url().nullable().optional(),
   sportName: nonEmptyStringSchema.nullable().optional(),
+  sportNames: z.array(nonEmptyStringSchema).optional(),
   tags: z.array(nonEmptyStringSchema).default([]),
   venueName: nonEmptyStringSchema.nullable().optional(),
   address: nonEmptyStringSchema.nullable().optional(),
@@ -174,6 +175,19 @@ const validatePersistedCandidate = (
       message: sportIssue.message,
     });
   }
+  candidate.sportNames?.forEach((sportName: string, sportIndex: number) => {
+    const issue = validateAffiliateAgentSportName(
+      sportName,
+      `expectedPersistedCandidates.${candidateIndex}.sportNames.${sportIndex}`,
+    );
+    if (issue) {
+      context.addIssue({
+        code: 'custom',
+        path: ['expectedPersistedCandidates', candidateIndex, 'sportNames', sportIndex],
+        message: issue.message,
+      });
+    }
+  });
   if (!isExternalOfficialUrl(candidate.officialActionUrl)) {
     context.addIssue({
       code: 'custom',

@@ -350,7 +350,7 @@ const reserveEventRegistrationSlot = async ({
       start: Date | string | null;
       minAge: number | null;
       maxAge: number | null;
-      sportId: string | null;
+      sportIds: string[] | null;
       registrationByDivisionType: boolean | null;
       maxParticipants: number | null;
       teamSignup: boolean | null;
@@ -364,7 +364,7 @@ const reserveEventRegistrationSlot = async ({
         "start",
         "minAge",
         "maxAge",
-        "sportId",
+        "sportIds",
         "registrationByDivisionType",
         "maxParticipants",
         "teamSignup",
@@ -450,7 +450,7 @@ const reserveEventRegistrationSlot = async ({
       start: normalizedEventStart,
       minAge: event.minAge ?? null,
       maxAge: event.maxAge ?? null,
-      sportId: event.sportId ?? null,
+      sportIds: event.sportIds ?? [],
       registrationByDivisionType: event.registrationByDivisionType ?? null,
       divisions: normalizeStringList((event as any).divisions),
       eventType: event.eventType ?? null,

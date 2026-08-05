@@ -67,26 +67,34 @@ export const collectAffiliateAgentSportIssues = (draft: any): AffiliateAgentSpor
   if (!executable) return [];
 
   const issues: AffiliateAgentSportIssue[] = [];
+  const collectCandidateIssues = (candidate: any, path: string) => {
+    const sportNames = Array.isArray(candidate?.sportNames) ? candidate.sportNames : [];
+    if (sportNames.length > 0) {
+      sportNames.forEach((sportName: unknown, sportIndex: number) => {
+        const issue = validateAffiliateAgentSportName(sportName, `${path}.sportNames.${sportIndex}`);
+        if (issue) issues.push(issue);
+      });
+      if (candidate?.sportName != null) {
+        const issue = validateAffiliateAgentSportName(candidate.sportName, `${path}.sportName`);
+        if (issue) issues.push(issue);
+      }
+      return;
+    }
+    const issue = validateAffiliateAgentSportName(candidate?.sportName, `${path}.sportName`);
+    if (issue) issues.push(issue);
+  };
   const expectedCandidates = Array.isArray(draft?.expectedCandidates)
     ? draft.expectedCandidates
     : [];
   expectedCandidates.forEach((candidate: any, index: number) => {
-    const issue = validateAffiliateAgentSportName(
-      candidate?.sportName,
-      `expectedCandidates.${index}.sportName`,
-    );
-    if (issue) issues.push(issue);
+    collectCandidateIssues(candidate, `expectedCandidates.${index}`);
   });
 
   const manualCandidates = Array.isArray(draft?.mapping?.manualCandidates)
     ? draft.mapping.manualCandidates
     : [];
   manualCandidates.forEach((candidate: any, index: number) => {
-    const issue = validateAffiliateAgentSportName(
-      candidate?.sportName,
-      `mapping.manualCandidates.${index}.sportName`,
-    );
-    if (issue) issues.push(issue);
+    collectCandidateIssues(candidate, `mapping.manualCandidates.${index}`);
   });
 
   const sportField = draft?.mapping?.fields?.sportName;
@@ -101,6 +109,26 @@ export const collectAffiliateAgentSportIssues = (draft: any): AffiliateAgentSpor
         `mapping.fields.sportName.valueMap.${sourceValue}`,
       );
       if (issue) issues.push(issue);
+    });
+  }
+
+  const sportNamesField = draft?.mapping?.fields?.sportNames;
+  if (sportNamesField?.mode === 'literal') {
+    const values = String(sportNamesField.value ?? '').split(/[,;|]/).map((value) => value.trim()).filter(Boolean);
+    values.forEach((value, index) => {
+      const issue = validateAffiliateAgentSportName(value, `mapping.fields.sportNames.value.${index}`);
+      if (issue) issues.push(issue);
+    });
+  }
+  if (sportNamesField?.valueMap && typeof sportNamesField.valueMap === 'object') {
+    Object.entries(sportNamesField.valueMap).forEach(([sourceValue, mappedValue]) => {
+      String(mappedValue ?? '').split(/[,;|]/).map((value) => value.trim()).filter(Boolean).forEach((value, index) => {
+        const issue = validateAffiliateAgentSportName(
+          value,
+          `mapping.fields.sportNames.valueMap.${sourceValue}.${index}`,
+        );
+        if (issue) issues.push(issue);
+      });
     });
   }
 

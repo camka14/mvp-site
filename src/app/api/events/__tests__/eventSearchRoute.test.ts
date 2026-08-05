@@ -153,7 +153,7 @@ describe('POST /api/events/search', () => {
         scheduleText: 'Games are listed Friday and Sunday.',
         priceText: '$850 flat fee listed for 7-week sessions.',
         statusText: 'Confirm current session with Troutdale Indoor Sports',
-        sportId: 'sport_basketball',
+        sportIds: ['sport_basketball'],
       },
     ]);
 
@@ -517,7 +517,7 @@ describe('POST /api/events/search', () => {
     prismaMock.events.findMany.mockResolvedValue([
       {
         ...eventRow('tennis-event', 'Ladder Tournament 2026'),
-        sportId: 'Tennis',
+        sportIds: ['Tennis'],
         coordinates: [-73.9757856, 40.6896125],
       },
     ]);
@@ -540,10 +540,14 @@ describe('POST /api/events/search', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.divisions.findMany).not.toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ sportId: { in: ['Tennis'] } }),
+      where: expect.objectContaining({ sportIds: { hasSome: ['Tennis'] } }),
     }));
     expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ sportId: { in: ['Tennis'] } }),
+      where: expect.objectContaining({
+        AND: expect.arrayContaining([
+          expect.objectContaining({ sportIds: { hasSome: ['Tennis'] } }),
+        ]),
+      }),
     }));
     expect(json.events.map((event: any) => event.id)).toEqual(['tennis-event']);
   });

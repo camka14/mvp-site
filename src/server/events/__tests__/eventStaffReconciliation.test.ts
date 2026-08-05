@@ -25,7 +25,7 @@ type TestEvent = {
   id: string;
   hostId: string;
   organizationId: string | null;
-  sportId: string | null;
+  sportIds: string[];
   assistantHostIds: string[];
   fieldIds: string[];
   officialPositions: unknown[];
@@ -64,7 +64,7 @@ const createState = (): TestState => ({
     id: 'event_1',
     hostId: 'host_1',
     organizationId: null,
-    sportId: null,
+    sportIds: [],
     assistantHostIds: [],
     fieldIds: ['field_1'],
     officialPositions: [{
@@ -411,7 +411,7 @@ describe('event staff desired-state reconciliation', () => {
 
   it('uses the sport official templates when legacy event positions are empty', async () => {
     const state = createState();
-    state.event.sportId = 'sport_1';
+    state.event.sportIds = ['sport_1'];
     state.event.officialPositions = [];
     state.sportOfficialPositionTemplates = [{ name: 'Head Referee', count: 2 }];
     state.officials = [{

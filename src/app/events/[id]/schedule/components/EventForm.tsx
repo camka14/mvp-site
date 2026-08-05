@@ -579,18 +579,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const divisionTypeOptions = useMemo(
         () => buildDivisionTypeOptionsForEvent(
-            eventData.sportConfig ?? eventData.sportId,
+            eventData.sportConfig ?? eventData.sportIds[0],
             eventData.divisionDetails,
         ),
-        [eventData.divisionDetails, eventData.sportConfig, eventData.sportId],
+        [eventData.divisionDetails, eventData.sportConfig, eventData.sportIds],
     );
     const currentSportRequiresSets = useMemo(
         () => sportRequiresSets(resolveSelectedSport({
-            sportId: eventData.sportId,
+            sportId: eventData.sportIds[0],
             sportConfig: eventData.sportConfig,
             sportsById,
         })),
-        [eventData.sportConfig, eventData.sportId, sportsById],
+        [eventData.sportConfig, eventData.sportIds, sportsById],
     );
 
     const divisionController = useDivisionEditorController({
@@ -642,11 +642,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     const selectedSportForOfficials = useMemo(
         () => resolveSelectedSport({
-            sportId: eventData.sportId,
+            sportId: eventData.sportIds[0],
             sportConfig: eventData.sportConfig,
             sportsById,
         }),
-        [eventData.sportConfig, eventData.sportId, sportsById],
+        [eventData.sportConfig, eventData.sportIds, sportsById],
     );
 
     const staffController = useStaffOfficialController({
@@ -1098,8 +1098,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if (pageId === 'basics') {
             return trigger(isAffiliateEvent
-                ? ['name', 'sportId', 'description', 'affiliateUrl']
-                : ['name', 'sportId', 'description']);
+                ? ['name', 'sportIds', 'description', 'affiliateUrl']
+                : ['name', 'sportIds', 'description']);
         }
         if (pageId === 'divisions') {
             return trigger(eventData.eventType === 'TRYOUT'

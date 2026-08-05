@@ -294,7 +294,7 @@ export const buildDivisionOptionsForEvent = (event: Event | null): EventDivision
     }
     const sportInput = typeof event.sport === 'string'
         ? event.sport
-        : event.sport?.name ?? event.sportId ?? '';
+        : event.sport?.name ?? event.sportIds[0] ?? '';
     const referenceDate = parseDateValue(event.start ?? null);
     const baseDetailRows = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
     const playoffRows = Array.isArray(event.playoffDivisionDetails) ? event.playoffDivisionDetails : [];

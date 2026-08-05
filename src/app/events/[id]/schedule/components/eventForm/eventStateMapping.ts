@@ -70,21 +70,7 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     })();
     const eventTimeZone = normalizeTimeZone(event.timeZone, getSystemTimeZone());
 
-    const resolvedSportId = (() => {
-        // `event.sport` is historically inconsistent: it may be a Sport object, a string id, or absent.
-        // Keep runtime compatibility by treating it as unknown and narrowing safely.
-        const sport = (event as { sport?: unknown }).sport;
-        if (sport && typeof sport === 'object' && '$id' in sport) {
-            return (sport as Sport).$id;
-        }
-        if (typeof sport === 'string' && sport.trim().length > 0) {
-            return sport;
-        }
-        if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
-            return event.sportId;
-        }
-        return '';
-    })();
+    const resolvedSportId = Array.isArray(event.sportIds) ? event.sportIds[0] ?? '' : '';
     const resolvedSportInput = (event.sport && typeof event.sport === 'object'
         ? ((event.sport as Sport).name || (event.sport as Sport).$id || '')
         : resolvedSportId) || '';
@@ -413,7 +399,9 @@ export const mapEventToFormState = (event: Event): EventFormState => {
     state: (event.state as EventState) ?? 'DRAFT',
     eventType: normalizedEventType,
     parentEvent: event.parentEvent || undefined,
-    sportId: resolvedSportId,
+    sportIds: Array.isArray(event.sportIds)
+        ? event.sportIds.map(String).filter(Boolean)
+        : [],
     sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
         : null,

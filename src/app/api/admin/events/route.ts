@@ -56,7 +56,8 @@ export async function GET(req: NextRequest) {
     const sportIds = Array.from(
       new Set(
         eventRows
-          .map((event) => event.sportId?.trim() ?? '')
+          .flatMap((event) => event.sportIds)
+          .map((id) => id.trim())
           .filter((id) => id.length > 0),
       ),
     );
@@ -96,7 +97,8 @@ export async function GET(req: NextRequest) {
     const events = eventRows.map((event) => ({
       ...event,
       organization: event.organizationId ? organizationsById.get(event.organizationId) ?? null : null,
-      sport: event.sportId ? sportsById.get(event.sportId) ?? null : null,
+      sport: event.sportIds[0] ? sportsById.get(event.sportIds[0]) ?? null : null,
+      sports: event.sportIds.map((sportId) => sportsById.get(sportId)).filter(Boolean),
     }));
 
     return NextResponse.json(

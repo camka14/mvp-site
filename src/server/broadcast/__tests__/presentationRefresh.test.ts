@@ -56,7 +56,7 @@ describe('broadcast presentation refresh', () => {
       organizerName: 'River City Sports Club',
       imageId: null,
       organizationId: null,
-      sportId: null,
+      sportIds: [],
       eventType: 'TOURNAMENT',
       pointsToVictory: [],
       matchRulesOverride: null,

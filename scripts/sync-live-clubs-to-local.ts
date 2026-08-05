@@ -386,7 +386,7 @@ const buildReviewedOverrides = (events: Row[]): LegacyClubDivisionRow[] => {
         eventId,
         name: division.name,
         key: `${division.gender.toLowerCase()}_${division.ageDivisionTypeId}`,
-        sportId: event.sportId ?? 'Indoor Volleyball',
+        sportId: event.sportIds?.[0] ?? 'Indoor Volleyball',
         price: typeof event.price === 'number' ? event.price : null,
         maxParticipants: null,
         divisionTypeId: division.ageDivisionTypeId,
@@ -414,7 +414,9 @@ const buildEventEvidence = (state: Awaited<ReturnType<typeof loadLiveState>>): C
     eventType: row.eventType == null ? null : String(row.eventType),
     sourceUrl: row.sourceUrl == null ? null : String(row.sourceUrl),
     affiliateUrl: row.affiliateUrl == null ? null : String(row.affiliateUrl),
-    sportId: row.sportId == null ? null : String(row.sportId),
+    sportIds: Array.isArray(row.sportIds)
+      ? row.sportIds.map((sportId: unknown) => String(sportId)).filter(Boolean)
+      : [],
     start: row.start,
     updatedAt: row.updatedAt,
     tagSlugs: tagSlugsByEventId.get(String(row.id)) ?? [],

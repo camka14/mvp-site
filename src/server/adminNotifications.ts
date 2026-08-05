@@ -40,7 +40,7 @@ export type AdminEventCreatedNotification = {
   state?: string | null;
   hostId?: string | null;
   organizationId?: string | null;
-  sportId?: string | null;
+  sportIds?: string[] | null;
   start?: Date | string | null;
   end?: Date | string | null;
   timeZone?: string | null;
@@ -248,7 +248,7 @@ export const sendAdminEventCreatedNotification = async ({
       ['State', event.state],
       ['Host ID', event.hostId],
       ['Organization ID', event.organizationId],
-      ['Sport ID', event.sportId],
+      ['Sports', event.sportIds],
       ['Start', event.start],
       ['End', event.end],
       ['Time zone', event.timeZone],

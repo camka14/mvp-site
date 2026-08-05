@@ -3,6 +3,7 @@ import { Controller, type Control, type FieldErrors, type UseFormSetValue } from
 import {
     Alert,
     Loader,
+    MultiSelect,
     Select as MantineSelect,
     TextInput,
     Textarea,
@@ -22,6 +23,7 @@ type BasicInformationSectionProps = {
     allowImageEdit: boolean;
     sportsLoading: boolean;
     sportOptions: Array<{ value: string; label: string }>;
+    eventType: Event['eventType'];
     sportsById: Map<string, Sport>;
     sportsError?: unknown;
     eventTagOptions: EventTag[];
@@ -45,6 +47,7 @@ export const BasicInformationSection = ({
     allowImageEdit,
     sportsLoading,
     sportOptions,
+    eventType,
     sportsById,
     sportsError,
     eventTagOptions,
@@ -128,41 +131,69 @@ export const BasicInformationSection = ({
                 />
 
                 <div className="md:col-span-4">
-                    <Controller
-                        name="sportId"
-                        control={control}
-                        rules={{ required: 'Sport is required' }}
-                        render={({ field, fieldState }) => (
-                            <MantineSelect
-                                label="Sport"
-                                placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
-                                data={sportOptions}
-                                value={field.value || null}
-                                comboboxProps={comboboxProps}
-                                disabled={isImmutableField('sport') || sportsLoading}
-                                onChange={(value) => {
-                                    if (isImmutableField('sport')) return;
-                                    const next = (value || '').trim();
-                                    if (next === (field.value || '').trim()) {
-                                        return;
-                                    }
-                                    setValue(
-                                        'sportConfig',
-                                        next ? (sportsById.get(next) ?? null) : null,
-                                        { shouldDirty: false, shouldValidate: false },
-                                    );
-                                    setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
-                                    field.onChange(next);
-                                }}
-                                searchable
-                                nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
-                                rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
-                                error={fieldState.error?.message}
-                                withAsterisk
-                                maw={360}
-                            />
-                        )}
-                    />
+                    {eventType === 'EVENT' || eventType === 'WEEKLY_EVENT' ? (
+                        <Controller
+                            name="sportIds"
+                            control={control}
+                            rules={{ validate: (value) => value.length > 0 || 'Sport is required' }}
+                            render={({ field, fieldState }) => (
+                                <MultiSelect
+                                    label="Sports"
+                                    placeholder={sportsLoading ? 'Loading sports...' : 'Select one or more sports'}
+                                    data={sportOptions}
+                                    value={Array.isArray(field.value) ? field.value : []}
+                                    comboboxProps={comboboxProps}
+                                    disabled={isImmutableField('sport') || sportsLoading}
+                                    onChange={(value) => {
+                                        if (isImmutableField('sport')) return;
+                                        const next = Array.from(new Set(value.map((entry) => entry.trim()).filter(Boolean)));
+                                        setValue('sportIds', next, { shouldDirty: true, shouldValidate: true });
+                                        const primary = next[0] ?? '';
+                                        setValue('sportConfig', primary ? (sportsById.get(primary) ?? null) : null, {
+                                            shouldDirty: false,
+                                            shouldValidate: false,
+                                        });
+                                        setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
+                                    }}
+                                    searchable
+                                    nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
+                                    rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
+                                    error={fieldState.error?.message}
+                                    withAsterisk
+                                    maw={360}
+                                />
+                            )}
+                        />
+                    ) : (
+                        <Controller
+                            name="sportIds"
+                            control={control}
+                            rules={{ validate: (value) => value.length > 0 || 'Sport is required' }}
+                            render={({ field, fieldState }) => (
+                                <MantineSelect
+                                    label="Sport"
+                                    placeholder={sportsLoading ? 'Loading sports...' : 'Select a sport'}
+                                    data={sportOptions}
+                                    value={Array.isArray(field.value) ? field.value[0] || null : null}
+                                    comboboxProps={comboboxProps}
+                                    disabled={isImmutableField('sport') || sportsLoading}
+                                    onChange={(value) => {
+                                        if (isImmutableField('sport')) return;
+                                        const next = (value || '').trim();
+                                        field.onChange(next ? [next] : []);
+                                        setValue('sportConfig', next ? (sportsById.get(next) ?? null) : null, { shouldDirty: false, shouldValidate: false });
+                                        setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
+                                    }}
+                                    searchable
+                                    nothingFoundMessage={sportsLoading ? 'Loading sports...' : 'No sports found'}
+                                    rightSection={sportsLoading ? <Loader size="xs" /> : undefined}
+                                    error={fieldState.error?.message}
+                                    withAsterisk
+                                    maw={360}
+                                />
+                            )}
+                        />
+                    )}
                 </div>
             </div>
 

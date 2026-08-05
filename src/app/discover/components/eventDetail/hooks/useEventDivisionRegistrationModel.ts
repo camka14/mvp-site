@@ -170,7 +170,7 @@ export function useEventDivisionRegistrationModel({
                     sportInput:
                         typeof event.sport === 'string'
                             ? event.sport
-                            : event.sport?.name ?? event.sportId ?? undefined,
+                            : event.sport?.name ?? event.sportIds[0] ?? undefined,
                 });
                 appendLabel(inferred.defaultName || divisionId);
                 return;
@@ -182,7 +182,7 @@ export function useEventDivisionRegistrationModel({
         });
 
         return labels;
-    }, [allDivisionOptions, event.divisions, event.sport, event.sportId]);
+    }, [allDivisionOptions, event.divisions, event.sport, event.sportIds]);
     const selectedDivisionOption = useMemo(() => {
         if (!divisionOptions.length) {
             return null;
@@ -281,7 +281,7 @@ export function useEventDivisionRegistrationModel({
     const participantDivisionCapacityRows = useMemo<ParticipantDivisionCapacityRow[]>(() => {
         const sportInput = typeof event.sport === 'string'
             ? event.sport
-            : event.sport?.name ?? event.sportId ?? null;
+            : event.sport?.name ?? event.sportIds[0] ?? null;
         return divisionCapacityBreakdown.map((row) => ({
             id: row.divisionId,
             label: resolveDivisionDisplayName({
@@ -296,7 +296,7 @@ export function useEventDivisionRegistrationModel({
                 ? Math.min(100, Math.round((row.filled / row.capacity) * 100))
                 : 0,
         }));
-    }, [event.sport, event.sportId, divisionCapacityBreakdown, divisionDisplayNameIndex]);
+    }, [event.sport, event.sportIds, divisionCapacityBreakdown, divisionDisplayNameIndex]);
     const selectedDivisionBilling = useMemo(() => {
         const eventPriceCents = normalizePriceCents(event.price);
         const eventAllowPaymentPlans = Boolean(event.allowPaymentPlans);

@@ -157,7 +157,7 @@ export const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
         state: z.string().default('DRAFT'),
         eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT', 'TRYOUT', 'AFFILIATE']),
         parentEvent: z.string().optional().nullable(),
-        sportId: z.string().trim(),
+        sportIds: z.array(z.string().trim()).default([]),
         sportConfig: z.any().nullable(),
         price: z.number().int().min(0, 'Price must be at least 0'),
         minAge: z.number().int().min(0).optional(),

@@ -15,6 +15,14 @@ const PUBLIC_SITEMAP_EVENT_LIMIT = 45000;
 const PUBLIC_EVENT_DIRECTORY_LIMIT = 12;
 const PUBLIC_EVENT_STATES = ['PUBLISHED', null] as const;
 
+const normalizeStringArray = (value: unknown): string[] => (
+  Array.isArray(value)
+    ? Array.from(new Set(value
+      .map((entry) => typeof entry === 'string' ? entry.trim() : '')
+      .filter(Boolean)))
+    : []
+);
+
 type PublicSeoOrganization = {
   id: string;
   slug: string;
@@ -544,12 +552,12 @@ export const listPublicEventSportSummaries = async (): Promise<PublicEventSportS
   const events: Array<Record<string, unknown>> = await (prisma as any).events.findMany({
     where: {
       organizationId: { in: publicOrganizations.map((organization) => organization.id) },
-      sportId: { not: null },
+      sportIds: { isEmpty: false },
       OR: PUBLIC_EVENT_STATES.map((state) => ({ state })),
       NOT: { state: 'TEMPLATE' },
     },
     select: {
-      sportId: true,
+      sportIds: true,
       updatedAt: true,
       start: true,
     },
@@ -561,9 +569,10 @@ export const listPublicEventSportSummaries = async (): Promise<PublicEventSportS
   });
 
   const sportIds = Array.from(new Set(
-    events
-      .map((event) => normalizeString(event.sportId))
-      .filter((sportId): sportId is string => Boolean(sportId)),
+    events.flatMap((event) => {
+      const values = normalizeStringArray(event.sportIds);
+      return values;
+    }),
   ));
 
   if (sportIds.length === 0) {
@@ -602,35 +611,30 @@ export const listPublicEventSportSummaries = async (): Promise<PublicEventSportS
 
   const summaries = new Map<string, PublicEventSportSummary>();
   events.forEach((event) => {
-    const sportId = normalizeString(event.sportId);
-    const sport = sportId ? sportById.get(sportId) : null;
-    if (!sport) {
-      return;
-    }
-    const slug = sportNameToSlug(sport.name);
-    if (!slug) {
-      return;
-    }
-    const existing = summaries.get(slug) ?? {
-      name: sport.name,
-      slug,
-      sportIds: [],
-      eventCount: 0,
-      latestUpdatedAt: sport.updatedAt,
-      directoryPath: publicEventSportDirectoryPath(slug),
-      discoverHref: buildDiscoverEventsHref({ sports: [sport.name] }),
-    };
-
-    if (!existing.sportIds.includes(sport.id)) {
-      existing.sportIds.push(sport.id);
-    }
-    existing.eventCount += 1;
-
     const eventDate = toDate(event.updatedAt) ?? toDate(event.start);
-    if (eventDate && (!existing.latestUpdatedAt || eventDate > existing.latestUpdatedAt)) {
-      existing.latestUpdatedAt = eventDate;
-    }
-    summaries.set(slug, existing);
+    const values = normalizeStringArray(event.sportIds);
+    const eventSportIds = values;
+    eventSportIds.forEach((sportId) => {
+      const sport = sportById.get(sportId);
+      if (!sport) return;
+      const slug = sportNameToSlug(sport.name);
+      if (!slug) return;
+      const existing = summaries.get(slug) ?? {
+        name: sport.name,
+        slug,
+        sportIds: [],
+        eventCount: 0,
+        latestUpdatedAt: sport.updatedAt,
+        directoryPath: publicEventSportDirectoryPath(slug),
+        discoverHref: buildDiscoverEventsHref({ sports: [sport.name] }),
+      };
+      if (!existing.sportIds.includes(sport.id)) existing.sportIds.push(sport.id);
+      existing.eventCount += 1;
+      if (eventDate && (!existing.latestUpdatedAt || eventDate > existing.latestUpdatedAt)) {
+        existing.latestUpdatedAt = eventDate;
+      }
+      summaries.set(slug, existing);
+    });
   });
 
   return Array.from(summaries.values()).sort((left, right) => (
@@ -657,8 +661,8 @@ export const getPublicEventSportDirectory = async (
   const events: Array<Record<string, unknown>> = await (prisma as any).events.findMany({
     where: {
       organizationId: { in: publicOrganizations.map((organization) => organization.id) },
-      sportId: { in: sport.sportIds },
-      OR: PUBLIC_EVENT_STATES.map((state) => ({ state })),
+      sportIds: { hasSome: sport.sportIds },
+      AND: [{ OR: PUBLIC_EVENT_STATES.map((state) => ({ state })) }],
       NOT: { state: 'TEMPLATE' },
     },
     select: {

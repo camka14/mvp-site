@@ -72,6 +72,7 @@ const affiliateManualCandidateSchema = z.object({
   tagText: optionalNullableStringSchema,
   organizerName: optionalNullableStringSchema,
   sportName: optionalNullableStringSchema,
+  sportNames: z.array(z.string().trim().min(1)).optional(),
   formatLabel: optionalNullableStringSchema,
   city: optionalNullableStringSchema,
   venueName: optionalNullableStringSchema,
@@ -123,6 +124,7 @@ export const affiliateScrapeMappingSchema = z.object({
     officialActionUrl: fieldMappingSchema,
     organizerName: fieldMappingSchema.optional(),
     sportName: fieldMappingSchema.optional(),
+    sportNames: fieldMappingSchema.optional(),
     formatLabel: fieldMappingSchema.optional(),
     city: fieldMappingSchema.optional(),
     venueName: fieldMappingSchema.optional(),
@@ -173,6 +175,7 @@ export type AffiliateCandidateInput = {
   title: string;
   organizerName?: string | null;
   sportName?: string | null;
+  sportNames?: string[];
   formatLabel?: string | null;
   city?: string | null;
   venueName?: string | null;

@@ -18,7 +18,7 @@ type RegistrationEventContext = {
   start: Date;
   minAge: number | null;
   maxAge: number | null;
-  sportId: string | null;
+  sportIds: string[];
   registrationByDivisionType: boolean | null;
   divisions?: string[] | null;
   eventType?: string | null;
@@ -276,7 +276,7 @@ const buildDivisionOptions = async (
 
     const inferred = inferDivisionDetails({
       identifier: row?.key ?? row?.id ?? divisionId,
-      sportInput: row?.sportId ?? event.sportId ?? undefined,
+      sportInput: row?.sportId ?? event.sportIds[0] ?? undefined,
       fallbackName: row?.name ?? undefined,
     });
 
@@ -294,7 +294,7 @@ const buildDivisionOptions = async (
       });
 
     const divisionTypeName = deriveDivisionTypeDisplayName({
-      sportInput: row?.sportId ?? event.sportId ?? undefined,
+      sportInput: row?.sportId ?? event.sportIds[0] ?? undefined,
       gender,
       ratingType,
       divisionTypeId,
@@ -302,7 +302,7 @@ const buildDivisionOptions = async (
 
     const ageEligibility = evaluateDivisionAgeEligibility({
       divisionTypeId,
-      sportInput: row?.sportId ?? event.sportId ?? undefined,
+      sportInput: row?.sportId ?? event.sportIds[0] ?? undefined,
       referenceDate: event.start,
     });
 
@@ -314,7 +314,7 @@ const buildDivisionOptions = async (
       id: row?.id ?? divisionId,
       key,
       name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
-      sportId: row?.sportId ?? event.sportId ?? null,
+      sportId: row?.sportId ?? event.sportIds[0] ?? null,
       divisionTypeId,
       divisionTypeName,
       divisionTypeKey,
@@ -455,7 +455,7 @@ export const validateRegistrantAgeForSelection = (params: {
   const divisionEligibility = evaluateDivisionAgeEligibility({
     dateOfBirth: params.dateOfBirth,
     divisionTypeId: params.selection.divisionTypeId,
-    sportInput: params.event.sportId ?? undefined,
+    sportInput: params.event.sportIds[0] ?? undefined,
     referenceDate: params.event.start,
   });
 

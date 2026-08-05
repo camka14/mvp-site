@@ -120,15 +120,15 @@ export const applyImmutableEventDefaults = ({
     if (defaults.sport !== undefined) {
         if (typeof defaults.sport === 'string') {
             const sportId = defaults.sport ?? '';
-            next.sportId = sportId;
+            next.sportIds = sportId ? [sportId] : [];
             next.sportConfig = sportsById.get(sportId) ?? null;
         } else if (defaults.sport && typeof defaults.sport === 'object') {
             const sport = defaults.sport as Sport;
             const sportId = sport.$id ?? sport.name ?? '';
-            next.sportId = sportId;
+            next.sportIds = sportId ? [sportId] : [];
             next.sportConfig = sportsById.get(sportId) ?? { ...sport };
         } else {
-            next.sportId = '';
+            next.sportIds = [];
             next.sportConfig = null;
         }
     }
@@ -207,7 +207,7 @@ export const applyImmutableEventDefaults = ({
             .map((entry: unknown) => normalizeDivisionDetailEntry(
                 entry,
                 next.$id,
-                resolveSportInput(next.sportConfig ?? next.sportId),
+                resolveSportInput(next.sportConfig ?? next.sportIds[0]),
                 referenceDate,
             ))
             .filter((entry: DivisionDetailForm | null): entry is DivisionDetailForm => Boolean(entry));
@@ -224,7 +224,7 @@ export const applyImmutableEventDefaults = ({
     }
     if (!next.divisionDetails.length && next.divisions.length) {
         next.divisionDetails = next.divisions.map((divisionId) => {
-            const sportInput = resolveSportInput(next.sportConfig ?? next.sportId);
+            const sportInput = resolveSportInput(next.sportConfig ?? next.sportIds[0]);
             const inferred = inferDivisionDetails({
                 identifier: divisionId,
                 sportInput,

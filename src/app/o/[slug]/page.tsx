@@ -118,7 +118,7 @@ function EventItem({ event }: { event: PublicOrganizationEventCard }) {
       <div className={styles.itemBody}>
         <h3 className={styles.itemTitle}>{event.name}</h3>
         <p className={styles.itemMeta}>{formatDate(event.start)} - {event.location}</p>
-        <p className={styles.itemMeta}>{event.sportName ?? event.eventType} - {formatPrice(event.priceCents)}</p>
+        <p className={styles.itemMeta}>{event.sportNames?.join(', ') || event.sportName || event.eventType} - {formatPrice(event.priceCents)}</p>
         <span className={styles.itemAction}>Register</span>
       </div>
     </Link>

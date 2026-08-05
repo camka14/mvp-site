@@ -180,7 +180,7 @@ describe('eventService', () => {
     apiRequestMock.mockResolvedValueOnce({
       events: [
         { ...baseEventRow, $id: 'evt_2' },
-        { ...baseEventRow, $id: 'evt_3', sport: undefined, sportId: undefined },
+        { ...baseEventRow, $id: 'evt_3', sport: undefined, sportIds: [] },
       ],
     });
 
@@ -843,7 +843,7 @@ describe('eventService', () => {
       ...baseEventRow,
       state: 'TEMPLATE',
       sport: undefined,
-      sportId: undefined,
+      sportIds: [],
     };
 
     const event = await eventService.mapRowFromDatabase(rowWithoutSport, false);
@@ -862,7 +862,7 @@ describe('eventService', () => {
       ...baseEventRow,
       state: 'TEMPLATE',
       sport: undefined,
-      sportId: 'unknown_sport',
+      sportIds: ['unknown_sport'],
     };
 
     const event = await eventService.mapRowFromDatabase(rowWithUnknownSport, false);

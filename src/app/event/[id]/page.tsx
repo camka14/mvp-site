@@ -180,10 +180,10 @@ export default async function RegularPublicEventPage({ params }: RegularPublicEv
               </Link>
             </div>
             <dl className="mt-5 space-y-4 text-sm">
-              {data.event.sportName ? (
+              {data.event.sportNames?.length || data.event.sportName ? (
                 <div>
                   <dt className="font-semibold text-slate-950">Sport</dt>
-                  <dd className="mt-1 text-slate-600">{data.event.sportName}</dd>
+                  <dd className="mt-1 text-slate-600">{data.event.sportNames?.join(', ') ?? data.event.sportName}</dd>
                 </div>
               ) : null}
               <div>

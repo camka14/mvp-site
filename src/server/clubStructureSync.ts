@@ -18,7 +18,7 @@ export type ClubEventSyncRow = {
   eventType: string | null;
   sourceUrl: string | null;
   affiliateUrl: string | null;
-  sportId: string | null;
+  sportIds: string[];
   start: Date | string;
   updatedAt: Date | string | null;
   tagSlugs?: string[];
@@ -297,7 +297,7 @@ export const buildClubStructurePlan = (
       organizationId: representativeEvent.organizationId,
       name: displayName,
       key: representative.key,
-      sportId: representative.sportId ?? representativeEvent.sportId ?? 'Other',
+      sportId: representative.sportId ?? representativeEvent.sportIds[0] ?? 'Other',
       price: seasonPriceRow?.price ?? null,
       maxParticipants: seasonPriceRow?.maxParticipants ?? representative.maxParticipants,
       divisionTypeId: representative.divisionTypeId,

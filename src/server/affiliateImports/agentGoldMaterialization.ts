@@ -271,6 +271,9 @@ export const affiliateCandidateAssertionFromInput = (
     officialActionUrl: candidate.officialActionUrl,
     sourceUrl: nullableText(candidate.sourceUrl),
     sportName: nullableText(candidate.sportName),
+    sportNames: Array.isArray(candidate.sportNames)
+      ? candidate.sportNames.map((value: unknown) => String(value).trim()).filter(Boolean)
+      : undefined,
     tags,
     venueName: nullableText(candidate.venueName),
     address: nullableText(candidate.address),
@@ -617,11 +620,17 @@ export const materializeAffiliateMappingGoldExample = async (
   }
 
   const sportIssues = expectedCandidates.flatMap((candidate, index) => {
-    const issue = validateAffiliateAgentSportName(
-      candidate.sportName,
-      `expectedCandidates.${index}.sportName`,
-    );
-    return issue ? [issue] : [];
+    const values = [
+      ...(candidate.sportNames ?? []),
+      ...(candidate.sportName ? [candidate.sportName] : []),
+    ];
+    return values.flatMap((sportName, sportIndex) => {
+      const issue = validateAffiliateAgentSportName(
+        sportName,
+        `expectedCandidates.${index}.${candidate.sportNames?.length ? 'sportNames' : 'sportName'}.${sportIndex}`,
+      );
+      return issue ? [issue] : [];
+    });
   });
   if (sportIssues.length > 0 && (
     implementationMode === 'GENERIC_MAPPING'

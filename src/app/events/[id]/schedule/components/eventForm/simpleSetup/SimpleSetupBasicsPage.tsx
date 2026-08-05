@@ -5,6 +5,7 @@ import { Controller } from 'react-hook-form';
 import {
     Alert,
     Loader,
+    MultiSelect,
     Select as MantineSelect,
     Stack,
     Text,
@@ -123,41 +124,70 @@ export const SimpleSetupBasicsPage = ({
                         )}
                     />
 
-                    <Controller
-                        name="sportId"
-                        control={control}
-                        rules={{ required: 'Sport is required' }}
-                        render={({ field, fieldState }) => (
-                            <MantineSelect
-                                label="Sport"
-                                placeholder={catalog.sportsLoading ? 'Loading sports...' : 'Select a sport'}
-                                data={catalog.sportOptions}
-                                value={field.value || null}
-                                comboboxProps={sharedComboboxProps}
-                                disabled={isImmutableField('sport') || catalog.sportsLoading}
-                                onChange={(value) => {
-                                    if (isImmutableField('sport')) return;
-                                    const next = (value || '').trim();
-                                    if (next === (field.value || '').trim()) return;
-                                    setValue(
-                                        'sportConfig',
-                                        next ? (catalog.sportsById.get(next) ?? null) : null,
-                                        { shouldDirty: false, shouldValidate: false },
-                                    );
-                                    setValue('matchRulesOverride', null, {
-                                        shouldDirty: true,
-                                        shouldValidate: false,
-                                    });
-                                    field.onChange(next);
-                                }}
-                                searchable
-                                nothingFoundMessage={catalog.sportsLoading ? 'Loading sports...' : 'No sports found'}
-                                rightSection={catalog.sportsLoading ? <Loader size="xs" /> : undefined}
-                                error={fieldState.error?.message}
-                                withAsterisk
-                            />
-                        )}
-                    />
+                    {model.eventData.eventType === 'EVENT' || model.eventData.eventType === 'WEEKLY_EVENT' ? (
+                        <Controller
+                            name="sportIds"
+                            control={control}
+                            rules={{ validate: (value) => value.length > 0 || 'Sport is required' }}
+                            render={({ field, fieldState }) => (
+                                <MultiSelect
+                                    label="Sports"
+                                    placeholder={catalog.sportsLoading ? 'Loading sports...' : 'Select one or more sports'}
+                                    data={catalog.sportOptions}
+                                    value={Array.isArray(field.value) ? field.value : []}
+                                    comboboxProps={sharedComboboxProps}
+                                    disabled={isImmutableField('sport') || catalog.sportsLoading}
+                                    onChange={(value) => {
+                                        if (isImmutableField('sport')) return;
+                                        const next = Array.from(new Set(value.map((entry) => entry.trim()).filter(Boolean)));
+                                        const primary = next[0] ?? '';
+                                        setValue('sportIds', next, { shouldDirty: true, shouldValidate: true });
+                                        setValue('sportConfig', primary ? (catalog.sportsById.get(primary) ?? null) : null, {
+                                            shouldDirty: false,
+                                            shouldValidate: false,
+                                        });
+                                        setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
+                                    }}
+                                    searchable
+                                    nothingFoundMessage={catalog.sportsLoading ? 'Loading sports...' : 'No sports found'}
+                                    rightSection={catalog.sportsLoading ? <Loader size="xs" /> : undefined}
+                                    error={fieldState.error?.message}
+                                    withAsterisk
+                                />
+                            )}
+                        />
+                    ) : (
+                        <Controller
+                            name="sportIds"
+                            control={control}
+                            rules={{ required: 'Sport is required' }}
+                            render={({ field, fieldState }) => (
+                                <MantineSelect
+                                    label="Sport"
+                                    placeholder={catalog.sportsLoading ? 'Loading sports...' : 'Select a sport'}
+                                    data={catalog.sportOptions}
+                                    value={Array.isArray(field.value) ? field.value[0] || null : null}
+                                    comboboxProps={sharedComboboxProps}
+                                    disabled={isImmutableField('sport') || catalog.sportsLoading}
+                                    onChange={(value) => {
+                                        if (isImmutableField('sport')) return;
+                                        const next = (value || '').trim();
+                                        field.onChange(next ? [next] : []);
+                                        setValue('sportConfig', next ? (catalog.sportsById.get(next) ?? null) : null, {
+                                            shouldDirty: false,
+                                            shouldValidate: false,
+                                        });
+                                        setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
+                                    }}
+                                    searchable
+                                    nothingFoundMessage={catalog.sportsLoading ? 'Loading sports...' : 'No sports found'}
+                                    rightSection={catalog.sportsLoading ? <Loader size="xs" /> : undefined}
+                                    error={fieldState.error?.message}
+                                    withAsterisk
+                                />
+                            )}
+                        />
+                    )}
 
                     {catalog.sportsError ? (
                         <Alert className="sm:col-span-2 xl:col-span-3" color="red" radius="md">

@@ -46,7 +46,7 @@ const buildBaseEvent = (overrides: Partial<Event> = {}): Event => ({
   $updatedAt: '',
   eventType: 'LEAGUE',
   sport: baseSport,
-  sportId: baseSport.$id,
+  sportIds: [baseSport.$id],
   divisions: [],
   attendees: 0,
   teams: [],

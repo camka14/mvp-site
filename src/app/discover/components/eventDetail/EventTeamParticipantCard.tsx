@@ -30,7 +30,7 @@ export function EventTeamParticipantCard({
     const organizationName = getOrganizationName(event.organization) ?? event.location ?? 'Event';
     const sportInput = typeof event.sport === 'string'
         ? event.sport
-        : event.sport?.name ?? event.sportId ?? null;
+        : event.sport?.name ?? event.sportIds[0] ?? null;
     const divisionLabel = resolveDivisionDisplayName({
         division: team.division,
         divisionNameIndex,

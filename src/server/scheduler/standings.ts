@@ -1103,6 +1103,7 @@ const buildTemplateBracket = (
     matches: {},
     location: league.location,
     organizationId: league.organizationId ?? null,
+    sportIds: [...league.sportIds],
     winnerSetCount: playoffConfig.winnerSetCount,
     loserSetCount: playoffConfig.loserSetCount,
     winnerBracketPointsToVictory: [...playoffConfig.winnerBracketPointsToVictory],

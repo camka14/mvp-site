@@ -30,7 +30,7 @@ const OWNERSHIP_BY_PREFIX: Record<string, ErrorOwnership> = {
     name: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
     description: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
     imageId: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
-    sportId: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
+    sportIds: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
     sportConfig: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
     tags: { simplePageId: 'basics', advancedSectionId: 'section-basic-information' },
     eventType: { simplePageId: 'format', advancedSectionId: 'section-event-details' },

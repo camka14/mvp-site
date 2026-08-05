@@ -98,7 +98,7 @@ const baseEventPayload = () => ({
   start: '2026-01-05T09:00:00.000Z',
   end: '2026-03-05T09:00:00.000Z',
   eventType: 'LEAGUE',
-  sportId: 'sport_1',
+  sportIds: ['sport_1'],
   hostId: 'host_1',
   fields: [
     {
@@ -222,7 +222,7 @@ describe('upsertEventFromPayload', () => {
       officialIds: [],
       officialPositions: [],
       officialSchedulingMode: 'SCHEDULE',
-      sportId: 'sport_1',
+      sportIds: ['sport_1'],
     });
     const payload = {
       ...baseEventPayload(),
@@ -706,7 +706,7 @@ describe('upsertEventFromPayload', () => {
     const payload = {
       ...baseEventPayload(),
       eventType: 'LEAGUE',
-      sportId: 'volleyball',
+      sportIds: ['volleyball'],
       includePlayoffs: true,
       playoffTeamCount: 4,
       singleDivision: false,
@@ -1142,7 +1142,7 @@ describe('upsertEventFromPayload', () => {
 
     const payload = {
       ...baseEventPayload(),
-      sportId: 'Soccer',
+      sportIds: ['Soccer'],
       divisions: [],
       fields: [
         {
@@ -2306,7 +2306,7 @@ describe('upsertEventFromPayload', () => {
       officialIds: [],
       officialPositions: [],
       officialSchedulingMode: 'SCHEDULE',
-      sportId: 'sport_1',
+      sportIds: ['sport_1'],
       matchRulesOverride: existingMatchRulesOverride,
       autoCreatePointMatchIncidents: true,
     });
@@ -2333,7 +2333,7 @@ describe('upsertEventFromPayload', () => {
     );
   });
 
-  it('preserves the stored sportId when an update payload omits it', async () => {
+  it('preserves the stored sportIds when an update payload omits them', async () => {
     const client = createMockClient();
     client.events.findUnique.mockResolvedValueOnce({
       fieldIds: ['field_1'],
@@ -2348,20 +2348,20 @@ describe('upsertEventFromPayload', () => {
       officialIds: [],
       officialPositions: [],
       officialSchedulingMode: 'SCHEDULE',
-      sportId: 'sport_existing',
+      sportIds: ['sport_existing'],
     });
+    const { sportIds: _ignoredSportIds, ...basePayloadWithoutSports } = baseEventPayload();
     const payload = {
-      ...baseEventPayload(),
+      ...basePayloadWithoutSports,
       divisions: ['OPEN'],
       description: 'Metadata-only edit',
-      sportId: undefined,
     };
 
     await upsertEventFromPayload(payload, client as any);
 
     const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
-    expect(eventUpsertArgs.create.sportId).toBe('sport_existing');
-    expect(eventUpsertArgs.update.sportId).toBe('sport_existing');
+    expect(eventUpsertArgs.create.sportIds).toEqual(['sport_existing']);
+    expect(eventUpsertArgs.update.sportIds).toEqual(['sport_existing']);
     expect(client.divisions.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({ sportId: 'sport_existing' }),

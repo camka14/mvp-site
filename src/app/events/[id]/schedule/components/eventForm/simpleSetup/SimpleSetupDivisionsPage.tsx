@@ -169,7 +169,7 @@ export const SimpleSetupDivisionsPage = ({
             {eventData.eventType === 'TRYOUT' ? (
                 <TryoutDivisionSelector
                     organizationId={organizationId}
-                    preferredSportId={eventData.sportId}
+                    preferredSportId={eventData.sportIds[0]}
                     selectedDivisions={eventData.divisionDetails ?? []}
                     maxPriceCents={MAX_PRICE_CENTS}
                     disabled={isImmutableField('divisions')}

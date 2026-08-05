@@ -806,7 +806,7 @@ describe('event PATCH route', () => {
         divisions: ['open'],
         fieldIds: ['field_1'],
         eventType: 'EVENT',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         organizationId: 'org_1',
         start: new Date('2026-01-01T00:00:00.000Z'),
       })
@@ -823,7 +823,7 @@ describe('event PATCH route', () => {
       divisions: ['advanced'],
       fieldIds: ['field_1', 'field_2'],
       eventType: 'EVENT',
-      sportId: 'sport_1',
+      sportIds: ['sport_1'],
       organizationId: 'org_1',
       start: new Date('2026-01-01T00:00:00.000Z'),
     });
@@ -878,7 +878,7 @@ describe('event PATCH route', () => {
         divisions: ['event_1__division__open'],
         fieldIds: ['field_1'],
         eventType: 'EVENT',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         organizationId: null,
         start: new Date('2026-01-01T00:00:00.000Z'),
         allowPaymentPlans: true,
@@ -987,7 +987,7 @@ describe('event PATCH route', () => {
         divisions: ['event_1__division__open'],
         fieldIds: ['field_1'],
         eventType: 'LEAGUE',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         organizationId: null,
         start: new Date('2026-01-01T00:00:00.000Z'),
         end: new Date('2026-02-01T00:00:00.000Z'),
@@ -1751,7 +1751,7 @@ describe('event PATCH route', () => {
       .mockResolvedValueOnce({
         id: 'event_1',
         hostId: 'host_1',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         officialSchedulingMode: 'STAFFING',
         officialPositions: null,
         officialIds: ['official_legacy'],
@@ -1761,7 +1761,7 @@ describe('event PATCH route', () => {
       .mockResolvedValueOnce({
         id: 'event_1',
         hostId: 'host_1',
-        sportId: 'sport_1',
+        sportIds: ['sport_1'],
         officialSchedulingMode: 'SCHEDULE',
         officialPositions: [
           { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },
@@ -1773,7 +1773,7 @@ describe('event PATCH route', () => {
     prismaMock.events.update.mockResolvedValueOnce({
       id: 'event_1',
       hostId: 'host_1',
-      sportId: 'sport_1',
+      sportIds: ['sport_1'],
       officialSchedulingMode: 'SCHEDULE',
       officialPositions: [
         { id: 'event_pos_r1', name: 'R1', count: 1, order: 0 },

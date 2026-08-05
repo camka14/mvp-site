@@ -62,7 +62,7 @@ const createClient = () => ({
       freeAgentIds: [],
       requiredTemplateIds: [],
       organizationId: null,
-      sportId: null,
+      sportIds: [],
       teamSignup: true,
       singleDivision: true,
       doubleElimination: false,

@@ -1484,7 +1484,7 @@ async function updateParticipants(
 
   if (teamForRegistration && mode === 'add') {
     const team = teamForRegistration;
-    const normalizedEventSport = normalizeSportKey(event.sportId);
+    const normalizedEventSport = normalizeSportKey(event.sportIds[0]);
     const normalizedTeamSport = normalizeSportKey(team.sport);
     if (normalizedEventSport && normalizedTeamSport !== normalizedEventSport) {
       return NextResponse.json(

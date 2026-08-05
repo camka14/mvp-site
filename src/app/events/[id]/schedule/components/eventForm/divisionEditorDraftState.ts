@@ -40,7 +40,7 @@ type DivisionEditorEventValues = Pick<EventFormValues,
     | 'maxParticipants'
     | 'price'
     | 'sportConfig'
-    | 'sportId'
+    | 'sportIds'
 >;
 
 type BuildResetDivisionEditorStateOptions = {
@@ -144,7 +144,7 @@ export const buildLeagueDivisionEditorState = ({
 }): DivisionEditorState => {
     const composite = parseCompositeDivisionTypeId(detail.divisionTypeId);
     const fallbackSelections = getDefaultDivisionTypeSelectionsForSport(
-        resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+        resolveSportInput(eventData.sportConfig ?? eventData.sportIds[0]),
     );
     const defaultInstallmentAmounts = eventData.allowPaymentPlans
         ? normalizeInstallmentAmounts(eventData.installmentAmounts)

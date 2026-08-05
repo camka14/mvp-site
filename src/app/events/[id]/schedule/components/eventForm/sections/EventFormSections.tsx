@@ -295,6 +295,7 @@ export const EventFormSections = ({
                 allowImageEdit={presentation.allowImageEdit}
                 sportsLoading={catalog.sportsLoading}
                 sportOptions={catalog.sportOptions}
+                eventType={eventData.eventType}
                 sportsById={catalog.sportsById}
                 sportsError={catalog.sportsError}
                 eventTagOptions={catalog.eventTagOptions}

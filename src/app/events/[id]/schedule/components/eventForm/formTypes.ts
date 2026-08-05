@@ -39,7 +39,7 @@ export type EventFormState = {
     state: EventState;
     eventType: Event['eventType'];
     parentEvent?: string;
-    sportId: string;
+    sportIds: string[];
     sportConfig: Sport | null;
     price: number;
     taxHandling: EventTaxHandling;
