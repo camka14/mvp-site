@@ -2189,11 +2189,11 @@ function TeamsTabContent(props: {
                   key={team.$id}
                   team={team}
                   onClick={() => onSelectTeam(team)}
-                  actions={
-                    <Text size="xs" c={team.affiliateUrl?.trim() ? 'blue' : 'green'} fw={600}>
-                      {team.affiliateUrl?.trim() ? 'External registration' : 'Open registration'}
+                  actions={team.affiliateUrl?.trim() ? undefined : (
+                    <Text size="xs" c="green" fw={600}>
+                      Open registration
                     </Text>
-                  }
+                  )}
                 />
               ))}
             </ResponsiveCardGrid>

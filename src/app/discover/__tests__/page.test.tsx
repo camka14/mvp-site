@@ -8,6 +8,7 @@ import DiscoverPage from '../page';
 const pushMock = jest.fn();
 const listOrganizationsMock = jest.fn();
 const getEventsPageMock = jest.fn();
+const searchOpenRegistrationTeamsMock = jest.fn();
 const mockSportsResult: { sports: Array<{ $id: string; name: string }>; loading: boolean; error: null } = {
   sports: [],
   loading: false,
@@ -63,7 +64,7 @@ jest.mock('@/lib/eventService', () => ({
 
 jest.mock('@/lib/teamService', () => ({
   teamService: {
-    searchOpenRegistrationTeamsPage: jest.fn(),
+    searchOpenRegistrationTeamsPage: (...args: unknown[]) => searchOpenRegistrationTeamsMock(...args),
   },
 }));
 
@@ -86,7 +87,18 @@ jest.mock('@/components/ui/OrganizationCard', () => ({
 
 jest.mock('@/components/ui/TeamCard', () => ({
   __esModule: true,
-  default: () => null,
+  default: ({
+    team,
+    actions,
+  }: {
+    team: { $id: string; affiliateUrl?: string | null };
+    actions?: React.ReactNode;
+  }) => (
+    <div data-testid={`team-card-${team.$id}`}>
+      {actions}
+      {team.affiliateUrl?.trim() ? <span>External registration</span> : null}
+    </div>
+  ),
 }));
 
 jest.mock('@/components/ui/ResponsiveCardGrid', () => ({
@@ -123,6 +135,7 @@ describe('Discover organization loading', () => {
     mockLocation = null;
     mockSportsResult.sports = [];
     getEventsPageMock.mockReset();
+    searchOpenRegistrationTeamsMock.mockReset();
     getEventsPageMock.mockResolvedValue({
       events: [],
       pagination: { limit: 18, offset: 0, nextOffset: 0, hasMore: false, totalCount: 0 },
@@ -301,6 +314,28 @@ describe('Discover organization loading', () => {
     expect(await screen.findByText('Cascade Athletics')).toBeInTheDocument();
     expect(listOrganizationsMock).toHaveBeenCalledTimes(2);
     expect(listOrganizationsMock.mock.calls[1]?.slice(0, 2)).toEqual([100, 1]);
+  });
+
+  it('does not duplicate external registration on affiliate team cards', async () => {
+    navigationSearchParams = 'tab=teams';
+    window.history.replaceState({}, '', `/discover?${navigationSearchParams}`);
+    searchOpenRegistrationTeamsMock.mockResolvedValue({
+      teams: [{
+        $id: 'team_external',
+        name: 'Rose City Futsal Community Team',
+        division: 'Mens D2',
+        sport: 'Indoor Soccer',
+        openRegistration: true,
+        affiliateUrl: 'https://example.test/register',
+      }],
+      pagination: { limit: 18, offset: 0, nextOffset: 1, hasMore: false },
+    });
+
+    renderWithMantine(<DiscoverPage />);
+
+    const card = await screen.findByTestId('team-card-team_external');
+    expect(card).toHaveTextContent('External registration');
+    expect(card.textContent?.match(/External registration/g)).toHaveLength(1);
   });
 
   it('loads the next rental page when the rental sentinel intersects', async () => {
