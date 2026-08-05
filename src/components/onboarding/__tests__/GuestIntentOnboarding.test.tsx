@@ -87,6 +87,13 @@ describe('GuestIntentOnboarding', () => {
     expect(document.querySelector('main')).not.toBeInTheDocument();
   });
 
+  it('uses the shipped BracketIQ app icon in the modal header', async () => {
+    renderWizard();
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/division-types', expect.any(Object)));
+    expect(screen.getByRole('img', { name: 'BracketIQ app icon' })).toHaveAttribute('src', expect.stringContaining('icon-192.png'));
+  });
+
   it('starts a guest session and routes an event search with the selected location', async () => {
     renderWizard();
 

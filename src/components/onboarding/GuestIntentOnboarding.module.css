@@ -34,15 +34,10 @@
 }
 
 .brandMark {
-  display: grid;
   width: 34px;
   height: 34px;
-  place-items: center;
   border-radius: 7px;
-  background: #172235;
-  color: #f4c763;
-  font-size: 0.85rem;
-  font-weight: 800;
+  object-fit: cover;
 }
 
 .stage {

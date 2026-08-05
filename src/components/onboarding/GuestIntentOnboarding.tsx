@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Alert,
@@ -281,7 +282,13 @@ export default function GuestIntentOnboarding() {
       size={!searchTarget && !createTarget ? 'xl' : 'lg'}
       title={(
         <div className={styles.brand}>
-          <span className={styles.brandMark} aria-hidden="true">BIQ</span>
+          <Image
+            className={styles.brandMark}
+            src="/icon-192.png"
+            alt="BracketIQ app icon"
+            width={34}
+            height={34}
+          />
           <span>BracketIQ onboarding</span>
         </div>
       )}
