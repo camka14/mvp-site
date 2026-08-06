@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   Alert,
@@ -79,6 +79,23 @@ export function FeedbackForm({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<CreateFeedbackResponse | null>(null);
   const [copied, setCopied] = useState(false);
+  const feedbackTypeLabelId = useId();
+  const contactEmailTouched = useRef(Boolean(draft?.contactEmail?.trim()));
+
+  useEffect(() => {
+    const nextEmail = authenticatedEmail?.trim();
+    if (!nextEmail || contactEmailTouched.current) return;
+
+    setForm((previous) => {
+      if (previous.contactEmail.trim()) {
+        contactEmailTouched.current = true;
+        return previous;
+      }
+      const next = { ...previous, contactEmail: nextEmail };
+      onDraftChange?.(next);
+      return next;
+    });
+  }, [authenticatedEmail, onDraftChange]);
 
   const contextLabel = useMemo(() => {
     if (form.type === 'BUG') return 'What did you expect to happen?';
@@ -87,6 +104,7 @@ export function FeedbackForm({
   }, [form.type]);
 
   const updateForm = <K extends keyof FeedbackFormDraft>(key: K, value: FeedbackFormDraft[K]) => {
+    if (key === 'contactEmail') contactEmailTouched.current = true;
     setForm((previous) => {
       const next = { ...previous, [key]: value };
       onDraftChange?.(next);
@@ -96,6 +114,7 @@ export function FeedbackForm({
 
   const resetForAnother = () => {
     const next = initialFormState(authenticatedEmail);
+    contactEmailTouched.current = false;
     setForm(next);
     onDraftChange?.(next);
     setError(null);
@@ -124,7 +143,7 @@ export function FeedbackForm({
     const input: CreateFeedbackRequest = {
       type: form.type,
       message: form.message,
-      additionalContext: form.additionalContext,
+      ...(form.type === 'GENERAL' ? {} : { additionalContext: form.additionalContext }),
       allowContact: form.allowContact,
       contactEmail: form.allowContact ? form.contactEmail : undefined,
       sourcePath,
@@ -208,12 +227,24 @@ export function FeedbackForm({
         {error ? <Alert color="red" role="alert">{error}</Alert> : null}
 
         <div>
-          <Text component="span" size="sm" fw={500}>What kind of feedback is this?</Text>
+          <Text id={feedbackTypeLabelId} component="span" size="sm" fw={500}>What kind of feedback is this?</Text>
           <SegmentedControl
             fullWidth
             mt={6}
+            aria-labelledby={feedbackTypeLabelId}
             value={form.type}
-            onChange={(value) => updateForm('type', value as FeedbackSubmissionType)}
+            onChange={(value) => {
+              const nextType = value as FeedbackSubmissionType;
+              setForm((previous) => {
+                const next = {
+                  ...previous,
+                  type: nextType,
+                  ...(nextType === 'GENERAL' ? { additionalContext: '' } : {}),
+                };
+                onDraftChange?.(next);
+                return next;
+              });
+            }}
             data={[
               { label: 'Bug', value: 'BUG' },
               { label: 'Idea', value: 'IDEA' },

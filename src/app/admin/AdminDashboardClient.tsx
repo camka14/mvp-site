@@ -1005,6 +1005,13 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     router.replace(`/admin?${nextParams.toString()}`, { scroll: false });
   }, [router, searchParams]);
 
+  const handleFeedbackDeepLinkConsumed = useCallback(() => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (!nextParams.has('id')) return;
+    nextParams.delete('id');
+    router.replace(`/admin?${nextParams.toString()}`, { scroll: false });
+  }, [router, searchParams]);
+
   useEffect(() => {
     void loadDashboardCounts();
   }, [loadDashboardCounts]);
@@ -1472,6 +1479,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                     initialId={feedbackId}
                     openCount={dashboardCounts?.feedback}
                     onOpenCountChange={() => { void loadDashboardCounts(); }}
+                    onInitialIdConsumed={handleFeedbackDeepLinkConsumed}
                   />
                 ) : null}
               </Tabs.Panel>

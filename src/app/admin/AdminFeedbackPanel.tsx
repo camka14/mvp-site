@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Alert,
@@ -74,6 +74,7 @@ export type AdminFeedbackPanelProps = {
   initialId?: string | null;
   openCount?: number;
   onOpenCountChange?: () => void;
+  onInitialIdConsumed?: () => void;
 };
 
 export default function AdminFeedbackPanel({
@@ -81,6 +82,7 @@ export default function AdminFeedbackPanel({
   initialId,
   openCount,
   onOpenCountChange,
+  onInitialIdConsumed,
 }: AdminFeedbackPanelProps) {
   const [items, setItems] = useState<AdminFeedbackItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -97,31 +99,44 @@ export default function AdminFeedbackPanel({
   const [draftNotes, setDraftNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const initialIdRequest = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!initialId) initialIdRequest.current = null;
+  }, [initialId]);
 
   const loadFeedback = useCallback(async (nextPage = 1, queryOverride = appliedQuery) => {
     setLoading(true);
     setError(null);
+    const shouldLoadInitialId = nextPage === 1
+      && Boolean(initialId)
+      && initialIdRequest.current !== initialId;
+    if (shouldLoadInitialId && initialId) {
+      initialIdRequest.current = initialId;
+    }
     try {
       const params = new URLSearchParams({ page: String(nextPage), pageSize: '25' });
       if (type) params.set('type', type);
       if (status) params.set('status', status);
       if (queryOverride.trim()) params.set('query', queryOverride.trim());
-      if (nextPage === 1 && initialId) params.set('id', initialId);
+      if (shouldLoadInitialId && initialId) params.set('id', initialId);
       const result = await apiRequest<FeedbackListResponse>(`/api/admin/feedback?${params.toString()}`);
       setItems(Array.isArray(result?.items) ? result.items : []);
       setTotal(Number(result?.total ?? 0));
       setPage(Number(result?.page ?? nextPage));
       setTotalPages(Number(result?.totalPages ?? 0));
-      if (initialId) {
+      if (shouldLoadInitialId && initialId) {
         const initialItem = (Array.isArray(result?.items) ? result.items : []).find((item) => item.id === initialId);
         if (initialItem) setSelected(initialItem);
+        onInitialIdConsumed?.();
       }
     } catch (loadError) {
+      if (shouldLoadInitialId && initialId) initialIdRequest.current = null;
       setError(loadError instanceof Error ? loadError.message : 'Unable to load feedback.');
     } finally {
       setLoading(false);
     }
-  }, [appliedQuery, initialId, status, type]);
+  }, [appliedQuery, initialId, onInitialIdConsumed, status, type]);
 
   useEffect(() => {
     if (active) void loadFeedback(1);

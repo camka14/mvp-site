@@ -31,9 +31,9 @@ const item: AdminFeedbackItem = {
 
 const listResponse = { items: [item], total: 1, page: 1, pageSize: 25, totalPages: 1 };
 
-const renderPanel = () => render(
+const renderPanel = (props: Partial<React.ComponentProps<typeof AdminFeedbackPanel>> = {}) => render(
   <MantineProvider>
-    <AdminFeedbackPanel active openCount={1} />
+    <AdminFeedbackPanel active openCount={1} {...props} />
   </MantineProvider>,
 );
 
@@ -74,6 +74,22 @@ describe('AdminFeedbackPanel', () => {
     await waitFor(() => expect(apiRequestMock).toHaveBeenLastCalledWith(
       '/api/admin/feedback/feedback_1',
       expect.objectContaining({ method: 'PATCH', body: { status: 'IN_REVIEW', reviewNotes: 'Reviewed.' } }),
+    ));
+  });
+
+  it('uses a deep-link id only for the initial request', async () => {
+    const user = userEvent.setup();
+    apiRequestMock.mockResolvedValue(listResponse as never);
+    renderPanel({ initialId: 'feedback_1' });
+
+    expect(await screen.findByText(/schedule button does not save/i)).toBeInTheDocument();
+    expect(apiRequestMock).toHaveBeenLastCalledWith(
+      '/api/admin/feedback?page=1&pageSize=25&id=feedback_1',
+    );
+
+    await user.click(screen.getByRole('button', { name: /apply filters/i }));
+    await waitFor(() => expect(apiRequestMock).toHaveBeenLastCalledWith(
+      '/api/admin/feedback?page=1&pageSize=25',
     ));
   });
 

@@ -35,11 +35,42 @@ describe('FeedbackForm', () => {
     const user = userEvent.setup();
     renderForm();
 
+    expect(screen.getByLabelText(/what kind of feedback is this/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/what did you expect/i)).not.toBeInTheDocument();
     await user.click(screen.getByText('Bug'));
     expect(screen.getByLabelText(/what did you expect/i)).toBeInTheDocument();
     await user.click(screen.getByText('Idea'));
     expect(screen.getByLabelText(/what are you trying to accomplish/i)).toBeInTheDocument();
+  });
+
+  it('uses a unique accessible label id for each form instance', () => {
+    render(
+      <MantineProvider>
+        <FeedbackForm entrySource="standalone_page" />
+        <FeedbackForm entrySource="desktop_header" />
+      </MantineProvider>,
+    );
+
+    const labelIds = screen
+      .getAllByLabelText(/what kind of feedback is this/i)
+      .map((control) => control.getAttribute('aria-labelledby'));
+    expect(new Set(labelIds).size).toBe(2);
+  });
+
+  it('does not submit hidden context after switching to General', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.click(screen.getByText('Bug'));
+    await user.type(screen.getByLabelText(/what did you expect/i), 'I expected the selected court to remain visible.');
+    await user.click(screen.getByText('General'));
+    await user.type(screen.getByLabelText(/your feedback/i), 'Please make the schedule easier to scan.');
+    await user.click(screen.getByRole('button', { name: /send feedback/i }));
+
+    await waitFor(() => expect(createFeedbackMock).toHaveBeenCalled());
+    const submittedInput = createFeedbackMock.mock.calls[createFeedbackMock.mock.calls.length - 1]?.[0];
+    expect(submittedInput).toEqual(expect.objectContaining({ type: 'GENERAL' }));
+    expect(submittedInput).not.toHaveProperty('additionalContext');
   });
 
   it('keeps fields editable after a recoverable request error', async () => {
@@ -79,6 +110,20 @@ describe('FeedbackForm', () => {
       allowContact: false,
       contactEmail: undefined,
     })));
+  });
+
+  it('applies authenticated email that arrives after the form mounts', async () => {
+    const user = userEvent.setup();
+    const view = renderForm();
+
+    view.rerender(
+      <MantineProvider>
+        <FeedbackForm entrySource="standalone_page" authenticatedEmail="member@example.com" />
+      </MantineProvider>,
+    );
+    await user.click(screen.getByLabelText(/contact me/i));
+
+    expect(screen.getByLabelText(/email address/i)).toHaveValue('member@example.com');
   });
 
   it('shows validation, loading, success, and send-another states', async () => {
