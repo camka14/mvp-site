@@ -1,3 +1,5 @@
+import { isAffiliateSportBlacklisted } from './affiliateSportMapping';
+
 export type AffiliateSportCatalogRow = {
   id: string;
   name: string;
@@ -72,6 +74,16 @@ export const analyzeAffiliateSportQuality = (input: {
         canonicalSuggestion: null,
         code: 'SPORT_NAME_REQUIRED',
         message: 'Every affiliate candidate and source organization requires a sport name.',
+      });
+      return;
+    }
+    if (isAffiliateSportBlacklisted(sportName)) {
+      issues.push({
+        ...subject,
+        sportName,
+        canonicalSuggestion: null,
+        code: 'SPORT_NOT_IN_CATALOG',
+        message: `The sport ${sportName} is blacklisted because BracketIQ does not support tournament or league scoring for it.`,
       });
       return;
     }

@@ -11,6 +11,24 @@ const canonicalSportNamesByLowercase = new Map(
   canonicalSportNames.map((name) => [name.toLowerCase(), name]),
 );
 
+export const BLACKLISTED_AFFILIATE_SPORT_NAMES = [
+  'Cheerleading',
+  'Dance',
+  'Running',
+  'Swimming',
+  'Track and Field',
+  'Golf',
+] as const;
+
+const blacklistedAffiliateSportNameSet = new Set(
+  BLACKLISTED_AFFILIATE_SPORT_NAMES.map((name) => name.toLowerCase()),
+);
+
+export const isAffiliateSportBlacklisted = (value: unknown): boolean => (
+  typeof value === 'string'
+    && blacklistedAffiliateSportNameSet.has(value.trim().toLowerCase())
+);
+
 export type AffiliateAgentSportIssue = {
   path: string;
   sportName: string | null;
@@ -37,6 +55,15 @@ export const validateAffiliateAgentSportName = (
       canonicalSuggestion: null,
       code: 'SPORT_NAME_REQUIRED',
       message: 'Executable affiliate mappings require an exact canonical sport name.',
+    };
+  }
+  if (isAffiliateSportBlacklisted(sportName)) {
+    return {
+      path,
+      sportName,
+      canonicalSuggestion: null,
+      code: 'SPORT_NOT_IN_CATALOG',
+      message: `The sport ${sportName} is blacklisted because BracketIQ does not support tournament or league scoring for it. Send it to human review; do not add it to the catalog or replace it with another sport.`,
     };
   }
   if (canonicalSportNameSet.has(sportName)) return null;

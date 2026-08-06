@@ -78,7 +78,7 @@ const DEFAULT_SPORT_AGE_CUTOFF: SportAgeCutoffRule = {
 const SPORT_AGE_CUTOFFS: SportCutoffCatalog[] = [
   {
     sportKey: 'soccer',
-    aliases: ['soccer', 'futbol'],
+    aliases: ['soccer', 'futbol', 'futsal'],
     rule: {
       month: 8,
       day: 1,
@@ -246,6 +246,71 @@ const BEACH_GRASS_VOLLEYBALL_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
   { id: 'c', name: 'C', ratingType: 'SKILL' },
 ];
 
+const FIELD_TEAM_AGE_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'u10', name: 'U10', ratingType: 'AGE' },
+  { id: 'u12', name: 'U12', ratingType: 'AGE' },
+  { id: 'u14', name: 'U14', ratingType: 'AGE' },
+  { id: 'u16', name: 'U16', ratingType: 'AGE' },
+  { id: 'u18', name: 'U18', ratingType: 'AGE' },
+  { id: '18plus', name: '18+', ratingType: 'AGE' },
+  { id: '25plus', name: '25+', ratingType: 'AGE' },
+  { id: '35plus', name: '35+', ratingType: 'AGE' },
+];
+
+const FIELD_HOCKEY_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'recreational', name: 'Recreational', ratingType: 'SKILL' },
+  { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
+  { id: 'premier', name: 'Premier', ratingType: 'SKILL' },
+  { id: 'elite', name: 'Elite', ratingType: 'SKILL' },
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+];
+
+const LACROSSE_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'recreational', name: 'Recreational', ratingType: 'SKILL' },
+  { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
+  { id: 'club', name: 'Club', ratingType: 'SKILL' },
+  { id: 'elite', name: 'Elite', ratingType: 'SKILL' },
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+];
+
+const AUSTRALIAN_FOOTBALL_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'recreational', name: 'Recreational', ratingType: 'SKILL' },
+  { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
+  { id: 'premier', name: 'Premier', ratingType: 'SKILL' },
+  { id: 'elite', name: 'Elite', ratingType: 'SKILL' },
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+];
+
+const BALL_HOCKEY_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'recreational', name: 'Recreational', ratingType: 'SKILL' },
+  { id: 'b', name: 'B', ratingType: 'SKILL' },
+  { id: 'a', name: 'A', ratingType: 'SKILL' },
+  { id: 'aa', name: 'AA', ratingType: 'SKILL' },
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+];
+
+const FUTSAL_SKILL_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: 'recreational', name: 'Recreational', ratingType: 'SKILL' },
+  { id: 'competitive', name: 'Competitive', ratingType: 'SKILL' },
+  { id: 'premier', name: 'Premier', ratingType: 'SKILL' },
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+];
+
+const TABLE_TENNIS_DIVISION_TYPES: DivisionTypeSeed[] = [
+  { id: '12u', name: 'U12', ratingType: 'AGE' },
+  { id: '14u', name: 'U14', ratingType: 'AGE' },
+  { id: '16u', name: 'U16', ratingType: 'AGE' },
+  { id: '18u', name: 'U18', ratingType: 'AGE' },
+  { id: '18plus', name: '18+', ratingType: 'AGE' },
+  { id: '40plus', name: '40+', ratingType: 'AGE' },
+  { id: '50plus', name: '50+', ratingType: 'AGE' },
+  { id: '60plus', name: '60+', ratingType: 'AGE' },
+  { id: 'beginner', name: 'Beginner', ratingType: 'SKILL' },
+  { id: 'intermediate', name: 'Intermediate', ratingType: 'SKILL' },
+  { id: 'advanced', name: 'Advanced', ratingType: 'SKILL' },
+  { id: 'open', name: 'Open', ratingType: 'SKILL' },
+];
+
 // Sources used when assembling the defaults:
 // - US Youth Soccer (U6-U19 age group format)
 // - USA Volleyball (indoor club tiers and beach/grass letter tiers + youth age groups)
@@ -357,6 +422,36 @@ const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
       { id: 'c', name: 'C', ratingType: 'SKILL' },
       { id: 'open', name: 'Open', ratingType: 'SKILL' },
     ],
+  },
+  {
+    sportKey: 'field_hockey',
+    aliases: ['field hockey'],
+    options: [...FIELD_TEAM_AGE_DIVISION_TYPES, ...FIELD_HOCKEY_SKILL_DIVISION_TYPES],
+  },
+  {
+    sportKey: 'lacrosse',
+    aliases: ['lacrosse'],
+    options: [...FIELD_TEAM_AGE_DIVISION_TYPES, ...LACROSSE_SKILL_DIVISION_TYPES],
+  },
+  {
+    sportKey: 'australian_football',
+    aliases: ['australian football', 'australian rules football'],
+    options: [...FIELD_TEAM_AGE_DIVISION_TYPES, ...AUSTRALIAN_FOOTBALL_SKILL_DIVISION_TYPES],
+  },
+  {
+    sportKey: 'ball_hockey',
+    aliases: ['ball hockey'],
+    options: [...FIELD_TEAM_AGE_DIVISION_TYPES, ...BALL_HOCKEY_SKILL_DIVISION_TYPES],
+  },
+  {
+    sportKey: 'futsal',
+    aliases: ['futsal'],
+    options: [...FIELD_TEAM_AGE_DIVISION_TYPES, ...FUTSAL_SKILL_DIVISION_TYPES],
+  },
+  {
+    sportKey: 'table_tennis',
+    aliases: ['table tennis', 'ping pong'],
+    options: TABLE_TENNIS_DIVISION_TYPES,
   },
   {
     sportKey: 'baseball',

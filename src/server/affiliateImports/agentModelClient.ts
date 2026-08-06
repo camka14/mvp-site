@@ -79,6 +79,7 @@ export const AFFILIATE_MAPPING_SYSTEM_PROMPT = [
   'Never create a TEAM mapping or TEAM candidate; represent an organization or its programs as CLUB or EVENT as supported by evidence.',
   'Never invent dates, action URLs, locations, prices, divisions, tags, or logos.',
   'Every executable candidate sportName and every value in sportNames must exactly match a current BracketIQ Sports.name value, including capitalization and surface.',
+  'Cheerleading, Dance, Running, Swimming, Track and Field, and Golf are blacklisted. Never emit them as executable sport values; preserve the source evidence and route the candidate to human review.',
   'For a regular or weekly event that contains several source-backed sports, set sportNames to the complete ordered canonical list and set sportName to its first value.',
   'Do not emit generic Soccer or Volleyball when the source does not establish Indoor, Grass, or Beach. Preserve the source label and return INSUFFICIENT_EVIDENCE for human review instead of guessing.',
   'Do not emit composite labels such as Multi-sport or Baseball & Fastpitch Softball as a sport. Return INSUFFICIENT_EVIDENCE unless the source supports separate canonical sport candidates.',

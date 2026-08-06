@@ -1231,6 +1231,12 @@ export enum Sports {
   Pickleball = 'Pickleball',
   Football = 'Football',
   Hockey = 'Hockey',
+  FieldHockey = 'Field Hockey',
+  Lacrosse = 'Lacrosse',
+  AustralianFootball = 'Australian Football',
+  BallHockey = 'Ball Hockey',
+  Futsal = 'Futsal',
+  TableTennis = 'Table Tennis',
   Baseball = 'Baseball',
   Other = 'Other',
 }

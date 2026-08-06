@@ -51,6 +51,22 @@ describe('affiliate sport quality', () => {
     },
   );
 
+  it('routes blacklisted sports to catalog review even when the source label is exact', () => {
+    const result = analyzeAffiliateSportQuality({
+      candidates: [candidate('Golf')],
+      organization: organization(['Golf']),
+      catalog: [...catalog, { id: 'Golf', name: 'Golf' }],
+    });
+    expect(result.passed).toBe(false);
+    expect(result.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'SPORT_NOT_IN_CATALOG',
+        sportName: 'Golf',
+        message: expect.stringContaining('blacklisted'),
+      }),
+    ]));
+  });
+
   it('reports a deterministic repair when only canonical spelling or casing is wrong', () => {
     const result = analyzeAffiliateSportQuality({
       candidates: [candidate('indoor volleyball')],

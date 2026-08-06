@@ -108,6 +108,68 @@ describe('default sports', () => {
     ]);
   });
 
+  it('seeds the remaining scoreable team sports with sport-specific divisions and rules', async () => {
+    const createMany = jest.fn().mockResolvedValue(undefined);
+    const findMany = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const client = {
+      sports: { findMany, createMany, update: jest.fn() },
+    };
+
+    await ensureDefaultSports(client as any);
+
+    const seeded = createMany.mock.calls[0][0].data;
+    const expected = {
+      'Field Hockey': {
+        scoringModel: 'PERIODS',
+        skillNames: ['Recreational', 'Competitive', 'Premier', 'Elite', 'Open'],
+      },
+      Lacrosse: {
+        scoringModel: 'PERIODS',
+        skillNames: ['Recreational', 'Competitive', 'Club', 'Elite', 'Open'],
+      },
+      'Australian Football': {
+        scoringModel: 'PERIODS',
+        skillNames: ['Recreational', 'Competitive', 'Premier', 'Elite', 'Open'],
+      },
+      'Ball Hockey': {
+        scoringModel: 'PERIODS',
+        skillNames: ['Recreational', 'B', 'A', 'AA', 'Open'],
+      },
+      Futsal: {
+        scoringModel: 'PERIODS',
+        skillNames: ['Recreational', 'Competitive', 'Premier', 'Open'],
+      },
+      'Table Tennis': {
+        scoringModel: 'SETS',
+        skillNames: ['Beginner', 'Intermediate', 'Advanced', 'Open'],
+      },
+    };
+
+    Object.entries(expected).forEach(([name, configuration]) => {
+      const sport = seeded.find((row: any) => row.id === name);
+      expect(sport).toMatchObject({ id: name, name });
+      expect(sport.skillDivisionTypes.map((option: any) => option.name)).toEqual(configuration.skillNames);
+      expect(sport.matchRulesTemplate).toMatchObject({ scoringModel: configuration.scoringModel });
+      expect(sport.officialPositionTemplates.length).toBeGreaterThan(0);
+    });
+
+    const australianFootball = seeded.find((row: any) => row.id === 'Australian Football');
+    expect(australianFootball.matchRulesTemplate.incidentTypeDefinitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'GOAL', linkedPointDelta: 6 }),
+        expect.objectContaining({ code: 'BEHIND', linkedPointDelta: 1 }),
+      ]),
+    );
+    const tableTennis = seeded.find((row: any) => row.id === 'Table Tennis');
+    expect(tableTennis.matchRulesTemplate).toMatchObject({
+      segmentCount: 5,
+      setPointTargets: [11, 11, 11, 11, 11],
+    });
+  });
+
   it('prefers the row whose stable ID already matches the canonical name', () => {
     const duplicateWithMoreConfiguration = {
       id: 'sport_indoor_volleyball_duplicate',
