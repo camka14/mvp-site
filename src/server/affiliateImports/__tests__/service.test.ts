@@ -196,6 +196,20 @@ describe('affiliate import service', () => {
     });
   });
 
+  it('loads the full needs-review candidate queue for admin repair', async () => {
+    prismaMock.affiliateImportCandidates.findMany.mockResolvedValue([]);
+
+    await listAffiliateCandidates({ status: 'needs_review' });
+
+    expect(prismaMock.affiliateImportCandidates.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'NEEDS_REVIEW',
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 500,
+    });
+  });
+
   it('returns the latest scrape rejection details with each affiliate source', async () => {
     prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([{
       id: 'source_1',

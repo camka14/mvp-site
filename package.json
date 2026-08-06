@@ -31,6 +31,7 @@
     "affiliate:scrape:due:dry-run": "tsx scripts/run-due-affiliate-scrapes.ts --dry-run --no-email",
     "affiliate:repair:coordinates": "tsx scripts/repair-affiliate-location-coordinates.ts",
     "affiliate:repair:discovered-clubs": "tsx scripts/repair-affiliate-discovered-club-candidates.ts",
+    "affiliate:repair:invalid-club-sports": "tsx scripts/repair-affiliate-invalid-club-sports.ts",
     "affiliate:intakes:process": "tsx scripts/process-affiliate-source-intakes.ts",
     "affiliate:intakes:recover-stale": "tsx scripts/recover-stale-affiliate-source-intake-runs.ts",
     "affiliate:intake:benchmark": "tsx scripts/benchmark-affiliate-intake-providers.ts",

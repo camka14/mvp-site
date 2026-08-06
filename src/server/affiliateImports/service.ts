@@ -2557,7 +2557,9 @@ export const listAffiliateCandidates = async (params: { status?: string | null; 
   return candidates.findMany({
     where,
     orderBy: { updatedAt: 'desc' },
-    take: 100,
+    take: status
+      ? status.toUpperCase() === 'PUBLISHED' ? 100 : 500
+      : 100,
   });
 };
 

@@ -45,6 +45,17 @@ that do not have enough source evidence.
   use the canonical source organization and have a city, valid organization
   coordinates, natural organization description, website, logo, and repair
   provenance. The canonical CLUB publication regression test passes.
+- [x] (2026-08-06 03:30 UTC) Found that the admin Candidates tab requested only
+  DISCOVERED and PUBLISHED rows, hiding the 144 CLUB rows in NEEDS_REVIEW. Added
+  a NEEDS_REVIEW view and expanded the review result limit to 500 so the full
+  current queue is visible.
+- [x] (2026-08-06 04:00 UTC) Added the guarded historical CLUB sport repair
+  script and applied 37 source-backed repairs in one live transaction. Each
+  repaired candidate now has canonical sportNames, its unpublished target has
+  the same sports array, the sport warning is removed, and the candidate status
+  is DISCOVERED.
+- [ ] Deploy the admin UI and repair-script changes. Deployment remains a
+  separate operator action because it was not requested in this turn.
 
 ## Surprises & Discoveries
 
@@ -81,6 +92,15 @@ that do not have enough source evidence.
   reviewed seven-file package. Its only original approval blocker was an
   obsolete local-only live guard.
 
+- Observation: The Candidates tab count was not the total candidate count.
+  Evidence: The live database contained 144 CLUB rows with status NEEDS_REVIEW,
+  while the UI requested only status DISCOVERED and showed six CLUB rows.
+
+- Observation: The source-backed repair set was safe to apply without
+  publishing anything. Evidence: the live dry run found 37 eligible rows, no
+  published rows, no owned targets, and no public pages. Post-apply validation
+  found 37 repaired rows with zero sport-array or warning mismatches.
+
 ## Decision Log
 
 - Decision: Do not create synthetic approved reviews for historical mappings.
@@ -108,6 +128,13 @@ that do not have enough source evidence.
   URL and then resolves that exact address or city.
   Date/Author: 2026-08-04 / Codex
 
+- Decision: Repair only labels with deterministic source-backed canonical
+  sports. Leave generic directories, ticket services, blacklisted activities,
+  and sportless profiles in NEEDS_REVIEW.
+  Rationale: Replacing a generic label with `Other` or guessing a sport would
+  make the public organization data appear complete without evidence.
+  Date/Author: 2026-08-06 / Codex
+
 ## Outcomes & Retrospective
 
 The guarded live candidate repair updated ten rows and was idempotent. A second
@@ -124,6 +151,13 @@ shared branch, and returned through the standard bounded retry classifier. At
 the final snapshot, six target packages were claimed, three were queued, and
 one was `REVIEW_REQUIRED` with its approval actively claimed. These are active
 queue tasks, not unresolved data defects.
+
+The current sport remediation adds 37 source-backed CLUB repairs. The live
+database now has 42 discovered CLUB candidates, 108 CLUB candidates still in
+NEEDS_REVIEW, and 878 published CLUB candidates. Twelve CLUB rows still use a
+noncanonical or missing sport label because the stored evidence does not
+support a safe replacement. The admin UI now exposes those rows through an
+explicit NEEDS_REVIEW view, but that UI change is not live until deployment.
 
 The focused validation passed 62 tests across the service, full-review,
 source-queue, and Albion packages. The repair-classifier suite passed 18 tests.

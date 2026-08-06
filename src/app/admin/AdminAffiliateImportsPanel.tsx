@@ -181,6 +181,7 @@ const listingKindOptions = [
 
 const candidateStatusViewOptions = [
   { value: 'DISCOVERED', label: 'Discovered' },
+  { value: 'NEEDS_REVIEW', label: 'Needs review' },
   { value: 'PUBLISHED', label: 'Published' },
 ];
 
@@ -272,7 +273,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
   const [candidates, setCandidates] = useState<AdminAffiliateCandidateRow[]>([]);
   const [affiliateTab, setAffiliateTab] = useState<'intake' | 'humanReview' | 'sources' | 'candidates'>('sources');
   const [requestedIntakeId, setRequestedIntakeId] = useState<string | null>(null);
-  const [candidateStatusView, setCandidateStatusView] = useState<'DISCOVERED' | 'PUBLISHED'>('DISCOVERED');
+  const [candidateStatusView, setCandidateStatusView] = useState<'DISCOVERED' | 'NEEDS_REVIEW' | 'PUBLISHED'>('DISCOVERED');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scrapingSourceIds, setScrapingSourceIds] = useState<string[]>([]);
@@ -833,7 +834,7 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
               data={candidateStatusViewOptions}
               value={candidateStatusView}
               onChange={(value) => {
-                const nextView = value === 'PUBLISHED' ? 'PUBLISHED' : 'DISCOVERED';
+                const nextView = value === 'PUBLISHED' || value === 'NEEDS_REVIEW' ? value : 'DISCOVERED';
                 setCandidateStatusView(nextView);
                 setSelectedCandidateIds([]);
                 setSelectedCandidate(null);
@@ -1013,7 +1014,9 @@ export default function AdminAffiliateImportsPanel({ active, refreshKey }: Admin
                     <Text size="sm" c="dimmed">
                       {candidateStatusView === 'PUBLISHED'
                         ? 'No published affiliate candidates yet.'
-                        : 'No discovered affiliate candidates yet.'}
+                        : candidateStatusView === 'NEEDS_REVIEW'
+                          ? 'No affiliate candidates need review.'
+                          : 'No discovered affiliate candidates yet.'}
                     </Text>
                   </Table.Td>
                 </Table.Tr>
