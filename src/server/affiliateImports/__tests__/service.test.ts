@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 const prismaMock = {
+  $transaction: jest.fn(),
   affiliateImportCandidates: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
@@ -91,7 +92,9 @@ jest.mock('@/server/timeZones', () => ({
 
 import {
   approveAffiliateSourceAutomation,
+  buildAffiliateCandidateDedupeKey,
   deleteAffiliateCandidate,
+  enrichAffiliateCandidatesWithDetailPages,
   listAffiliateCandidates,
   listAffiliateSources,
   publishAffiliateCandidate,
@@ -122,10 +125,22 @@ const canonicalSportNames = new Set([
   'Other',
 ]);
 
+const currentScheduledDateTimeProvenance = (timeZone: string) => ({
+  normalizedImport: {
+    dateTime: {
+      contractVersion: 1,
+      startPrecision: 'DATE_TIME',
+      timeZone,
+      timeZoneEvidence: 'COORDINATES',
+    },
+  },
+});
+
 describe('affiliate import service', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     idCounter = 0;
+    prismaMock.$transaction.mockImplementation(async (callback: (client: typeof prismaMock) => unknown) => callback(prismaMock));
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.6765, 45.5231]);
     tryResolveTimeZoneFromCoordinatesMock.mockReturnValue('America/Los_Angeles');
     prismaMock.divisions.findMany.mockResolvedValue([]);
@@ -914,7 +929,11 @@ describe('affiliate import service', () => {
       address: '819 NW Corporate Dr, Troutdale, OR 97060',
       startsAt: new Date('2099-07-01T18:00:00.000Z'),
       endsAt: null,
-      timeZone: null,
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       scheduleText: 'Friday and Sunday games.',
       priceText: '$850 per team.',
       statusText: 'Confirm current session.',
@@ -974,6 +993,343 @@ describe('affiliate import service', () => {
       hostId: null,
       organizationId: 'org_troutdale',
     }));
+  });
+
+  it('re-normalizes a timezone-less legacy event from preserved source datetime text before publication', async () => {
+    geocodeAddressToCoordinatesMock.mockResolvedValue([-122.6765, 45.5231]);
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_legacy_rose_city',
+      sourceId: 'source_rose_city',
+      listingKind: 'EVENT',
+      title: 'Rose City Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: new Date('2099-08-11T02:30:00.000Z'),
+      endsAt: null,
+      timeZone: null,
+      dateDisplayMode: 'SCHEDULED',
+      officialActionUrl: 'https://example.com/rose-city-open-gym',
+      sourceUrl: 'https://example.com/rose-city-open-gym',
+      rawPayload: {
+        rawExtractedFields: {
+          startsAt: 'August 10, 2099 9:30 PM',
+        },
+      },
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_legacy_rose_city' });
+
+    await publishAffiliateCandidate('candidate_legacy_rose_city', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        start: new Date('2099-08-11T04:30:00.000Z'),
+        timeZone: 'America/Los_Angeles',
+      }),
+    });
+  });
+
+  it('repairs valid-timezone legacy timestamps and persists the corrected candidate identity', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_legacy_valid_zone',
+      sourceId: 'source_rose_city',
+      listingKind: 'EVENT',
+      title: 'Rose City Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: new Date('2099-08-11T02:30:00.000Z'),
+      endsAt: new Date('2099-08-11T04:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      dateDisplayMode: 'SCHEDULED',
+      officialActionUrl: 'https://example.com/rose-city-open-gym',
+      sourceUrl: 'https://example.com/rose-city-open-gym',
+      dedupeKey: 'legacy-dedupe-key',
+      rawPayload: {
+        rawExtractedFields: {
+          startsAt: 'August 10, 2099 9:30 PM',
+        },
+      },
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_legacy_valid_zone' });
+
+    await publishAffiliateCandidate('candidate_legacy_valid_zone', { publishedByUserId: 'admin_1' });
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        start: new Date('2099-08-11T04:30:00.000Z'),
+        end: null,
+        timeZone: 'America/Los_Angeles',
+      }),
+    });
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: 'candidate_legacy_valid_zone' },
+      data: expect.objectContaining({
+        startsAt: new Date('2099-08-11T04:30:00.000Z'),
+        endsAt: null,
+        timeZone: 'America/Los_Angeles',
+        dedupeKey: buildAffiliateCandidateDedupeKey(
+          'source_rose_city',
+          {
+            listingKind: 'EVENT',
+            title: 'Rose City Open Gym',
+            startsAt: '2099-08-11T04:30:00.000Z',
+            officialActionUrl: 'https://example.com/rose-city-open-gym',
+            sourceUrl: 'https://example.com/rose-city-open-gym',
+          },
+        ),
+        rawPayload: expect.objectContaining({
+          normalizedImport: expect.objectContaining({
+            dateTime: expect.objectContaining({
+              timeZone: 'America/Los_Angeles',
+              timeZoneEvidence: 'COORDINATES',
+            }),
+          }),
+        }),
+      }),
+    });
+  });
+
+  it('does not trust a stored start when only timezone text was preserved', async () => {
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_missing_start_provenance',
+      sourceId: 'source_rose_city',
+      listingKind: 'EVENT',
+      title: 'Rose City Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: new Date('2099-08-11T02:30:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      dateDisplayMode: 'SCHEDULED',
+      officialActionUrl: 'https://example.com/rose-city-open-gym',
+      sourceUrl: 'https://example.com/rose-city-open-gym',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+      },
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+
+    await expect(publishAffiliateCandidate('candidate_missing_start_provenance')).rejects.toThrow(
+      'preserved source datetime text or current normalized datetime provenance',
+    );
+
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateImportCandidates.update).not.toHaveBeenCalled();
+  });
+
+  it('resolves publication coordinates before opening the database transaction', async () => {
+    const candidate = {
+      id: 'candidate_prepared_locations',
+      sourceId: 'source_rose_city',
+      listingKind: 'EVENT',
+      title: 'Rose City Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: new Date('2099-08-11T04:30:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      dateDisplayMode: 'SCHEDULED',
+      officialActionUrl: 'https://example.com/rose-city-open-gym',
+      sourceUrl: 'https://example.com/rose-city-open-gym',
+      rawPayload: {
+        dateTimeInputs: {
+          startsAt: 'August 10, 2099 9:30 PM',
+          timeZone: 'America/Los_Angeles',
+        },
+      },
+    };
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(candidate);
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_rose_city',
+      name: 'Rose City Volleyball',
+    });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ id: 'generated_prepared', ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: candidate.id });
+
+    let geocodeCallsAtTransactionStart = -1;
+    prismaMock.$transaction.mockImplementation(async (callback: (client: typeof prismaMock) => unknown) => {
+      geocodeCallsAtTransactionStart = geocodeAddressToCoordinatesMock.mock.calls.length;
+      return callback(prismaMock);
+    });
+
+    await publishAffiliateCandidate(candidate.id);
+
+    expect(geocodeCallsAtTransactionStart).toBeGreaterThan(0);
+    expect(geocodeAddressToCoordinatesMock.mock.calls.length).toBe(geocodeCallsAtTransactionStart);
+  });
+
+  it('fails closed when datetime repair references a missing mapping', async () => {
+    const candidate = {
+      id: 'candidate_missing_mapping',
+      sourceId: 'source_rose_city',
+      mappingId: 'mapping_missing',
+      listingKind: 'EVENT',
+      title: 'Rose City Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: new Date('2099-08-11T02:30:00.000Z'),
+      timeZone: null,
+      dateDisplayMode: 'SCHEDULED',
+      officialActionUrl: 'https://example.com/rose-city-open-gym',
+      sourceUrl: 'https://example.com/rose-city-open-gym',
+      rawPayload: {
+        rawExtractedFields: {
+          startsAt: 'August 10, 2099 9:30 PM',
+        },
+      },
+    };
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(candidate);
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue(null);
+
+    await expect(publishAffiliateCandidate(candidate.id)).rejects.toThrow(
+      'references missing mapping mapping_missing',
+    );
+
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateImportCandidates.update).not.toHaveBeenCalled();
+  });
+
+  it('checks datetime-repair dedupe collisions before creating a published event', async () => {
+    const candidate = {
+      id: 'candidate_collision_source',
+      sourceId: 'source_rose_city',
+      listingKind: 'EVENT',
+      title: 'Rose City Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: new Date('2099-08-11T02:30:00.000Z'),
+      timeZone: null,
+      dateDisplayMode: 'SCHEDULED',
+      officialActionUrl: 'https://example.com/rose-city-open-gym',
+      sourceUrl: 'https://example.com/rose-city-open-gym',
+      rawPayload: {
+        rawExtractedFields: {
+          startsAt: 'August 10, 2099 9:30 PM',
+        },
+      },
+    };
+    prismaMock.affiliateImportCandidates.findUnique
+      .mockResolvedValueOnce(candidate)
+      .mockResolvedValueOnce(candidate)
+      .mockResolvedValueOnce({ id: 'candidate_other' });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+
+    await expect(publishAffiliateCandidate('candidate_collision_source')).rejects.toThrow(
+      'datetime repair would collide with another candidate dedupe key',
+    );
+
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateImportCandidates.update).not.toHaveBeenCalled();
+  });
+
+  it('does not run datetime repair for evergreen published events', async () => {
+    const sentinel = new Date('2099-12-31T12:00:00.000Z');
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue({
+      id: 'candidate_ongoing',
+      sourceId: 'source_rose_city',
+      listingKind: 'EVENT',
+      title: 'Rose City Ongoing Open Gym',
+      sportName: 'Indoor Volleyball',
+      venueName: 'Rose City Courts',
+      city: 'Portland, OR',
+      address: '100 Main St, Portland, OR',
+      startsAt: sentinel,
+      timeZone: null,
+      dateDisplayMode: 'ONGOING',
+      officialActionUrl: 'https://example.com/rose-city-ongoing',
+      sourceUrl: 'https://example.com/rose-city-ongoing',
+      rawPayload: {
+        dateTimeInputs: { startsAt: 'Ongoing' },
+      },
+    });
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_rose_city',
+      name: 'Rose City Volleyball',
+      organizationId: 'org_rose_city',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_rose_city' });
+    prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ ...data }));
+    prismaMock.affiliateImportCandidates.update.mockResolvedValue({ id: 'candidate_ongoing' });
+
+    await publishAffiliateCandidate('candidate_ongoing');
+
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        start: sentinel,
+        end: null,
+        dateDisplayMode: 'ONGOING',
+      }),
+    });
+    expect(prismaMock.affiliateImportCandidates.update).toHaveBeenCalledWith({
+      where: { id: 'candidate_ongoing' },
+      data: {
+        status: 'PUBLISHED',
+        publishedEventId: 'generated_1',
+      },
+    });
   });
 
   it('lists the source organization when publishing affiliate rental candidates', async () => {
@@ -1053,11 +1409,14 @@ describe('affiliate import service', () => {
       city: 'Portland',
       address: '205 NE 92nd Avenue Portland',
       startsAt: new Date('2099-07-05T21:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
       priceText: '$11.00',
       officialActionUrl: 'https://example.com/open-gym',
       sourceUrl: 'https://example.com/source',
       rawPayload: {
         tags: ['Featured'],
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
         extractedFields: {
           tagText: 'Open Play',
         },
@@ -1117,6 +1476,11 @@ describe('affiliate import service', () => {
       address: '9685 SW Harvest Court',
       startsAt: new Date('2099-07-01T18:00:00.000Z'),
       endsAt: null,
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       officialActionUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
       sourceUrl: 'https://www.portlandbasketball.com/rosecityvb.php',
       publishedEventId: null,
@@ -1158,6 +1522,11 @@ describe('affiliate import service', () => {
       address: '205 NE 92nd Avenue Portland',
       startsAt: new Date('2099-07-05T21:00:00.000Z'),
       endsAt: null,
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       scheduleText: 'Sunday, 2:00 PM.',
       priceText: '$11.00',
       officialActionUrl: 'https://example.com/open-gym',
@@ -1219,6 +1588,11 @@ describe('affiliate import service', () => {
       city: 'Portland',
       address: '205 NE 92nd Avenue Portland',
       startsAt: new Date('2099-06-27T19:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       scheduleText: '12:00 PM - Zero referees COOPERATIVE game- 54 minutes 5v5 Full Court',
       priceText: '$13.00',
       statusText: '7 spots available',
@@ -1268,6 +1642,11 @@ describe('affiliate import service', () => {
       address: '205 NE 92nd Avenue, Portland, OR',
       startsAt: new Date('2099-07-01T01:00:00.000Z'),
       endsAt: null,
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       divisionText: 'MASTERS GAME',
       officialActionUrl: 'https://www.portlandbasketball.com/picktoplay.php',
       sourceUrl: 'https://www.portlandbasketball.com/picktoplay.php',
@@ -1332,6 +1711,11 @@ describe('affiliate import service', () => {
       address: '17525 Stafford Rd, Lake Oswego, OR 97034',
       startsAt: new Date('2099-07-12T19:00:00.000Z'),
       endsAt: new Date('2099-09-14T03:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       divisionText: "Men's 30+",
       ageGroup: "Men's 30+",
       priceText: '$101 resident regular per-player fee',
@@ -1397,6 +1781,11 @@ describe('affiliate import service', () => {
       address: '12402 SE Jennifer St, Unit 190, Clackamas, OR 97015',
       startsAt: new Date('2099-07-06T16:00:00.000Z'),
       endsAt: new Date('2099-07-10T19:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       ageGroup: 'Ages 5-8',
       priceText: '$100',
       officialActionUrl: 'https://app.upperhand.io/customers/2207-eastside-timbers-dba-oregon-premier-futsal/events/196365',
@@ -1484,6 +1873,11 @@ describe('affiliate import service', () => {
       city: 'Brooklyn, NY',
       address: '1561 Bedford Ave, Brooklyn, NY 11225',
       startsAt: new Date('2099-08-18T04:00:00.000Z'),
+      timeZone: 'America/New_York',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/New_York' },
+        ...currentScheduledDateTimeProvenance('America/New_York'),
+      },
       officialActionUrl: 'https://example.com/register',
       sourceUrl: 'https://example.com/event',
     });
@@ -2239,6 +2633,83 @@ describe('affiliate import service', () => {
         maxParticipants: 16,
       }),
     });
+  });
+
+  it('normalizes detail-page datetime fields before persistence', async () => {
+    const candidate = {
+      listingKind: 'EVENT' as const,
+      title: 'Detail page event',
+      startsAt: '2099-08-10T00:00:00.000Z',
+      officialActionUrl: 'https://example.com/register/detail',
+      sourceUrl: 'https://example.com/events/detail',
+      rawPayload: {
+        dateTimeInputs: {
+          startsAt: '2099-08-10T00:00:00.000Z',
+        },
+        rawExtractedFields: {
+          startsAt: '2099-08-10T00:00:00.000Z',
+        },
+      },
+    };
+    const mapping = {
+      kind: 'EVENT' as const,
+      listUrl: 'https://example.com/events',
+      itemSelector: '.event',
+      fields: {
+        title: { selector: '.title' },
+        officialActionUrl: { selector: '.register', mode: 'attribute' as const, attribute: 'href', transform: 'absoluteUrl' as const },
+      },
+      detailPage: {
+        urlField: 'sourceUrl',
+        fields: {
+          startsAt: { selector: '.start', transform: 'dateTime' as const },
+          endsAt: { selector: '.end', transform: 'dateTime' as const },
+          durationText: { selector: '.duration' },
+          timeZone: { selector: '.time-zone' },
+        },
+      },
+    };
+    const client = {
+      fetchPage: jest.fn(async () => ({
+        url: 'https://example.com/events/detail',
+        finalUrl: 'https://example.com/events/detail',
+        statusCode: 200,
+        fetchedAt: '2026-08-01T12:00:00.000Z',
+        body: `
+          <span class="start">August 10, 2099 9:30 PM</span>
+          <span class="end">August 10, 2099 11:35 PM</span>
+          <span class="duration">2 Hours 5 Mins</span>
+          <span class="time-zone">America/New_York</span>
+        `,
+      })),
+    };
+
+    const [enriched] = await enrichAffiliateCandidatesWithDetailPages(
+      [candidate],
+      mapping,
+      client,
+      { referenceDate: new Date('2026-08-01T12:00:00.000Z') },
+    );
+
+    expect(enriched).toEqual(expect.objectContaining({
+      startsAt: '2099-08-11T01:30:00.000Z',
+      endsAt: '2099-08-11T03:35:00.000Z',
+      timeZone: 'America/New_York',
+    }));
+    expect(enriched.rawPayload).toEqual(expect.objectContaining({
+      dateTimeInputs: expect.objectContaining({
+        startsAt: 'August 10, 2099 9:30 PM',
+        endsAt: 'August 10, 2099 11:35 PM',
+        durationText: '2 Hours 5 Mins',
+        timeZone: 'America/New_York',
+      }),
+      normalizedImport: expect.objectContaining({
+        dateTime: expect.objectContaining({
+          timeZone: 'America/New_York',
+          timeZoneEvidence: 'SOURCE_FIELD',
+        }),
+      }),
+    }));
   });
 
   it('keeps source-labeled class rows as individual affiliate events', async () => {
@@ -3039,6 +3510,11 @@ describe('affiliate import service', () => {
       venueName: 'Portland Sports Center',
       city: 'Portland, OR',
       startsAt: new Date('2099-08-18T04:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      rawPayload: {
+        dateTimeInputs: { timeZone: 'America/Los_Angeles' },
+        ...currentScheduledDateTimeProvenance('America/Los_Angeles'),
+      },
       officialActionUrl: 'https://example.com/clinic',
       sourceUrl: 'https://example.com/clubs',
     });

@@ -390,21 +390,54 @@ const stringOrNull = (value: unknown): string | null => (
  */
 export const normalizeAffiliateCandidateDateTime = (
   candidate: AffiliateCandidateInput,
-  params: { timeZone: string; referenceDate: Date },
+  params: {
+    timeZone?: string | null;
+    timeZoneEvidence?: 'SOURCE_FIELD' | 'COORDINATES';
+    referenceDate: Date;
+    dateTimeInputs?: Record<string, unknown>;
+  },
 ): AffiliateCandidateInput => {
   const rawPayload = recordValue(candidate.rawPayload);
   const dateTimeInputs = recordValue(rawPayload.dateTimeInputs);
   const rawExtractedFields = recordValue(rawPayload.rawExtractedFields);
-  const startsAt = stringOrNull(dateTimeInputs.startsAt ?? rawExtractedFields.startsAt);
-  const endsAt = stringOrNull(dateTimeInputs.endsAt ?? rawExtractedFields.endsAt);
-  const durationText = stringOrNull(dateTimeInputs.durationText ?? rawExtractedFields.durationText);
-  const dateDisplayMode = stringOrNull(dateTimeInputs.dateDisplayMode ?? candidate.dateDisplayMode);
+  const overrides = params.dateTimeInputs ?? {};
+  const hasInput = (fieldName: string): boolean => (
+    Object.prototype.hasOwnProperty.call(overrides, fieldName)
+    || Object.prototype.hasOwnProperty.call(dateTimeInputs, fieldName)
+    || Object.prototype.hasOwnProperty.call(rawExtractedFields, fieldName)
+  );
+  const inputValue = (fieldName: string, fallback: unknown): unknown => (
+    Object.prototype.hasOwnProperty.call(overrides, fieldName)
+      ? overrides[fieldName]
+      : fallback
+  );
+  const startsAt = stringOrNull(inputValue('startsAt', dateTimeInputs.startsAt ?? rawExtractedFields.startsAt));
+  const endsAt = stringOrNull(inputValue('endsAt', dateTimeInputs.endsAt ?? rawExtractedFields.endsAt));
+  const durationText = stringOrNull(inputValue(
+    'durationText',
+    dateTimeInputs.durationText ?? rawExtractedFields.durationText,
+  ));
+  const dateDisplayMode = stringOrNull(inputValue(
+    'dateDisplayMode',
+    dateTimeInputs.dateDisplayMode ?? candidate.dateDisplayMode,
+  ));
+  const timeZone = stringOrNull(inputValue(
+    'timeZone',
+    params.timeZone ?? candidate.timeZone,
+  ));
+  const existingDateTimeMetadata = recordValue(recordValue(rawPayload.normalizedImport).dateTime);
+  const timeZoneEvidence = params.timeZoneEvidence
+    ?? (existingDateTimeMetadata.timeZoneEvidence === 'COORDINATES'
+      ? 'COORDINATES'
+      : params.timeZone
+        ? 'COORDINATES'
+        : 'SOURCE_FIELD');
   const normalized = normalizeAffiliateEventDateTime({
     startsAt,
     endsAt,
     durationText,
-    timeZone: params.timeZone,
-    timeZoneEvidence: 'COORDINATES',
+    timeZone,
+    timeZoneEvidence,
     dateDisplayMode,
     referenceDate: params.referenceDate,
   });
@@ -417,6 +450,10 @@ export const normalizeAffiliateCandidateDateTime = (
     ],
     rawPayload: {
       ...rawPayload,
+      dateTimeInputs: {
+        ...dateTimeInputs,
+        ...overrides,
+      },
       extractedFields: {
         ...recordValue(rawPayload.extractedFields),
         startsAt: normalized.startsAt,
@@ -432,8 +469,8 @@ export const normalizeAffiliateCandidateDateTime = (
     },
   };
 
-  if (startsAt != null) nextCandidate.startsAt = normalized.startsAt;
-  if (endsAt != null || normalized.endsAt != null) nextCandidate.endsAt = normalized.endsAt;
+  if (hasInput('startsAt')) nextCandidate.startsAt = normalized.startsAt;
+  if (hasInput('startsAt') || hasInput('endsAt')) nextCandidate.endsAt = normalized.endsAt;
   if (normalized.dateDisplayMode) nextCandidate.dateDisplayMode = normalized.dateDisplayMode;
   return nextCandidate;
 };
