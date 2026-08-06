@@ -39,6 +39,7 @@ export type AffiliateMappingHumanReviewRow = {
   source: string | null;
   requestedNextAction: string | null;
   reasonCodes: string[];
+  sourceSportLabels: string[];
   rationale: string | null;
   blockingIssues: string[];
   hasSelectedLogo: boolean;
@@ -225,6 +226,7 @@ export const listAffiliateMappingHumanReviewJobs = async (
     const blockingIssues = stringValues(humanReview.blockingIssues);
     const errorMessage = stringValue(job.errorMessage);
     const requestedNextAction = stringValue(humanReview.requestedNextAction);
+    const sourceSportLabels = stringValues(humanReview.sourceSportLabels);
     const guidance = affiliateMappingReviewGuidance({
       requestedNextAction,
       reasonCodes,
@@ -247,6 +249,7 @@ export const listAffiliateMappingHumanReviewJobs = async (
       source: stringValue(humanReview.source),
       requestedNextAction,
       reasonCodes,
+      sourceSportLabels,
       rationale,
       blockingIssues,
       hasSelectedLogo: Boolean(intake?.selectedLogoArtifactId),

@@ -115,11 +115,23 @@ The coordinator may mark a source complete only when:
 
 Do not treat the existence of a setup script as completion. The admin scrape flow and persisted candidate output must be demonstrated locally.
 
+If the stored source sport is not an exact current `Sports.name`, do not write
+a source package, generated scraper, or candidate. Preserve the exact source
+label only in a structured human-review result with reason code
+`SPORT_NOT_IN_CATALOG` and complete the mapping job as
+`HUMAN_REVIEW_REQUIRED`. This terminal result does not create an approval job.
+
 After committing, record the terminal queue result:
 
     npm run affiliate:mapping:complete -- --live --job=<job-id> --result=<result-json>
 
-Use `REVIEW_REQUIRED` only for a passing package. Use `EXPANDED` only for a directory whose proposal command accepted, reused, or deduplicated at least one evidenced official URL. Use `FAILED` with an exact evidence, policy, parser, or infrastructure reason when a claimed intake cannot be completed safely. Expanded and failed rows are not positive mapping-training examples and do not prevent queue exhaustion.
+Use `REVIEW_REQUIRED` only for a passing package. Use `HUMAN_REVIEW_REQUIRED`
+for the structured unsupported-sport stop described above. Use `EXPANDED` only
+for a directory whose proposal command accepted, reused, or deduplicated at
+least one evidenced official URL. Use `FAILED` with an exact evidence, policy,
+parser, or infrastructure reason when a claimed intake cannot be completed
+safely. Human-review, expanded, and failed rows are not positive
+mapping-training examples and do not prevent queue exhaustion.
 
 ## Source Handoff
 

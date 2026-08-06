@@ -478,6 +478,97 @@ describe('affiliate source intake service', () => {
     });
   });
 
+  it('continues when another worker creates the unique active mapping job first', async () => {
+    const run = {
+      id: 'run_1',
+      intakeId: 'intake_1',
+      requestedPageIds: ['page_1'],
+      provider: 'SCRAPINGDOG',
+      status: 'QUEUED',
+    };
+    const page = {
+      id: 'page_1',
+      intakeId: 'intake_1',
+      url: 'https://example.com/events',
+      status: 'ACTIVE',
+      createdAt: new Date(),
+    };
+    prismaMock.affiliateSourceIntakeRuns.findFirst.mockResolvedValue(run);
+    prismaMock.affiliateSourceIntakeRuns.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.affiliateSourceIntakeRuns.findUnique.mockResolvedValue({ ...run, status: 'RUNNING' });
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
+      id: 'intake_1',
+      sourceKey: 'source-1',
+      baseUrl: 'https://example.com',
+      complianceStatus: 'ALLOWED',
+      affiliateSourceId: null,
+      status: 'READY',
+    });
+    prismaMock.affiliateSourceIntakePages.findMany.mockResolvedValue([page]);
+    prismaMock.affiliateSourceIntakePages.findFirst.mockResolvedValue(page);
+    prismaMock.affiliateSourceMappingJobs.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'mapping_job_created_by_other_worker',
+        intakeId: 'intake_1',
+        status: 'QUEUED',
+      });
+    prismaMock.affiliateSourceMappingJobs.create.mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
+
+    const captureClient = {
+      provider: 'SCRAPINGDOG' as const,
+      captureSourcePage: jest.fn().mockResolvedValue({
+        provider: 'SCRAPINGDOG',
+        request: { provider: 'SCRAPINGDOG', endpoint: '/scrape' },
+        response: { statusCode: 200 },
+        requestedUrl: page.url,
+        finalUrl: page.url,
+        providerStatusCode: 200,
+        targetStatusCode: null,
+        rawHtml: '<html><head><title>Summer League</title></head><body><main><h1>Summer Soccer League</h1><p>Registration opens July 1 for $75.</p><a href="/register">Register</a></main></body></html>',
+        renderMode: 'STATIC',
+        elapsedMs: 125,
+        estimatedCredits: 1,
+        warnings: [],
+        providerJobId: 'scrapingdog_1',
+      }),
+      captureScreenshot: jest.fn(),
+    };
+    const fetchResource = jest.fn().mockResolvedValue({
+      url: 'https://example.com/robots.txt',
+      finalUrl: 'https://example.com/robots.txt',
+      statusCode: 200,
+      contentType: 'text/plain',
+      body: Buffer.from('User-agent: *\nDisallow:\n'),
+    });
+    const discoverPages = jest.fn().mockResolvedValue({
+      request: { sourceUrl: page.url },
+      response: { counts: { CAPTURED_LINK: 1 } },
+      links: [],
+      warnings: [],
+      providerJobId: null,
+    });
+
+    const result = await processNextAffiliateSourceIntakeRun(
+      { runId: 'run_1', workerId: 'worker_1' },
+      {
+        captureClient,
+        fallbackCaptureClient: null,
+        screenshotMode: 'none',
+        fetchResource,
+        discoverPages,
+      },
+    );
+
+    expect(result?.run.status).toBe('SUCCEEDED');
+    expect(prismaMock.affiliateSourceMappingJobs.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.affiliateSourceMappingJobs.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: { in: ['QUEUED', 'CLAIMED', 'REVIEW_REQUIRED'] } }),
+    }));
+  });
+
   it('uses an explicitly configured fallback when ScrapingDog capture quality is rejected', async () => {
     const run = {
       id: 'run_1',

@@ -44,6 +44,9 @@ const DEFAULT_ADMIN_URL = 'https://bracket-iq.com/admin';
 const MAX_AUTOMATION_DISCOVERY_RUNS = 5;
 const MAX_AUTOMATION_INTAKE_RUNS = 10;
 const POLICY_EXPIRY_DAYS = 180;
+const DEFAULT_STALE_DISCOVERY_RUN_AGE_MS = 60 * 60 * 1000;
+const MIN_STALE_DISCOVERY_RUN_AGE_MS = 20 * 60 * 1000;
+const MAX_STALE_DISCOVERY_RUNS_PER_PASS = 25;
 
 type JsonRecord = Record<string, unknown>;
 type DiscoveryDependencies = {
@@ -829,6 +832,77 @@ export const getAffiliateSourceDiscoveryRunContext = async (runId: string) => {
   return { run, campaign, results };
 };
 
+export type RecoveredAffiliateSourceDiscoveryRun = {
+  discoveryRunId: string;
+  campaignId: string;
+  workerId: string | null;
+  startedAt: Date | null;
+  recoveredAt: Date;
+  reason: string;
+};
+
+export const recoverStaleAffiliateSourceDiscoveryRuns = async (options: {
+  now?: Date;
+  maxAgeMs?: number;
+  limit?: number;
+} = {}): Promise<RecoveredAffiliateSourceDiscoveryRun[]> => {
+  const now = options.now ?? new Date();
+  const requestedMaxAgeMs = options.maxAgeMs ?? DEFAULT_STALE_DISCOVERY_RUN_AGE_MS;
+  const maxAgeMs = Number.isFinite(requestedMaxAgeMs)
+    ? Math.max(MIN_STALE_DISCOVERY_RUN_AGE_MS, requestedMaxAgeMs)
+    : DEFAULT_STALE_DISCOVERY_RUN_AGE_MS;
+  const staleBefore = new Date(now.getTime() - maxAgeMs);
+  const requestedLimit = options.limit ?? MAX_STALE_DISCOVERY_RUNS_PER_PASS;
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.max(1, Math.min(Math.trunc(requestedLimit), MAX_STALE_DISCOVERY_RUNS_PER_PASS))
+    : MAX_STALE_DISCOVERY_RUNS_PER_PASS;
+  const staleRuns = await db().runs.findMany({
+    where: {
+      status: 'RUNNING',
+      startedAt: { lt: staleBefore },
+    },
+    orderBy: { startedAt: 'asc' },
+    take: limit,
+  });
+  const recovered: RecoveredAffiliateSourceDiscoveryRun[] = [];
+  for (const run of staleRuns) {
+    const reason = [
+      'Recovered stale affiliate source discovery run',
+      run.workerId ? `owned by ${run.workerId}` : 'with no recorded worker',
+      `after exceeding the ${Math.round(maxAgeMs / 60_000)} minute limit.`,
+    ].join(' ');
+    const updated = await db().runs.updateMany({
+      where: { id: run.id, status: 'RUNNING' },
+      data: {
+        status: 'FAILED',
+        finishedAt: now,
+        errorMessage: reason,
+        summary: {
+          ...recordValue(run.summary),
+          recovery: {
+            reason,
+            recoveredAt: now.toISOString(),
+          },
+        },
+      },
+    });
+    if (updated.count !== 1) continue;
+    await db().campaigns.updateMany({
+      where: { id: run.campaignId },
+      data: { nextRunAt: now },
+    });
+    recovered.push({
+      discoveryRunId: run.id,
+      campaignId: run.campaignId,
+      workerId: stringValue(run.workerId),
+      startedAt: run.startedAt ?? null,
+      recoveredAt: now,
+      reason,
+    });
+  }
+  return recovered;
+};
+
 export const queueDueAffiliateSourceDiscoveryRuns = async (now = new Date()): Promise<number> => {
   const campaigns = await db().campaigns.findMany({
     where: { status: 'ACTIVE', OR: [{ nextRunAt: null }, { nextRunAt: { lte: now } }] },
@@ -840,14 +914,15 @@ export const queueDueAffiliateSourceDiscoveryRuns = async (now = new Date()): Pr
     const rightNextRunAt = right.nextRunAt ? new Date(right.nextRunAt).getTime() : 0;
     return leftRank - rightRank || leftNextRunAt - rightNextRunAt || left.name.localeCompare(right.name);
   });
-  const campaign = campaigns[0];
-  if (!campaign) return 0;
-  const prior = await db().runs.findFirst({
-    where: { campaignId: campaign.id, status: { in: ['QUEUED', 'RUNNING'] } },
-  });
-  if (prior) return 0;
-  await queueAffiliateSourceDiscoveryRun(campaign.id, null);
-  return 1;
+  for (const campaign of campaigns) {
+    const prior = await db().runs.findFirst({
+      where: { campaignId: campaign.id, status: { in: ['QUEUED', 'RUNNING'] } },
+    });
+    if (prior) continue;
+    await queueAffiliateSourceDiscoveryRun(campaign.id, null);
+    return 1;
+  }
+  return 0;
 };
 
 type AutomationLock = { release: () => Promise<void> };
@@ -888,12 +963,16 @@ export const runAffiliateIntakeAutomation = async (options: {
     startedAt,
     finishedAt: new Date(),
     queuedCampaigns: 0,
+    recoveredDiscoveryRuns: [],
     recoveredIntakeRuns: [],
     discoveryRuns: [],
     intakeRuns: [],
     emailSent: false,
   };
   try {
+    const recoveredDiscoveryRuns = await recoverStaleAffiliateSourceDiscoveryRuns({
+      now: dependencies.now?.() ?? new Date(),
+    });
     const recoveredIntakeRuns = await recoverStaleAffiliateSourceIntakeRuns({
       now: dependencies.now?.() ?? new Date(),
     });
@@ -926,12 +1005,14 @@ export const runAffiliateIntakeAutomation = async (options: {
       startedAt,
       finishedAt,
       queuedCampaigns,
+      recoveredDiscoveryRuns,
       recoveredIntakeRuns,
       discoveryRuns,
       intakeRuns,
       emailSent: false,
     };
     const needsEmail = queuedCampaigns > 0
+      || recoveredDiscoveryRuns.length > 0
       || recoveredIntakeRuns.length > 0
       || discoveryRuns.length > 0
       || intakeRuns.length > 0
@@ -946,6 +1027,7 @@ export const runAffiliateIntakeAutomation = async (options: {
           `Started: ${startedAt.toISOString()}`,
           `Finished: ${finishedAt.toISOString()}`,
           `Campaigns queued: ${queuedCampaigns}`,
+          `Stale discovery runs recovered: ${recoveredDiscoveryRuns.length}`,
           `Stale intake runs recovered: ${recoveredIntakeRuns.length}`,
           `Discovery runs processed: ${discoveryRuns.length}`,
           `Intake captures processed: ${intakeRuns.length}`,

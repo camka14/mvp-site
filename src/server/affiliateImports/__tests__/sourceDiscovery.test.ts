@@ -31,12 +31,17 @@ const prismaMock = {
     findUnique: jest.fn(async () => campaign),
     findMany: jest.fn(async () => []),
     update: jest.fn(async ({ data }) => ({ ...campaign, ...data })),
+    updateMany: jest.fn(async () => ({ count: 1 })),
   },
   affiliateSourceDiscoveryRuns: {
     findMany: jest.fn(async () => []),
-    findFirst: jest.fn(async ({ where }) => queuedRuns.find((run) => (
-      run.status === 'QUEUED' && (!where.id || run.id === where.id)
-    )) ?? null),
+    findFirst: jest.fn(async ({ where }) => queuedRuns.find((run) => {
+      const statusMatches = !where.status
+        || (typeof where.status === 'string' ? where.status === run.status : where.status.in.includes(run.status));
+      return (!where.id || run.id === where.id)
+        && (!where.campaignId || run.campaignId === where.campaignId)
+        && statusMatches;
+    }) ?? null),
     updateMany: jest.fn(async ({ where, data }) => {
       const run = queuedRuns.find((entry) => entry.id === where.id && entry.status === where.status);
       if (!run) return { count: 0 };
@@ -390,6 +395,64 @@ describe('affiliate source discovery orchestration', () => {
     await expect(queueDueAffiliateSourceDiscoveryRuns(new Date('2026-07-21T12:00:00Z'))).resolves.toBe(1);
     expect(queuedRuns).toHaveLength(1);
     expect(queuedRuns[0].campaignId).toBe('campaign_1');
+  });
+
+  it('skips a due campaign with an active run and queues the next campaign', async () => {
+    queuedRuns.splice(0, queuedRuns.length, {
+      id: 'active_run',
+      campaignId: 'campaign_1',
+      status: 'RUNNING',
+      queuedAt: new Date('2026-07-21T10:00:00Z'),
+    });
+    prismaMock.affiliateSourceDiscoveryCampaigns.findMany.mockResolvedValue([
+      { ...campaign, id: 'campaign_1', name: 'Highest priority', metadata: { priorityRank: 1 } },
+      { ...campaign, id: 'campaign_2', name: 'Next priority', metadata: { priorityRank: 2 } },
+    ]);
+
+    await expect(queueDueAffiliateSourceDiscoveryRuns(new Date('2026-07-21T12:00:00Z'))).resolves.toBe(1);
+    expect(queuedRuns).toHaveLength(2);
+    expect(queuedRuns[1]).toEqual(expect.objectContaining({
+      campaignId: 'campaign_2',
+      status: 'QUEUED',
+    }));
+  });
+
+  it('fails stale discovery runs, makes their campaigns due, and does not recover them twice', async () => {
+    const now = new Date('2026-08-06T12:00:00Z');
+    const staleRun = {
+      id: 'stale_discovery_run',
+      campaignId: 'campaign_1',
+      status: 'RUNNING',
+      startedAt: new Date('2026-08-06T09:00:00Z'),
+      workerId: 'dead-worker',
+      summary: { prior: true },
+    };
+    prismaMock.affiliateSourceDiscoveryRuns.findMany.mockResolvedValue([staleRun]);
+    prismaMock.affiliateSourceDiscoveryRuns.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const { recoverStaleAffiliateSourceDiscoveryRuns } = await import('@/server/affiliateImports/sourceDiscovery');
+    await expect(recoverStaleAffiliateSourceDiscoveryRuns({
+      now,
+      maxAgeMs: 60 * 60 * 1000,
+    })).resolves.toEqual([expect.objectContaining({
+      discoveryRunId: 'stale_discovery_run',
+      campaignId: 'campaign_1',
+      reason: expect.stringContaining('Recovered stale affiliate source discovery run'),
+    })]);
+    expect(prismaMock.affiliateSourceDiscoveryRuns.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'stale_discovery_run', status: 'RUNNING' },
+      data: expect.objectContaining({
+        status: 'FAILED',
+        errorMessage: expect.stringContaining('60 minute limit'),
+      }),
+    }));
+    expect(prismaMock.affiliateSourceDiscoveryCampaigns.updateMany).toHaveBeenCalledWith({
+      where: { id: 'campaign_1' },
+      data: { nextRunAt: now },
+    });
+
+    prismaMock.affiliateSourceDiscoveryRuns.findMany.mockResolvedValue([]);
+    await expect(recoverStaleAffiliateSourceDiscoveryRuns({ now })).resolves.toEqual([]);
   });
 
   it('continues an incomplete due campaign within the same automation run', async () => {

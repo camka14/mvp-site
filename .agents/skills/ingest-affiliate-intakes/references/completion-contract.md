@@ -44,8 +44,10 @@ the exact `name` values in the current `Sports` table. Use a catalog name only
 when stored source evidence supports that exact sport. Do not treat generic
 `Volleyball` as indoor, grass, or beach volleyball, and do not infer a soccer
 surface. A missing or incorrectly cased catalog name is a producer defect. A
-source sport absent from the catalog is not a mapping failure: preserve the
-source label and package evidence so the reviewer can stop it for human review.
+source sport absent from the catalog stops the mapper before package authoring:
+preserve the exact source label only in structured human-review evidence, then
+complete the job as `HUMAN_REVIEW_REQUIRED` with `SPORT_NOT_IN_CATALOG`. Such a
+result has no branch, commit, generated paths, candidates, or review scrapes.
 
 Resolve organization location separately from event location. A missing street
 address is not an organization defect when first-party content, stored intake
@@ -134,7 +136,7 @@ wire, and commit the official mark.
 
 ## Result states
 
-Use `REVIEW_REQUIRED` only when the package, tests, and validation artifacts exist. Use `EXPANDED` only when a directory intake has produced at least one accepted, reused, or already-known official organization URL through the governed URL-intake command. Use `FAILED` for a claimed intake that cannot be mapped or expanded safely and include a concrete policy, evidence, parsing, or infrastructure reason. Release a claim only for a transient interruption that another run can safely resume.
+Use `REVIEW_REQUIRED` only when the package, tests, and validation artifacts exist. Use `HUMAN_REVIEW_REQUIRED` only for an unsupported source sport that stops package authoring; include the exact preserved source labels and `SPORT_NOT_IN_CATALOG`, and do not create an approval job. Use `EXPANDED` only when a directory intake has produced at least one accepted, reused, or already-known official organization URL through the governed URL-intake command. Use `FAILED` for a claimed intake that cannot be mapped or expanded safely and include a concrete policy, evidence, parsing, or infrastructure reason. Release a claim only for a transient interruption that another run can safely resume.
 
 Do not let failed or blocked rows prevent queue exhaustion. Do not turn them into positive training examples.
 

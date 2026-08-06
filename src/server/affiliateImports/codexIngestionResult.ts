@@ -22,13 +22,21 @@ const directoryExpansionSchema = z.object({
   rejected: z.number().int().nonnegative(),
 }).strict();
 
+const humanReviewRequiredSchema = z.object({
+  reasonCodes: z.array(nonEmptyString).min(1),
+  sourceSportLabels: z.array(nonEmptyString).min(1),
+  rationale: nonEmptyString.optional(),
+  blockingIssues: z.array(nonEmptyString).default([]),
+  requestedNextAction: z.literal('HUMAN_REVIEW_REQUIRED').default('HUMAN_REVIEW_REQUIRED'),
+}).strict();
+
 export const codexAffiliateIngestionResultSchema = z.object({
   schemaVersion: z.literal(1),
   jobId: nonEmptyString,
   intakeId: nonEmptyString,
   sourceKey: nonEmptyString,
   workerId: nonEmptyString,
-  status: z.enum(['REVIEW_REQUIRED', 'EXPANDED', 'FAILED']),
+  status: z.enum(['REVIEW_REQUIRED', 'EXPANDED', 'FAILED', 'HUMAN_REVIEW_REQUIRED']),
   branch: nonEmptyString.nullable(),
   commit: gitCommit.nullable(),
   generatedPaths: z.array(nonEmptyString).default([]),
@@ -46,8 +54,50 @@ export const codexAffiliateIngestionResultSchema = z.object({
     warnings: z.array(nonEmptyString).default([]),
   }).strict(),
   directoryExpansion: directoryExpansionSchema.nullable().optional(),
+  humanReviewRequired: humanReviewRequiredSchema.nullable().optional(),
   errorMessage: nonEmptyString.nullable(),
 }).strict().superRefine((result, context) => {
+  if (result.status === 'HUMAN_REVIEW_REQUIRED') {
+    const humanReview = result.humanReviewRequired;
+    if (!humanReview) {
+      context.addIssue({
+        code: 'custom',
+        path: ['humanReviewRequired'],
+        message: 'HUMAN_REVIEW_REQUIRED results require a structured human-review reason.',
+      });
+      return;
+    }
+    if (!humanReview.reasonCodes.includes('SPORT_NOT_IN_CATALOG')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['humanReviewRequired', 'reasonCodes'],
+        message: 'Unsupported-sport human review results require SPORT_NOT_IN_CATALOG.',
+      });
+    }
+    if (
+      result.branch
+      || result.commit
+      || result.generatedPaths.length
+      || result.candidateCount !== 0
+      || result.reviewScrapes.length
+      || result.directoryExpansion
+      || result.errorMessage
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['status'],
+        message: 'HUMAN_REVIEW_REQUIRED results cannot claim mapping artifacts, candidates, scrapes, expansion, commits, or errors.',
+      });
+    }
+    return;
+  }
+  if (result.humanReviewRequired) {
+    context.addIssue({
+      code: 'custom',
+      path: ['humanReviewRequired'],
+      message: 'Structured human-review reasons are only valid for HUMAN_REVIEW_REQUIRED results.',
+    });
+  }
   if (result.status === 'FAILED') {
     if (!result.errorMessage) {
       context.addIssue({
@@ -210,5 +260,43 @@ export const buildCodexAffiliateDirectoryExpansionResult = (input: {
     warnings: input.warnings ?? [],
   },
   directoryExpansion: input.directoryExpansion,
+  errorMessage: null,
+});
+
+export const buildCodexAffiliateUnsupportedSportHumanReviewResult = (input: {
+  jobId: string;
+  intakeId: string;
+  sourceKey: string;
+  workerId: string;
+  sourceSportLabels: string[];
+  rationale?: string;
+  blockingIssues?: string[];
+}): CodexAffiliateIngestionResult => codexAffiliateIngestionResultSchema.parse({
+  schemaVersion: 1,
+  jobId: input.jobId,
+  intakeId: input.intakeId,
+  sourceKey: input.sourceKey,
+  workerId: input.workerId,
+  status: 'HUMAN_REVIEW_REQUIRED',
+  branch: null,
+  commit: null,
+  generatedPaths: [],
+  logoDisposition: 'MANUAL_REVIEW',
+  candidateCount: 0,
+  reviewScrapes: [],
+  validation: {
+    testsPassed: true,
+    diffCheckPassed: true,
+    duplicateSafe: true,
+    warnings: ['Unsupported source sports were preserved as evidence only.'],
+  },
+  humanReviewRequired: {
+    reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+    sourceSportLabels: Array.from(new Set(input.sourceSportLabels.map((label) => label.trim()).filter(Boolean))),
+    rationale: input.rationale
+      ?? 'The source sport is not an exact current BracketIQ Sports catalog name.',
+    blockingIssues: input.blockingIssues ?? [],
+    requestedNextAction: 'HUMAN_REVIEW_REQUIRED',
+  },
   errorMessage: null,
 });

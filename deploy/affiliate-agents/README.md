@@ -1,6 +1,6 @@
 # Affiliate Codex agent containers
 
-This Compose project defines 10 mapper containers, two reviewer containers,
+This Compose project defines 10 persistent mapper-loop containers, two reviewer containers,
 and one coverage container. Each mapper keeps its own Git workspace and Codex
 state. The reviewers share the read-only producer workspaces, but each reviewer
 has its own loop lock and Codex state directory.
@@ -9,6 +9,11 @@ The tracked defaults limit a mapper to 1.25 CPUs and 4 GiB. They limit each
 reviewer and the coverage worker to 1 CPU and 2 GiB. The memory-swap limit is
 equal to the memory limit. This setting prevents new agent swap use. The
 limits are ceilings. They are not reserved memory.
+
+Each mapper claims work with `scripts/claim-affiliate-source-mapping.ts
+--no-export` before it starts a Codex goal. An empty queue makes the mapper
+wait for `AFFILIATE_MAPPING_LOOP_INTERVAL_SECONDS` (300 seconds by default),
+so an idle worker does not start Codex or consume agent usage.
 
 ## Prepare the host
 

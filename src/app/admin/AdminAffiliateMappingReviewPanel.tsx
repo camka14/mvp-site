@@ -32,6 +32,7 @@ type HumanReviewRow = {
   source?: string | null;
   requestedNextAction?: string | null;
   reasonCodes: string[];
+  sourceSportLabels: string[];
   rationale?: string | null;
   blockingIssues: string[];
   hasSelectedLogo: boolean;
@@ -198,6 +199,9 @@ export default function AdminAffiliateMappingReviewPanel({ active, refreshKey, o
                         </Badge>
                       ))}
                     </Group>
+                    {job.sourceSportLabels.length ? (
+                      <Text size="sm" fw={600}>Source sport: {job.sourceSportLabels.join(', ')}</Text>
+                    ) : null}
                     {job.rationale ? <Text size="sm">{job.rationale}</Text> : null}
                     {job.blockingIssues.map((issue) => (
                       <Text key={issue} size="xs" c="dimmed">• {issue}</Text>

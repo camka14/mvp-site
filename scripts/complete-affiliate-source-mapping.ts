@@ -17,6 +17,7 @@ import {
   resolveAffiliateDisposableDatabaseUrl,
 } from '../src/server/affiliateImports/producerPackageEvidence';
 import { inspectAffiliateEventDivisionQuality } from '../src/server/affiliateImports/eventDivisionQuality';
+import { inspectAffiliateSportQuality } from '../src/server/affiliateImports/sportQuality';
 
 dotenv.config({ quiet: true });
 dotenv.config({ path: '.env.local', override: false, quiet: true });
@@ -99,6 +100,19 @@ const main = async () => {
             `REVIEW_REQUIRED mapping results require valid divisions for every event. ${issueSummary}`,
           );
         }
+        const sportQuality = await inspectAffiliateSportQuality({
+          queryable: disposable,
+          sourceId: reviewEvidence.sourceId,
+        });
+        if (!sportQuality.passed) {
+          const issueSummary = sportQuality.issues
+            .slice(0, 10)
+            .map((issue) => `${issue.code}:${issue.subjectType}:${issue.subjectId}`)
+            .join(', ');
+          throw new Error(
+            `REVIEW_REQUIRED mapping results require exact current catalog sports for every candidate and source organization. ${issueSummary}`,
+          );
+        }
       } finally {
         await disposable.end().catch(() => undefined);
       }
@@ -146,7 +160,12 @@ const main = async () => {
           ? 'review-required'
           : result.status === 'EXPANDED'
             ? 'directory-expanded'
-            : 'terminal-failure',
+            : result.status === 'HUMAN_REVIEW_REQUIRED'
+              ? 'human-review-required'
+              : 'terminal-failure',
+        ...(result.status === 'HUMAN_REVIEW_REQUIRED' && result.humanReviewRequired
+          ? { humanReviewRequired: result.humanReviewRequired }
+          : {}),
       },
       errorMessage: result.errorMessage,
     });

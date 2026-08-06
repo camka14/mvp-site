@@ -167,6 +167,64 @@ describe('affiliate source mapping queue', () => {
     expect(new Set(claims.map((claim) => claim?.workerId))).toEqual(new Set(['mapper-1', 'mapper-2']));
   });
 
+  it('uses the active-intake uniqueness conflict so concurrent exact claims share one job', async () => {
+    const intake = { id: 'intake_exact', sourceKey: 'exact-source', status: 'READY_FOR_MAPPING' };
+    let activeJob: any = null;
+    let createAttempts = 0;
+    let successfulCreates = 0;
+    let releaseCreateBarrier!: () => void;
+    let releaseClaimBarrier!: () => void;
+    const bothCreatesStarted = new Promise<void>((resolve) => {
+      releaseCreateBarrier = resolve;
+    });
+    const winnerClaimed = new Promise<void>((resolve) => {
+      releaseClaimBarrier = resolve;
+    });
+
+    prismaMock.affiliateSourceMappingJobs.findFirst.mockImplementation(async ({ where }: any) => {
+      if (where?.status === 'CLAIMED') return null;
+      if (where?.status?.in) {
+        await winnerClaimed;
+        return activeJob;
+      }
+      if (where?.OR) return activeJob?.status === 'QUEUED' ? activeJob : null;
+      return null;
+    });
+    prismaMock.affiliateSourceIntakes.findFirst.mockResolvedValue(intake);
+    prismaMock.affiliateSourceMappingJobs.create.mockImplementation(async ({ data }: any) => {
+      createAttempts += 1;
+      if (createAttempts === 2) releaseCreateBarrier();
+      await bothCreatesStarted;
+      if (activeJob) {
+        throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      }
+      successfulCreates += 1;
+      activeJob = { ...data, createdAt: new Date(), status: 'QUEUED' };
+      return activeJob;
+    });
+    prismaMock.affiliateSourceMappingJobs.updateMany.mockImplementation(async ({ where, data }: any) => {
+      if (!activeJob || where.id !== activeJob.id || activeJob.status !== 'QUEUED') return { count: 0 };
+      Object.assign(activeJob, data);
+      releaseClaimBarrier();
+      return { count: 1 };
+    });
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue(intake);
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+
+    const claims = await Promise.all([
+      claimNextAffiliateSourceIntakeForMapping({ workerId: 'mapper-exact-1', intakeId: intake.id }),
+      claimNextAffiliateSourceIntakeForMapping({ workerId: 'mapper-exact-2', intakeId: intake.id }),
+    ]);
+
+    expect(successfulCreates).toBe(1);
+    expect(activeJob).toEqual(expect.objectContaining({ intakeId: intake.id, status: 'CLAIMED' }));
+    expect(claims.filter(Boolean)).toHaveLength(1);
+    expect(Array.from(new Set(claims.filter(Boolean).map((claim) => claim?.workerId)))).toHaveLength(1);
+    expect(prismaMock.affiliateSourceMappingJobs.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.affiliateSourceMappingJobs.updateMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.affiliateSourceIntakes.update).toHaveBeenCalledTimes(1);
+  });
+
   it('records a directory expansion as a terminal non-mapping intake result', async () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1', intakeId: 'intake_1', status: 'CLAIMED',
@@ -189,6 +247,33 @@ describe('affiliate source mapping queue', () => {
       where: { id: 'intake_1' },
       data: { status: 'EXPANDED' },
     });
+  });
+
+  it('records unsupported sports as terminal human review without creating or reopening approval', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1', intakeId: 'intake_1', status: 'CLAIMED',
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1', intakeId: 'intake_1', status: 'HUMAN_REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'HUMAN_REVIEW_REQUIRED',
+      resultSummary: {
+        humanReviewRequired: {
+          reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+          sourceSportLabels: ['Volleyball'],
+        },
+      },
+    })).resolves.toEqual(expect.objectContaining({ status: 'HUMAN_REVIEW_REQUIRED' }));
+    expect(prismaMock.affiliateSourceIntakes.update).toHaveBeenCalledWith({
+      where: { id: 'intake_1' },
+      data: { status: 'HUMAN_REVIEW_REQUIRED' },
+    });
+    expect(prismaMock.affiliateApprovalJobs.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateApprovalJobs.update).not.toHaveBeenCalled();
   });
 
   it('preserves repair history and reopens a rejected approval after a repaired package completes', async () => {

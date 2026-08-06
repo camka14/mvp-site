@@ -20,6 +20,8 @@ x-common: &common
 
 x-mapper: &mapper
   <<: *common
+  environment:
+    AFFILIATE_MAPPING_LOOP_INTERVAL_SECONDS: "${AFFILIATE_MAPPING_LOOP_INTERVAL_SECONDS:-300}"
   cpus: ${AFFILIATE_MAPPER_CPU_LIMIT:-1.25}
   mem_limit: ${AFFILIATE_MAPPER_MEMORY_LIMIT:-4g}
   mem_reservation: ${AFFILIATE_MAPPER_MEMORY_RESERVATION:-768m}
@@ -49,7 +51,7 @@ services:
     command:
       - npm
       - run
-      - affiliate:intakes:codex-goal
+      - affiliate:intakes:codex-loop
       - --
       - --live
       - --container-isolated
@@ -62,7 +64,7 @@ services:
   mapper-2:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-2
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-2]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-2]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-2:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-2:/workspace
@@ -72,7 +74,7 @@ services:
   mapper-3:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-3
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-3]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-3]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-3:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-3:/workspace
@@ -82,7 +84,7 @@ services:
   mapper-4:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-4
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-4]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-4]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-4:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-4:/workspace
@@ -92,7 +94,7 @@ services:
   mapper-5:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-5
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-5]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-5]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-5:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-5:/workspace
@@ -102,7 +104,7 @@ services:
   mapper-6:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-6
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-6]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-6]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-6:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-6:/workspace
@@ -112,7 +114,7 @@ services:
   mapper-7:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-7
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-7]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-7]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-7:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-7:/workspace
@@ -122,7 +124,7 @@ services:
   mapper-8:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-8
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-8]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-8]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-8:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-8:/workspace
@@ -132,7 +134,7 @@ services:
   mapper-9:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-9
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-9]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-9]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-9:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-9:/workspace
@@ -142,7 +144,7 @@ services:
   mapper-10:
     <<: *mapper
     container_name: bracketiq-affiliate-codex-agent-10
-    command: [npm, run, affiliate:intakes:codex-goal, --, --live, --container-isolated, --worker=codex-luna-vm-10]
+    command: [npm, run, affiliate:intakes:codex-loop, --, --live, --container-isolated, --worker=codex-luna-vm-10]
     volumes:
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/.codex-affiliate-container-10:/home/codex/.codex
       - ${AFFILIATE_AGENT_ROOT:-/home/bracketiq}/mvp-site-codex-luna-worker-10:/workspace

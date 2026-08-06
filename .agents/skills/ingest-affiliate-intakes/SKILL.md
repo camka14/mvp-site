@@ -103,10 +103,9 @@ different sports when the catalog does. Generic `Volleyball` is not a safe
 alias for `Indoor Volleyball`, `Grass Volleyball`, or `Beach Volleyball`, and
 generic `Soccer` must not be converted to an indoor or outdoor variant without
 source evidence. Do not guess. When the source sport does not exist in the
-catalog, preserve its source label in the review-ready mapping, record the gap
-in warnings and unresolved questions, and submit it for independent review.
-Do not fail or discard an otherwise reproducible mapping only to hide an
-unsupported sport. The reviewer will route it to terminal human review.
+catalog, preserve the exact source label only in the human-review evidence,
+stop before writing a source package or candidates, and complete the mapping
+job as `HUMAN_REVIEW_REQUIRED` with reason code `SPORT_NOT_IN_CATALOG`.
 
 Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and record the completed evidence search. The independent reviewer may accept that absence; the producer does not approve or publish the organization.
 

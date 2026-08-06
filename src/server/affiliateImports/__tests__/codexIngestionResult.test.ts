@@ -2,6 +2,7 @@
 
 import {
   buildCodexAffiliateDirectoryExpansionResult,
+  buildCodexAffiliateUnsupportedSportHumanReviewResult,
   codexAffiliateIngestionResultSchema,
 } from '../codexIngestionResult';
 
@@ -109,6 +110,59 @@ describe('Codex affiliate ingestion result', () => {
       status: 'FAILED',
       errorMessage: null,
     })).toThrow('require an error message');
+  });
+
+  it('accepts an unsupported-sport human-review result without package artifacts', () => {
+    const humanReview = buildCodexAffiliateUnsupportedSportHumanReviewResult({
+      jobId: 'job_1',
+      intakeId: 'intake_1',
+      sourceKey: 'river-city',
+      workerId: 'codex-luna-vm-1',
+      sourceSportLabels: ['Volleyball'],
+    });
+
+    expect(humanReview).toEqual(expect.objectContaining({
+      status: 'HUMAN_REVIEW_REQUIRED',
+      branch: null,
+      commit: null,
+      generatedPaths: [],
+      candidateCount: 0,
+      reviewScrapes: [],
+      humanReviewRequired: expect.objectContaining({
+        reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+        sourceSportLabels: ['Volleyball'],
+      }),
+    }));
+    expect(codexAffiliateIngestionResultSchema.parse({
+      ...humanReview,
+      humanReviewRequired: {
+        reasonCodes: ['SPORT_NOT_IN_CATALOG'],
+        sourceSportLabels: ['Soccer'],
+      },
+    })).toEqual(expect.objectContaining({
+      humanReviewRequired: expect.objectContaining({
+        requestedNextAction: 'HUMAN_REVIEW_REQUIRED',
+      }),
+    }));
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...humanReview,
+      generatedPaths: ['scripts/setup-river-city-affiliate-source.ts'],
+    })).toThrow('cannot claim mapping artifacts');
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...humanReview,
+      candidateCount: 1,
+    })).toThrow('cannot claim mapping artifacts');
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...humanReview,
+      reviewScrapes: [successfulResult.reviewScrapes[0]],
+    })).toThrow('cannot claim mapping artifacts');
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...humanReview,
+      humanReviewRequired: {
+        ...humanReview.humanReviewRequired,
+        reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'],
+      },
+    })).toThrow('require SPORT_NOT_IN_CATALOG');
   });
 
   it('accepts a directory expansion only when every submitted URL is accounted for', () => {

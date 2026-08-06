@@ -2094,6 +2094,8 @@ model AffiliateSourceMappingJobs {
   errorMessage   String?
   finishedAt     DateTime?
 
+  // The partial unique index for active statuses is managed in SQL because
+  // Prisma schema syntax cannot express a partial unique constraint.
   @@index([status, createdAt])
   @@index([intakeId, createdAt])
   @@index([leaseExpiresAt])

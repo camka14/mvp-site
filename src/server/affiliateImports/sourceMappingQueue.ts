@@ -2,6 +2,7 @@ import { createId } from '@/lib/id';
 import { prisma } from '@/lib/prisma';
 
 const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000;
+const ACTIVE_MAPPING_JOB_STATUSES = ['QUEUED', 'CLAIMED', 'REVIEW_REQUIRED'] as const;
 
 const mappingDb = () => ({
   intakes: (prisma as any).affiliateSourceIntakes,
@@ -24,6 +25,11 @@ const stringValues = (value: unknown): string[] => {
   const single = stringValue(value);
   return single ? [single] : [];
 };
+
+const isUniqueConstraintError = (error: unknown): boolean => (
+  Boolean(error && typeof error === 'object' && 'code' in error
+    && (error as { code?: unknown }).code === 'P2002')
+);
 
 const latestMappingRepairContext = (resultSummary: unknown) => {
   const history = recordValue(resultSummary).mappingRepairHistory;
@@ -115,9 +121,28 @@ export const claimNextAffiliateSourceIntakeForMapping = async (options: {
         where: { id: options.intakeId, status: 'READY_FOR_MAPPING' },
       });
       if (intake) {
-        job = await jobs.create({
-          data: { id: createId(), intakeId: intake.id, status: 'QUEUED' },
-        });
+        try {
+          job = await jobs.create({
+            data: { id: createId(), intakeId: intake.id, status: 'QUEUED' },
+          });
+        } catch (error) {
+          if (!isUniqueConstraintError(error)) throw error;
+
+          const existingActiveJob = await jobs.findFirst({
+            where: {
+              intakeId: intake.id,
+              status: { in: [...ACTIVE_MAPPING_JOB_STATUSES] },
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+          if (!existingActiveJob) continue;
+
+          const existingLeaseIsValid = existingActiveJob.status === 'CLAIMED'
+            && existingActiveJob.leaseExpiresAt instanceof Date
+            && existingActiveJob.leaseExpiresAt.getTime() >= now.getTime();
+          if (existingActiveJob.status === 'REVIEW_REQUIRED' || existingLeaseIsValid) return null;
+          job = existingActiveJob;
+        }
       }
     }
     if (!job) return null;
@@ -185,7 +210,7 @@ export const releaseAffiliateSourceMappingClaim = async (
 
 export const finishAffiliateSourceMappingClaim = async (input: {
   jobId: string;
-  status: 'REVIEW_REQUIRED' | 'EXPANDED' | 'APPROVED' | 'FAILED';
+  status: 'REVIEW_REQUIRED' | 'EXPANDED' | 'APPROVED' | 'FAILED' | 'HUMAN_REVIEW_REQUIRED';
   branch?: string | null;
   commit?: string | null;
   resultSummary?: Record<string, unknown> | null;

@@ -37,7 +37,7 @@ describe('affiliate sport quality', () => {
     }));
   });
 
-  it.each(['Volleyball', 'Badminton'])(
+  it.each(['Volleyball', 'Soccer', 'Badminton'])(
     'routes unsupported source sport %s to catalog review',
     (sportName) => {
       const result = analyzeAffiliateSportQuality({

@@ -416,6 +416,26 @@ describe('scheduled affiliate scrapes', () => {
     });
   });
 
+  it('reports summary email failure without failing the completed scrape or leaking the lock', async () => {
+    sendEmailMock.mockRejectedValueOnce(new Error('Token has been expired or revoked'));
+
+    const result = await runDueAffiliateScrapes({
+      now: new Date('2026-08-06T12:00:00.000Z'),
+      fetchImpl: lightweightFetchMock,
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      lockAcquired: true,
+      emailSent: false,
+      emailError: 'Token has been expired or revoked',
+    }));
+    expect(mockPgClient.query).toHaveBeenLastCalledWith(
+      'SELECT pg_advisory_unlock($1) AS unlocked',
+      [4201042026],
+    );
+    expect(mockPgClient.end).toHaveBeenCalledTimes(1);
+  });
+
   it('isolates a lightweight check failure and includes it in the daily summary', async () => {
     prismaMock.affiliateScrapeSources.findMany.mockResolvedValue([
       {

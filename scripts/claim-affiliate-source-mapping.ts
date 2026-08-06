@@ -38,6 +38,10 @@ const main = async () => {
       console.log(JSON.stringify({ claimed: false }, null, 2));
       return;
     }
+    if (process.argv.includes('--no-export')) {
+      console.log(JSON.stringify({ claimed: true, ...claim }, null, 2));
+      return;
+    }
     const args = [
       path.resolve('scripts/export-affiliate-source-intake.ts'),
       '--source-key',

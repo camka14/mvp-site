@@ -48,6 +48,11 @@ const ROBOTS_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_ROBOTS_TIMEOUT_MS = 30_000;
 const DEFAULT_STALE_RUN_AGE_MS = 30 * 60 * 1000;
 
+const isUniqueConstraintError = (error: unknown): boolean => (
+  Boolean(error && typeof error === 'object' && 'code' in error
+    && (error as { code?: unknown }).code === 'P2002')
+);
+
 const robotsTimeoutMs = (): number => {
   const configured = Number.parseInt(process.env.AFFILIATE_INTAKE_ROBOTS_TIMEOUT_MS ?? '', 10);
   return Number.isInteger(configured) && configured >= 15_000 && configured <= 60_000
@@ -1488,9 +1493,20 @@ export const processNextAffiliateSourceIntakeRun = async (
         where: { intakeId: intake.id, status: { in: ['QUEUED', 'CLAIMED', 'REVIEW_REQUIRED'] } },
       });
       if (!activeJob) {
-        await mappingJobs.create({
-          data: { id: createId(), intakeId: intake.id, status: 'QUEUED' },
-        });
+        try {
+          await mappingJobs.create({
+            data: { id: createId(), intakeId: intake.id, status: 'QUEUED' },
+          });
+        } catch (error) {
+          if (!isUniqueConstraintError(error)) throw error;
+          const jobCreatedByAnotherWorker = await mappingJobs.findFirst({
+            where: {
+              intakeId: intake.id,
+              status: { in: ['QUEUED', 'CLAIMED', 'REVIEW_REQUIRED'] },
+            },
+          });
+          if (!jobCreatedByAnotherWorker) throw error;
+        }
       }
     }
     return { run: updatedRun, summary };

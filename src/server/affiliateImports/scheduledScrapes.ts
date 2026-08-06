@@ -96,6 +96,7 @@ export type RunDueAffiliateScrapesResult = {
   lightweightResults: LightweightSourceCheckResult[];
   intakeDigest: AffiliateIntakeDailyDigest;
   emailSent: boolean;
+  emailError: string | null;
   lockAcquired: boolean;
   dryRun: boolean;
 };
@@ -801,6 +802,7 @@ export const runDueAffiliateScrapes = async (
       lightweightResults: [],
       intakeDigest: emptyIntakeDigest(startedAt),
       emailSent: false,
+      emailError: null,
       lockAcquired: false,
       dryRun: options.dryRun === true,
     };
@@ -862,11 +864,17 @@ export const runDueAffiliateScrapes = async (
       lightweightResults,
       intakeDigest,
       emailSent: false,
+      emailError: null,
       lockAcquired: true,
       dryRun: options.dryRun === true,
     };
     if (options.sendSummary !== false && !options.dryRun) {
-      result.emailSent = await sendSummaryEmail(result);
+      try {
+        result.emailSent = await sendSummaryEmail(result);
+      } catch (error) {
+        result.emailError = error instanceof Error ? error.message : String(error);
+        console.error('[affiliate:scrape:due] summary email failed', result.emailError);
+      }
     }
     return result;
   } finally {

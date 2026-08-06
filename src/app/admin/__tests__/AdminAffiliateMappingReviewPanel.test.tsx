@@ -31,6 +31,7 @@ describe('AdminAffiliateMappingReviewPanel', () => {
         attemptCount: 3,
         markedAt: '2026-08-02T12:00:00.000Z',
         reasonCodes: ['CONFLICTING_LIVE_RECORD'],
+        sourceSportLabels: ['Volleyball'],
         rationale: 'A live organization has the same identity.',
         blockingIssues: ['Confirm whether both records represent the same organization.'],
         hasSelectedLogo: false,
@@ -49,6 +50,7 @@ describe('AdminAffiliateMappingReviewPanel', () => {
     expect(await screen.findByText('New York Elite Volleyball')).toBeInTheDocument();
     expect(screen.getByText('Conflicting live record')).toBeInTheDocument();
     expect(screen.getByText(/Is this source the same as the conflicting live record/)).toBeInTheDocument();
+    expect(screen.getByText('Source sport: Volleyball')).toBeInTheDocument();
     expect(screen.getAllByText(/Your decision/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'View evidence' }));
