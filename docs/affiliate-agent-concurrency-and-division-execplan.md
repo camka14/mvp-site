@@ -39,6 +39,7 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-06 00:09Z) Made approval reconciliation safe when two reviewer loops start at the same time, then restarted the reviewers one at a time.
 - [x] (2026-08-06 00:12Z) Classified recent terminal mapping jobs and returned 31 concrete package defects to the mapper queue.
 - [x] (2026-08-06 00:28Z) Removed the full-project TypeScript check from the source-only mapper workflow and made the source-scoped validation gate explicit.
+- [x] (2026-08-06 00:32Z) Rolled all 10 live mapper containers one at a time, preserved active source work, and verified 10 valid stable-worker leases on the new goal.
 
 ## Surprises & Discoveries
 
@@ -143,6 +144,16 @@ approval reconciliation unique-key error.
 The final focused validation passed five suites with 50 tests. The full local
 TypeScript check, Compose configuration check, diff check, and reviewer skill
 validation also passed. The live reviewer checkout runs the pushed commit.
+
+The mapper validation update was applied as a source-scoped commit on every
+live mapper branch. Branch-specific ingestion rules were unioned into the
+updated skill or completion contract, while each branch kept its own
+operational ExecPlan history. Dirty source-package files retained the same
+counts across each stop, update, and start. After the rollout, all 10 mapper
+containers were running with 4 GiB limits, all 10 stable worker IDs held valid
+leases, no claim lacked a lease, and every launched goal contained the rule
+that forbids full-project `tsc` for source-only work. The new mapper cgroups had
+zero OOM kills at the verification checkpoint.
 
 ## Context and Orientation
 
