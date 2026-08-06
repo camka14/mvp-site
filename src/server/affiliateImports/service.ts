@@ -182,6 +182,13 @@ const candidateStartDate = (candidate: Pick<AffiliateCandidateInput, 'startsAt'>
   return parseDateOrNull(typeof candidate.startsAt === 'string' ? candidate.startsAt : null);
 };
 
+const candidateUpdatedAtDate = (candidate: any): Date | null => {
+  if (candidate?.updatedAt instanceof Date && !Number.isNaN(candidate.updatedAt.getTime())) {
+    return candidate.updatedAt;
+  }
+  return parseDateOrNull(nullableString(candidate?.updatedAt));
+};
+
 const candidateRegistrationDeadline = (
   candidate: Pick<AffiliateCandidateInput, 'registrationDeadlineText' | 'startsAt'> | any,
 ): Date | null => {
@@ -1582,6 +1589,7 @@ const buildAffiliateEventData = async (
   onCandidateNormalized?: (candidate: AffiliateCandidateInput) => void | Promise<void>,
   client: any = prisma,
   allowRemoteGeocoding = true,
+  preferFallbackCoordinates = false,
 ) => {
   const eventType = inferAffiliateEventType(candidate);
   const sportNames = candidateSportNames(candidate);
@@ -1618,10 +1626,14 @@ const buildAffiliateEventData = async (
     address,
     city,
   });
-  const coordinates =
-    candidateResolvedCoordinates(candidate)
-    ?? normalizeAffiliateCoordinates(fallbackCoordinates)
-    ?? (allowRemoteGeocoding ? await geocodeFirstAvailableAddress(geocodeQueries) : null);
+  const preparedCoordinates = normalizeAffiliateCoordinates(fallbackCoordinates);
+  const coordinates = preferFallbackCoordinates
+    ? preparedCoordinates
+      ?? candidateResolvedCoordinates(candidate)
+      ?? (allowRemoteGeocoding ? await geocodeFirstAvailableAddress(geocodeQueries) : null)
+    : candidateResolvedCoordinates(candidate)
+      ?? preparedCoordinates
+      ?? (allowRemoteGeocoding ? await geocodeFirstAvailableAddress(geocodeQueries) : null);
   const sourceTimeZone = nullableString(candidate.timeZone);
   const coordinateTimeZone = tryResolveTimeZoneFromCoordinates(coordinates);
   const existingStart = candidateStartDate(candidate);
@@ -1632,22 +1644,33 @@ const buildAffiliateEventData = async (
   const rawExtractedFields = recordValue(rawPayload.rawExtractedFields);
   const existingDateTimeMetadata = recordValue(recordValue(rawPayload.normalizedImport).dateTime);
   const rawTimeZone = nullableString(dateTimeInputs.timeZone) ?? nullableString(rawExtractedFields.timeZone);
-  const hasPersistedSourceTimeZoneEvidence = isValidAffiliateTimeZone(rawTimeZone ?? '');
-  const hasTrustedStoredTimeZone = hasValidSourceTimeZone && (
-    existingDateTimeMetadata.timeZoneEvidence === 'COORDINATES'
-    || hasPersistedSourceTimeZoneEvidence
+  const hasMatchingPersistedSourceTimeZoneEvidence = (
+    isValidAffiliateTimeZone(rawTimeZone ?? '')
+    && rawTimeZone === sourceTimeZone
   );
+  const hasMatchingCoordinateTimeZoneEvidence = (
+    existingDateTimeMetadata.timeZoneEvidence === 'COORDINATES'
+    && nullableString(existingDateTimeMetadata.timeZone) === sourceTimeZone
+    && coordinateTimeZone === sourceTimeZone
+  );
+  const hasTrustedStoredTimeZone = hasValidSourceTimeZone && (
+    hasMatchingCoordinateTimeZoneEvidence
+    || hasMatchingPersistedSourceTimeZoneEvidence
+  );
+  let eventTimeZone = hasTrustedStoredTimeZone
+    ? sourceTimeZone
+    : coordinateTimeZone;
+  const normalizedStartsAt = parseDateOrNull(nullableString(existingDateTimeMetadata.normalizedStartsAt));
   const hasCurrentNormalizedStartProvenance = (
     existingDateTimeMetadata.contractVersion === AFFILIATE_DATE_TIME_CONTRACT_VERSION
     && (existingDateTimeMetadata.startPrecision === 'DATE_TIME'
       || existingDateTimeMetadata.startPrecision === 'DATE_ONLY')
+    && normalizedStartsAt?.getTime() === existingStart?.getTime()
+    && nullableString(existingDateTimeMetadata.timeZone) === eventTimeZone
   );
   const initialDateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
   const isTimedAffiliateDateDisplayMode = initialDateDisplayMode === 'SCHEDULED'
     || initialDateDisplayMode === 'DATE_ONLY';
-  let eventTimeZone = hasTrustedStoredTimeZone
-    ? sourceTimeZone
-    : coordinateTimeZone;
   if (
     state === 'PUBLISHED'
     && isTimedAffiliateDateDisplayMode
@@ -1661,7 +1684,7 @@ const buildAffiliateEventData = async (
     }
     candidate = normalizeAffiliateCandidateDateTime(candidate, {
       timeZone: normalizationTimeZone,
-      timeZoneEvidence: hasTrustedStoredTimeZone && hasPersistedSourceTimeZoneEvidence
+      timeZoneEvidence: hasMatchingPersistedSourceTimeZoneEvidence
         ? 'SOURCE_FIELD'
         : 'COORDINATES',
       referenceDate: candidateDateTimeReferenceDate(candidate),
@@ -1808,6 +1831,7 @@ const loadSourceOrganization = async (
       location: true,
       address: true,
       coordinates: true,
+      updatedAt: true,
       description: true,
       website: true,
       logoId: true,
@@ -1839,12 +1863,53 @@ const sourceHasSeparatePublishedClubTarget = async (
   return Boolean(targetOrganizationId && targetOrganizationId !== sourceOrganizationId);
 };
 
+const affiliateEventPublicationCandidateFingerprint = (candidate: any): string => JSON.stringify({
+  id: nullableString(candidate?.id),
+  sourceId: nullableString(candidate?.sourceId),
+  updatedAt: candidateUpdatedAtDate(candidate)?.toISOString() ?? null,
+  venueName: nullableString(candidate?.venueName),
+  address: nullableString(candidate?.address),
+  city: nullableString(candidate?.city),
+  locationSource: candidateLocationSource(candidate),
+  locationEvidence: candidateLocationEvidence(candidate),
+  resolvedCoordinates: candidateResolvedCoordinates(candidate),
+});
+
+const affiliateEventPublicationSourceFingerprint = (
+  source: { id?: string | null; organizationId?: string | null; name?: string | null },
+): string => JSON.stringify({
+  id: nullableString(source.id),
+  organizationId: nullableString(source.organizationId),
+  name: nullableString(source.name),
+});
+
+const affiliateEventPublicationOrganizationFingerprint = (organization: {
+  id?: string | null;
+  name?: string | null;
+  location?: string | null;
+  address?: string | null;
+  coordinates?: unknown;
+  updatedAt?: Date | string | null;
+}): string => JSON.stringify({
+  id: nullableString(organization.id),
+  name: nullableString(organization.name),
+  location: nullableString(organization.location),
+  address: nullableString(organization.address),
+  coordinates: normalizeAffiliateCoordinates(organization.coordinates),
+  updatedAt: organization.updatedAt instanceof Date
+    ? organization.updatedAt.toISOString()
+    : nullableString(organization.updatedAt),
+});
+
 const prepareAffiliateEventPublicationLocations = async (
   candidate: any,
   source: { id?: string | null; organizationId?: string | null },
 ): Promise<{
   eventCoordinates: [number, number] | null;
   sourceOrganizationCoordinates: [number, number] | null;
+  candidateFingerprint: string;
+  sourceFingerprint: string;
+  sourceOrganizationFingerprint: string;
 }> => {
   const eventCoordinates = candidateResolvedCoordinates(candidate)
     ?? (await geocodeFirstAvailableAddressWithQuery(buildAffiliateEventLocationQueries({
@@ -1858,6 +1923,9 @@ const prepareAffiliateEventPublicationLocations = async (
     return {
       eventCoordinates,
       sourceOrganizationCoordinates: null,
+      candidateFingerprint: affiliateEventPublicationCandidateFingerprint(candidate),
+      sourceFingerprint: affiliateEventPublicationSourceFingerprint(source),
+      sourceOrganizationFingerprint: affiliateEventPublicationOrganizationFingerprint(sourceOrganization),
     };
   }
 
@@ -1871,6 +1939,9 @@ const prepareAffiliateEventPublicationLocations = async (
   return {
     eventCoordinates,
     sourceOrganizationCoordinates,
+    candidateFingerprint: affiliateEventPublicationCandidateFingerprint(candidate),
+    sourceFingerprint: affiliateEventPublicationSourceFingerprint(source),
+    sourceOrganizationFingerprint: affiliateEventPublicationOrganizationFingerprint(sourceOrganization),
   };
 };
 
@@ -1908,9 +1979,19 @@ const markSourceOrganizationListedForPublishedContent = async (
   source: { id?: string | null; organizationId?: string | null },
   client: any = prisma,
   preparedCoordinates?: unknown,
+  preparedOrganizationFingerprint?: string,
 ) => {
   if (await sourceHasSeparatePublishedClubTarget(source, client)) return;
   const organization = await loadSourceOrganization(source, client);
+  if (
+    preparedOrganizationFingerprint
+    && affiliateEventPublicationOrganizationFingerprint(organization) !== preparedOrganizationFingerprint
+  ) {
+    throw new Error(
+      'Affiliate source organization changed after location preparation. '
+      + 'Refresh the candidate and retry publication.',
+    );
+  }
   const { organizations } = affiliatePrisma(client);
   const geocodeQueries = buildAffiliatePlaceLocationQueries({
     name: nullableString(organization.name),
@@ -1928,8 +2009,11 @@ const markSourceOrganizationListedForPublishedContent = async (
     // completed independently without blocking a correctly located child.
     return;
   }
+  const organizationUpdatedAt = candidateUpdatedAtDate(organization);
   await organizations.update({
-    where: { id: organization.id },
+    where: organizationUpdatedAt
+      ? { id: organization.id, updatedAt: organizationUpdatedAt }
+      : { id: organization.id },
     data: {
       status: 'LISTED',
       coordinates,
@@ -2267,10 +2351,12 @@ const upsertAffiliateEventForCandidate = async (
     client?: any;
     fallbackCoordinates?: unknown;
     allowRemoteGeocoding?: boolean;
+    preferFallbackCoordinates?: boolean;
   } = {},
 ) => {
   const client = options.client ?? prisma;
   const allowRemoteGeocoding = options.allowRemoteGeocoding ?? true;
+  const preferFallbackCoordinates = options.preferFallbackCoordinates ?? false;
   await assertSourceOrganization(source, client);
   const { events } = affiliatePrisma(client);
   const syncSourceDivisions = async (event: any) => {
@@ -2315,10 +2401,13 @@ const upsertAffiliateEventForCandidate = async (
         candidate,
         source,
         options.state ?? existingEvent.state ?? 'UNPUBLISHED',
-        existingEvent.coordinates ?? options.fallbackCoordinates,
+        preferFallbackCoordinates
+          ? options.fallbackCoordinates
+          : existingEvent.coordinates ?? options.fallbackCoordinates,
         options.onCandidateNormalized,
         client,
         allowRemoteGeocoding,
+        preferFallbackCoordinates,
       );
       delete (updateData as any).createdAt;
       const event = await events.update({
@@ -2341,10 +2430,13 @@ const upsertAffiliateEventForCandidate = async (
       candidate,
       source,
       options.state ?? existingBySource.state ?? 'UNPUBLISHED',
-      existingBySource.coordinates ?? options.fallbackCoordinates,
+      preferFallbackCoordinates
+        ? options.fallbackCoordinates
+        : existingBySource.coordinates ?? options.fallbackCoordinates,
       options.onCandidateNormalized,
       client,
       allowRemoteGeocoding,
+      preferFallbackCoordinates,
     );
     delete (updateData as any).createdAt;
     const event = await events.update({
@@ -2363,6 +2455,7 @@ const upsertAffiliateEventForCandidate = async (
     options.onCandidateNormalized,
     client,
     allowRemoteGeocoding,
+    preferFallbackCoordinates,
   );
   const existingByOccurrence = createData.affiliateUrl
     ? await events.findFirst({
@@ -3062,12 +3155,34 @@ export const publishAffiliateCandidate = async (
       if (!source) {
         throw new Error('Affiliate scrape source not found.');
       }
+      if (
+        affiliateEventPublicationCandidateFingerprint(currentCandidate)
+          !== publicationLocations.candidateFingerprint
+        || affiliateEventPublicationSourceFingerprint(source)
+          !== publicationLocations.sourceFingerprint
+      ) {
+        throw new Error(
+          'Affiliate event candidate or source changed after location preparation. '
+          + 'Refresh the candidate and retry publication.',
+        );
+      }
+      const sourceOrganization = await loadSourceOrganization(source, client);
+      if (
+        affiliateEventPublicationOrganizationFingerprint(sourceOrganization)
+          !== publicationLocations.sourceOrganizationFingerprint
+      ) {
+        throw new Error(
+          'Affiliate source organization changed after location preparation. '
+          + 'Refresh the candidate and retry publication.',
+        );
+      }
       let repairedDateTimeData: Record<string, unknown> = {};
       const event = await upsertAffiliateEventForCandidate(currentCandidate, source, {
         state: 'PUBLISHED',
         client,
         fallbackCoordinates: publicationLocations.eventCoordinates,
         allowRemoteGeocoding: false,
+        preferFallbackCoordinates: true,
         onCandidateNormalized: async (nextCandidate) => {
           const mapping = await mappingForAffiliateCandidateDedupe(currentCandidate, client);
           const dedupeKey = buildAffiliateCandidateDedupeKey(
@@ -3097,9 +3212,13 @@ export const publishAffiliateCandidate = async (
         source,
         client,
         publicationLocations.sourceOrganizationCoordinates,
+        publicationLocations.sourceOrganizationFingerprint,
       );
+      const candidateUpdatedAt = candidateUpdatedAtDate(currentCandidate);
       await transactionDb.candidates.update({
-        where: { id: candidateId },
+        where: candidateUpdatedAt
+          ? { id: candidateId, updatedAt: candidateUpdatedAt }
+          : { id: candidateId },
         data: {
           ...repairedDateTimeData,
           status: 'PUBLISHED',

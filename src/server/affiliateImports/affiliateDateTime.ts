@@ -28,6 +28,7 @@ export type AffiliateDurationParseResult = {
 export type AffiliateDateTimeMetadata = {
   contractVersion: number;
   startPrecision: AffiliateDateTimeStartPrecision;
+  normalizedStartsAt: string | null;
   timeZone: string | null;
   timeZoneEvidence: 'SOURCE_FIELD' | 'COORDINATES' | 'EXPLICIT_OFFSET' | 'NONE';
   endDerivation: AffiliateEndDerivation;
@@ -540,6 +541,7 @@ export const normalizeAffiliateEventDateTime = (params: {
         : start.iso || start.hasCalendarDate
           ? (start.hasClockTime ? 'DATE_TIME' : 'DATE_ONLY')
         : 'NONE',
+      normalizedStartsAt: start.iso,
       timeZone: params.timeZone && isValidAffiliateTimeZone(params.timeZone)
         ? params.timeZone.trim()
         : null,
