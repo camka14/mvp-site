@@ -30,6 +30,170 @@ const humanReviewRequiredSchema = z.object({
   requestedNextAction: z.literal('HUMAN_REVIEW_REQUIRED').default('HUMAN_REVIEW_REQUIRED'),
 }).strict();
 
+const nonnegativeCount = z.number().int().nonnegative();
+const dateTimeDisplayModeSchema = z.enum([
+  'SCHEDULED',
+  'DATE_ONLY',
+  'NO_FIXED_DATE',
+  'ONGOING',
+]);
+
+export const AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT = 'event-datetime-v1' as const;
+
+export const affiliateEventDateTimeRepairReasonCodeSchema = z.enum([
+  'EVENT_DATETIME_START_INVALID',
+  'EVENT_DATETIME_TIMEZONE_INVALID',
+  'EVENT_DATETIME_END_INVALID',
+  'EVENT_DATETIME_DURATION_INVALID',
+  'EVENT_DATETIME_DATE_ONLY_INVALID',
+  'EVENT_DATETIME_HOST_TIMEZONE_DEPENDENT',
+  'EVENT_DATETIME_EVERGREEN_OCCURRENCE',
+  'EVENT_DATETIME_TRYOUT_EVERGREEN',
+]);
+
+const countByTimeZoneEvidenceSchema = z.object({
+  SOURCE_FIELD: nonnegativeCount,
+  COORDINATES: nonnegativeCount,
+  EXPLICIT_OFFSET: nonnegativeCount,
+  NONE: nonnegativeCount,
+}).strict();
+
+const countByStartPrecisionSchema = z.object({
+  DATE_TIME: nonnegativeCount,
+  DATE_ONLY: nonnegativeCount,
+  NONE: nonnegativeCount,
+}).strict();
+
+const countByEndDerivationSchema = z.object({
+  EXPLICIT_END: nonnegativeCount,
+  EXPLICIT_DURATION: nonnegativeCount,
+  NONE: nonnegativeCount,
+}).strict();
+
+const countByDisplayModeSchema = z.object({
+  SCHEDULED: nonnegativeCount,
+  DATE_ONLY: nonnegativeCount,
+  NO_FIXED_DATE: nonnegativeCount,
+  ONGOING: nonnegativeCount,
+}).strict();
+
+export const affiliateEventDateTimeReviewSchema = z.object({
+  contractRevision: z.literal(AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT),
+  candidateCount: nonnegativeCount,
+  timeZoneEvidence: countByTimeZoneEvidenceSchema,
+  startPrecision: countByStartPrecisionSchema,
+  endDerivation: countByEndDerivationSchema,
+  durationWarnings: nonnegativeCount,
+  utcHostRegression: z.object({
+    passed: z.boolean(),
+    comparedCandidateCount: nonnegativeCount,
+    hostTimeZones: z.array(nonEmptyString).min(2).max(4),
+  }).strict(),
+  displayModeCounts: countByDisplayModeSchema,
+  evergreenTransitions: z.array(z.object({
+    from: dateTimeDisplayModeSchema,
+    to: dateTimeDisplayModeSchema,
+    count: z.number().int().positive(),
+  }).strict()).max(20),
+  evergreenEvidence: z.object({
+    scheduleTextBacked: nonnegativeCount,
+    datedSessionsMappedSeparately: nonnegativeCount,
+    hiddenDatedOccurrences: nonnegativeCount,
+    tryoutOrEvaluationMarkedEvergreen: nonnegativeCount,
+  }).strict(),
+  repairReasonCodes: z.array(affiliateEventDateTimeRepairReasonCodeSchema).max(20).default([]),
+}).strict().superRefine((review, context) => {
+  const countTotal = (counts: Record<string, number>) => Object.values(counts)
+    .reduce((total, count) => total + count, 0);
+  if (countTotal(review.displayModeCounts) !== review.candidateCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['displayModeCounts'],
+      message: 'Datetime display-mode counts must account for every candidate.',
+    });
+  }
+  if (countTotal(review.timeZoneEvidence) !== review.candidateCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['timeZoneEvidence'],
+      message: 'Datetime timezone-evidence counts must account for every candidate.',
+    });
+  }
+  if (countTotal(review.startPrecision) !== review.candidateCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['startPrecision'],
+      message: 'Datetime start-precision counts must account for every candidate.',
+    });
+  }
+  if (countTotal(review.endDerivation) !== review.candidateCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['endDerivation'],
+      message: 'Datetime end-derivation counts must account for every candidate.',
+    });
+  }
+  const evergreenCount = review.displayModeCounts.NO_FIXED_DATE + review.displayModeCounts.ONGOING;
+  if (review.evergreenEvidence.scheduleTextBacked < evergreenCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['evergreenEvidence', 'scheduleTextBacked'],
+      message: 'Every evergreen candidate requires source-backed schedule evidence.',
+    });
+  }
+  if (review.evergreenEvidence.hiddenDatedOccurrences > 0) {
+    context.addIssue({
+      code: 'custom',
+      path: ['evergreenEvidence', 'hiddenDatedOccurrences'],
+      message: 'Evergreen review cannot hide dated occurrences.',
+    });
+  }
+  if (review.evergreenEvidence.tryoutOrEvaluationMarkedEvergreen > 0) {
+    context.addIssue({
+      code: 'custom',
+      path: ['evergreenEvidence', 'tryoutOrEvaluationMarkedEvergreen'],
+      message: 'Tryouts and evaluations cannot be marked evergreen.',
+    });
+  }
+  if (!review.utcHostRegression.passed) {
+    context.addIssue({
+      code: 'custom',
+      path: ['utcHostRegression'],
+      message: 'The UTC-host regression must pass before a review-ready package can complete.',
+    });
+  }
+  if (review.utcHostRegression.comparedCandidateCount !== review.candidateCount) {
+    context.addIssue({
+      code: 'custom',
+      path: ['utcHostRegression', 'comparedCandidateCount'],
+      message: 'The UTC-host regression must cover every candidate.',
+    });
+  }
+  if (!review.utcHostRegression.hostTimeZones.includes('UTC')) {
+    context.addIssue({
+      code: 'custom',
+      path: ['utcHostRegression', 'hostTimeZones'],
+      message: 'The UTC-host regression must include a TZ=UTC run.',
+    });
+  }
+  if (review.utcHostRegression.hostTimeZones.every((timeZone) => timeZone === 'UTC')) {
+    context.addIssue({
+      code: 'custom',
+      path: ['utcHostRegression', 'hostTimeZones'],
+      message: 'The UTC-host regression must compare UTC with a non-UTC host.',
+    });
+  }
+  review.evergreenTransitions.forEach((transition, index) => {
+    if (transition.from === transition.to) {
+      context.addIssue({
+        code: 'custom',
+        path: ['evergreenTransitions', index],
+        message: 'Evergreen transitions must change display mode.',
+      });
+    }
+  });
+});
+
 export const codexAffiliateIngestionResultSchema = z.object({
   schemaVersion: z.literal(1),
   jobId: nonEmptyString,
@@ -46,6 +210,7 @@ export const codexAffiliateIngestionResultSchema = z.object({
     'MANUAL_REVIEW',
   ]),
   candidateCount: z.number().int().nonnegative(),
+  dateTimeReview: affiliateEventDateTimeReviewSchema.optional(),
   reviewScrapes: z.array(reviewScrapeSchema).max(2).default([]),
   validation: z.object({
     testsPassed: z.boolean(),
@@ -96,6 +261,23 @@ export const codexAffiliateIngestionResultSchema = z.object({
       code: 'custom',
       path: ['humanReviewRequired'],
       message: 'Structured human-review reasons are only valid for HUMAN_REVIEW_REQUIRED results.',
+    });
+  }
+  if (
+    result.dateTimeReview
+    && result.dateTimeReview.candidateCount !== result.candidateCount
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['dateTimeReview', 'candidateCount'],
+      message: 'Datetime review candidateCount must match the ingestion result.',
+    });
+  }
+  if (result.status !== 'REVIEW_REQUIRED' && result.dateTimeReview) {
+    context.addIssue({
+      code: 'custom',
+      path: ['dateTimeReview'],
+      message: 'Datetime review evidence is only valid for REVIEW_REQUIRED mapping results.',
     });
   }
   if (result.status === 'FAILED') {

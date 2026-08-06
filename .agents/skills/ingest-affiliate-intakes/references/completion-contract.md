@@ -113,6 +113,30 @@ the rejection log is missing.
 
 Never infer a year for an ambiguous event date. Never convert a stale tryout, evaluation, deadline, or registration page into a current event. Use evergreen rows only for stable ongoing programs with explicit `NO_FIXED_DATE` or `ONGOING` display.
 
+## Datetime remediation result
+
+When the claimed job contains `repairContext.remediationContext =
+event-datetime-v1`, a `REVIEW_REQUIRED` result must include the compact
+`dateTimeReview` object accepted by `affiliateEventDateTimeReviewSchema`. Its
+`contractRevision` is `event-datetime-v1`, and its `candidateCount` equals the
+two review-scrape candidate counts. Report count maps for `timeZoneEvidence`
+(`SOURCE_FIELD`, `COORDINATES`, `EXPLICIT_OFFSET`, `NONE`), `startPrecision`
+(`DATE_TIME`, `DATE_ONLY`, `NONE`), `endDerivation` (`EXPLICIT_END`,
+`EXPLICIT_DURATION`, `NONE`), and `displayModeCounts` (`SCHEDULED`,
+`DATE_ONLY`, `NO_FIXED_DATE`, `ONGOING`). Also report `durationWarnings`, a
+passing `utcHostRegression` comparison between `TZ=UTC` and a non-UTC host,
+every `evergreenTransitions` entry, and `evergreenEvidence`.
+
+`evergreenEvidence.scheduleTextBacked` must cover every evergreen row.
+`hiddenDatedOccurrences` and `tryoutOrEvaluationMarkedEvergreen` must be zero.
+Use `repairReasonCodes` for concrete datetime defects. The supported codes are
+`EVENT_DATETIME_START_INVALID`, `EVENT_DATETIME_TIMEZONE_INVALID`,
+`EVENT_DATETIME_END_INVALID`, `EVENT_DATETIME_DURATION_INVALID`,
+`EVENT_DATETIME_DATE_ONLY_INVALID`, `EVENT_DATETIME_HOST_TIMEZONE_DEPENDENT`,
+`EVENT_DATETIME_EVERGREEN_OCCURRENCE`, and
+`EVENT_DATETIME_TRYOUT_EVERGREEN`. Detailed evidence stays in the source
+fixture and package report so the result stays below one MiB.
+
 Rentals create facilities/resources rather than fake events. Clubs create public-organization candidates only after review. Direct club setups must link the candidate to the canonical source organization, not a generated duplicate.
 
 ## Logo checks

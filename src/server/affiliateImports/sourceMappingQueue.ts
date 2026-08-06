@@ -1,5 +1,9 @@
 import { createId } from '@/lib/id';
 import { prisma } from '@/lib/prisma';
+import {
+  AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT,
+  affiliateEventDateTimeReviewSchema,
+} from './codexIngestionResult';
 
 const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000;
 const ACTIVE_MAPPING_JOB_STATUSES = ['QUEUED', 'CLAIMED', 'REVIEW_REQUIRED'] as const;
@@ -26,18 +30,54 @@ const stringValues = (value: unknown): string[] => {
   return single ? [single] : [];
 };
 
+const hasEventDateTimeRemediationContext = (value: unknown): boolean => {
+  const envelope = recordValue(value);
+  const directContexts = [
+    envelope.remediationContext,
+    envelope.remediationContexts,
+    recordValue(envelope.repairContext).remediationContext,
+    recordValue(envelope.repairContext).remediationContexts,
+  ].flatMap(stringValues);
+  if (directContexts.includes(AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT)) return true;
+  return [envelope.mappingRepairHistory, envelope.mappingFullReviewHistory]
+    .flatMap((history) => (Array.isArray(history) ? history : []))
+    .some((entry) => {
+      const record = recordValue(entry);
+      return [record.remediationContext, record.remediationContexts]
+        .flatMap(stringValues)
+        .includes(AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT);
+    });
+};
+
 const isUniqueConstraintError = (error: unknown): boolean => (
   Boolean(error && typeof error === 'object' && 'code' in error
     && (error as { code?: unknown }).code === 'P2002')
 );
 
 const latestMappingRepairContext = (resultSummary: unknown) => {
-  const history = recordValue(resultSummary).mappingRepairHistory;
-  if (!Array.isArray(history) || history.length === 0) return null;
-  const latest = recordValue(history[history.length - 1]);
+  const envelope = recordValue(resultSummary);
+  const history = envelope.mappingRepairHistory;
+  const latest = Array.isArray(history) && history.length > 0
+    ? recordValue(history[history.length - 1])
+    : {};
+  const fullReviewHistory = envelope.mappingFullReviewHistory;
+  const latestFullReview = Array.isArray(fullReviewHistory) && fullReviewHistory.length > 0
+    ? recordValue(fullReviewHistory[fullReviewHistory.length - 1])
+    : {};
   const repairReasons = stringValues(latest.repairReasons);
   const repairReason = stringValue(latest.repairReason) ?? repairReasons[0] ?? null;
-  if (!repairReason) return null;
+  const remediationContexts = [
+    envelope.remediationContext,
+    envelope.remediationContexts,
+    recordValue(envelope.repairContext).remediationContext,
+    recordValue(envelope.repairContext).remediationContexts,
+    latest.remediationContext,
+    latest.remediationContexts,
+    latestFullReview.remediationContext,
+    latestFullReview.remediationContexts,
+  ]
+    .flatMap(stringValues);
+  if (!repairReason && !remediationContexts.length) return null;
   return {
     repairReason,
     repairReasons: repairReasons.length ? repairReasons : [repairReason],
@@ -50,6 +90,12 @@ const latestMappingRepairContext = (resultSummary: unknown) => {
     decision: stringValue(latest.decision),
     rationale: stringValue(latest.rationale),
     blockingIssues: stringValues(latest.blockingIssues),
+    ...(remediationContexts.length
+      ? {
+          remediationContext: remediationContexts[0],
+          remediationContexts: Array.from(new Set(remediationContexts)),
+        }
+      : {}),
   };
 };
 
@@ -226,6 +272,19 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   const fullReviewHistory = Array.isArray(previousEnvelope.mappingFullReviewHistory)
     ? previousEnvelope.mappingFullReviewHistory
     : [];
+  if (
+    input.status === 'REVIEW_REQUIRED'
+    && hasEventDateTimeRemediationContext(job.resultSummary)
+  ) {
+    const submittedResult = recordValue(recordValue(input.resultSummary).result);
+    const dateTimeReview = affiliateEventDateTimeReviewSchema.safeParse(submittedResult.dateTimeReview);
+    if (!dateTimeReview.success) {
+      throw new Error(
+        'event-datetime-v1 review-required mapping results require a valid dateTimeReview section. '
+        + dateTimeReview.error.message,
+      );
+    }
+  }
   const nextResultSummary = input.resultSummary
     ? {
         ...input.resultSummary,

@@ -21,6 +21,14 @@ export const affiliateMappingReviewDispositionSchema = z.object({
     'EVENT_CAPACITY_INVALID',
     'EVENT_DESCRIPTION_INVALID',
     'ORGANIZATION_DESCRIPTION_INVALID',
+    'EVENT_DATETIME_START_INVALID',
+    'EVENT_DATETIME_TIMEZONE_INVALID',
+    'EVENT_DATETIME_END_INVALID',
+    'EVENT_DATETIME_DURATION_INVALID',
+    'EVENT_DATETIME_DATE_ONLY_INVALID',
+    'EVENT_DATETIME_HOST_TIMEZONE_DEPENDENT',
+    'EVENT_DATETIME_EVERGREEN_OCCURRENCE',
+    'EVENT_DATETIME_TRYOUT_EVERGREEN',
     'OFFICIAL_LOGO_REPAIR_REQUIRED',
     'NO_VERIFIABLE_OFFICIAL_LOGO',
     'PACKAGE_VALIDATION_FAILED',
@@ -55,6 +63,7 @@ export const affiliateApprovalResultSchema = z.object({
     packageValidationPassed: z.boolean(),
     sportQualityVerified: z.boolean(),
     descriptionQualityVerified: z.boolean(),
+    dateTimeQualityVerified: z.boolean(),
     officialLogoVerified: z.boolean(),
     logoAbsenceAccepted: z.boolean(),
     duplicateSafetyVerified: z.boolean(),
@@ -93,6 +102,7 @@ export const affiliateApprovalResultSchema = z.object({
       || !result.checks.packageValidationPassed
       || !result.checks.sportQualityVerified
       || !result.checks.descriptionQualityVerified
+      || !result.checks.dateTimeQualityVerified
       || (!result.checks.officialLogoVerified && !result.checks.logoAbsenceAccepted)
       || !result.checks.duplicateSafetyVerified
       || !result.checks.storedEvidenceSufficient
@@ -100,7 +110,7 @@ export const affiliateApprovalResultSchema = z.object({
       context.addIssue({
         code: 'custom',
         path: ['checks'],
-        message: 'Mapping approval requires independent identity, evidence, package, sport, and description validation, an official logo or accepted logo absence, and duplicate-safety checks.',
+        message: 'Mapping approval requires independent identity, evidence, package, sport and description validation, datetime validation, an official logo or accepted logo absence, and duplicate-safety checks.',
       });
     }
   }
@@ -164,6 +174,14 @@ export const affiliateApprovalResultSchema = z.object({
     'EVENT_CAPACITY_INVALID',
     'EVENT_DESCRIPTION_INVALID',
     'ORGANIZATION_DESCRIPTION_INVALID',
+    'EVENT_DATETIME_START_INVALID',
+    'EVENT_DATETIME_TIMEZONE_INVALID',
+    'EVENT_DATETIME_END_INVALID',
+    'EVENT_DATETIME_DURATION_INVALID',
+    'EVENT_DATETIME_DATE_ONLY_INVALID',
+    'EVENT_DATETIME_HOST_TIMEZONE_DEPENDENT',
+    'EVENT_DATETIME_EVERGREEN_OCCURRENCE',
+    'EVENT_DATETIME_TRYOUT_EVERGREEN',
     'OFFICIAL_LOGO_REPAIR_REQUIRED',
     'PACKAGE_VALIDATION_FAILED',
     'DUPLICATE_SAFETY_INVALID',

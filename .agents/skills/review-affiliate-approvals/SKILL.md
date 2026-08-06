@@ -135,6 +135,18 @@ Also review event and division integrity independently of the organization:
   `EVENT_DESCRIPTION_INVALID` and organization copy defects with
   `ORGANIZATION_DESCRIPTION_INVALID`, using `PRODUCER_REPAIR`.
 
+- For an `event-datetime-v1` package, independently recompute representative
+  UTC instants in the source or coordinate timezone. Verify the producer's
+  `dateTimeReview` counts, UTC-host regression, start precision, end
+  disposition, duration handling, DST behavior, and title-clock consistency.
+  Verify every `SCHEDULED` and `DATE_ONLY` row has defensible timezone evidence.
+  For `NO_FIXED_DATE` and `ONGOING`, verify source-backed schedule text, no
+  occurrence timestamps, no hidden dated sessions, and no tryout or evaluation
+  classification. State every evergreen transition explicitly. Return concrete
+  defects with the applicable `EVENT_DATETIME_*` reason code and
+  `PRODUCER_REPAIR`; use `INSUFFICIENT_STORED_EVIDENCE` only when the stored
+  first-party or coordinate evidence cannot resolve the value.
+
 - Confirm every division is attached to the correct parent event and that
   divisions from neighboring event cards, dates, venues, or detail pages were
   not merged.
@@ -195,7 +207,8 @@ Generated preview PNG files are not approval evidence and must not remain in
 
 - `APPROVE` only when every required check in the result schema is true. The
   logo check requires exactly one of `officialLogoVerified` or
-  `logoAbsenceAccepted`.
+  `logoAbsenceAccepted`, and `dateTimeQualityVerified` must be true for every
+  mapping approval.
 - `REJECT` with `mappingDisposition.nextAction = PRODUCER_REPAIR` for a
   concrete setup, parser, event-filtering, description, division, pricing, capacity, logo,
   validation, or duplicate-safety defect that stored or governed supplemental

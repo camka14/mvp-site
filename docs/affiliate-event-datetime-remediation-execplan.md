@@ -58,8 +58,15 @@ separate implementation or operator approval.
 - [x] (2026-08-06 13:25 PDT) Revised the plan so evergreen mapping packages
   receive classification review but `NO_FIXED_DATE` and `ONGOING` rows cannot
   enter automatic timestamp repair through their internal 2099 start value.
+- [x] (2026-08-06) Implemented and tested the local Milestone 2 producer and
+  reviewer contract slice: context-bound `dateTimeReview`, complete display
+  mode and evergreen evidence counts, datetime producer reason codes, and the
+  required reviewer `dateTimeQualityVerified` check.
+- [x] (2026-08-06) Updated the repository-backed producer/reviewer skills,
+  completion references, rollout goal, CLI goals, and generated package tests
+  with the Milestone 2 datetime requirements.
 - [ ] Implement and test the named producer-remediation cohort.
-- [ ] Update the mapper and independent reviewer instructions.
+- [x] Update the mapper and independent reviewer instructions.
 - [ ] Preview, approve, and arm the live cohort after current leases drain.
 - [ ] Complete and approve every eligible event mapping package.
 - [ ] Preview and separately approve the candidate and event data repair.
@@ -174,6 +181,22 @@ separate implementation or operator approval.
   partial unique index.
   Date/Author: 2026-08-06 / Codex
 
+- Decision: Make `dateTimeReview` mandatory only when a claimed job carries the
+  `event-datetime-v1` remediation context, and enforce that requirement at the
+  producer completion boundary.
+  Rationale: Existing non-remediation packages must remain readable while the
+  named cohort receives a strict contract. The queue owns the claimed job
+  context, so schema parsing and context enforcement cannot be delegated only
+  to an untrusted result file.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Require `dateTimeQualityVerified` for every approved mapping result
+  and route concrete datetime defects through explicit `EVENT_DATETIME_*`
+  producer-repair codes.
+  Rationale: A reviewer must make datetime verification visible in the same
+  independent approval record as sport, description, logo, and duplicate checks.
+  Date/Author: 2026-08-06 / Codex
+
 - Decision: Let the cohort wait until mapping, capture, and approval work is
   idle. Never reset an active lease.
   Rationale: The database lease is the concurrency authority. The cohort must
@@ -283,13 +306,22 @@ candidates, events, processes, production data, or mobile files changed.
 The slice is intentionally not rollout-complete. Mappings without timezone
 evidence remain unresolved and require producer remediation; they never use the
 host timezone as a substitute.
-The cohort, agent/reviewer contract, live data repair, web presentation, and
-mobile parity remain unimplemented.
+The cohort, live data repair, web presentation, and mobile parity remain
+unimplemented.
 
 The plan now treats evergreen classification as a separate review outcome.
 Evergreen packages still enter producer and independent review, but their 2099
 database sentinel cannot qualify them for timestamp repair. No evergreen row or
 classification transition can enter the automatic apply set.
+
+Milestone 2 now has a local contract implementation. The producer result schema
+accepts a compact `dateTimeReview` report, the completion boundary requires it
+for `event-datetime-v1` jobs, and the independent approval schema requires
+`dateTimeQualityVerified` for mapping approvals. Producer and reviewer goals,
+skills, completion references, and generated package tests describe the same
+classification, timezone, precision, end, duration, DST, UTC-host, and
+evergreen rules. No queue rows, live mappings, approvals, candidates, events,
+processes, deployments, or mobile files changed.
 
 When implementation finishes, record the final cohort count, every excluded
 source and reason, producer and reviewer outcomes, candidate and event repair
@@ -455,9 +487,10 @@ and does not conceal a dated occurrence. Add repair reason codes for an
 evergreen candidate with occurrence evidence and for a tryout or evaluation
 marked evergreen.
 
-Add `dateTimeQualityVerified` to the independent approval checks. An event
-mapping cannot be approved until the reviewer independently verifies the UTC
-instant in the event timezone, the start precision, and the end disposition.
+Add `dateTimeQualityVerified` to the independent approval checks. A mapping
+cannot be approved until the reviewer independently verifies the applicable
+datetime contract. For an event mapping, this includes the UTC instant in the
+event timezone, the start precision, and the end disposition.
 For an evergreen candidate, the reviewer must instead verify the mode,
 source-backed schedule text, absent occurrence timestamps, and absence of dated
 sessions that should be separate candidates. An evergreen-to-scheduled or
@@ -968,6 +1001,12 @@ verification, but `NO_FIXED_DATE` and `ONGOING` rows are excluded from automatic
 timestamp repair. Mode transitions require a separate guarded repair, and the
 acceptance tests now prove that the sentinel is never treated as source evidence
 or shown to users.
+
+Revision note, 2026-08-06: Implemented the local Milestone 2 contract slice.
+Added context-bound `dateTimeReview` validation at producer completion,
+`dateTimeQualityVerified` to mapping approval checks, explicit datetime repair
+codes, and synchronized producer/reviewer instructions and generated tests.
+No live queue, data, process, deployment, or mobile action was performed.
 
 ## Interfaces and Dependencies
 

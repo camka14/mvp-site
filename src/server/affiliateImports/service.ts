@@ -2011,9 +2011,7 @@ const markSourceOrganizationListedForPublishedContent = async (
   }
   const organizationUpdatedAt = candidateUpdatedAtDate(organization);
   await organizations.update({
-    where: organizationUpdatedAt
-      ? { id: organization.id, updatedAt: organizationUpdatedAt }
-      : { id: organization.id },
+    where: { id: organization.id, updatedAt: organizationUpdatedAt },
     data: {
       status: 'LISTED',
       coordinates,

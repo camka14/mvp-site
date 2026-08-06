@@ -86,6 +86,16 @@ Commit a verified official normalized asset or official screenshot
 crop when supportable. If none is supportable, record the exact evidence gap
 and stop the package from cycling; never invent a replacement mark.
 
+For a claimed `event-datetime-v1` remediation job, inspect every expected
+occurrence and classify it as `SCHEDULED`, `DATE_ONLY`, `NO_FIXED_DATE`, or
+`ONGOING`. The producer result must include a compact `dateTimeReview` with
+timezone-evidence, start-precision, end-derivation, duration-warning,
+UTC-host-regression, display-mode, evergreen-transition, and evergreen-evidence
+counts. Every evergreen row needs source-backed schedule text and no hidden
+dated session; tryouts and evaluations cannot be evergreen. Independent review
+must recompute event-local UTC instants and set `dateTimeQualityVerified` only
+after checking the complete section.
+
 ## Completion Gate
 
 The coordinator may mark a source complete only when:

@@ -27,6 +27,29 @@ import {
   finishAffiliateSourceMappingClaim,
 } from '@/server/affiliateImports/sourceMappingQueue';
 
+const eventDateTimeReview = {
+  contractRevision: 'event-datetime-v1',
+  candidateCount: 1,
+  timeZoneEvidence: { SOURCE_FIELD: 0, COORDINATES: 1, EXPLICIT_OFFSET: 0, NONE: 0 },
+  startPrecision: { DATE_TIME: 1, DATE_ONLY: 0, NONE: 0 },
+  endDerivation: { EXPLICIT_END: 0, EXPLICIT_DURATION: 0, NONE: 1 },
+  durationWarnings: 0,
+  utcHostRegression: {
+    passed: true,
+    comparedCandidateCount: 1,
+    hostTimeZones: ['UTC', 'America/Los_Angeles'],
+  },
+  displayModeCounts: { SCHEDULED: 1, DATE_ONLY: 0, NO_FIXED_DATE: 0, ONGOING: 0 },
+  evergreenTransitions: [],
+  evergreenEvidence: {
+    scheduleTextBacked: 0,
+    datedSessionsMappedSeparately: 0,
+    hiddenDatedOccurrences: 0,
+    tryoutOrEvaluationMarkedEvergreen: 0,
+  },
+  repairReasonCodes: [],
+};
+
 describe('affiliate source mapping queue', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -91,6 +114,30 @@ describe('affiliate source mapping queue', () => {
   it('returns null when no claimable job exists', async () => {
     prismaMock.affiliateSourceMappingJobs.findFirst.mockResolvedValue(null);
     expect(await claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' })).toBeNull();
+  });
+
+  it('preserves a direct datetime remediation context for the producer', async () => {
+    prismaMock.affiliateSourceMappingJobs.findFirst.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'QUEUED',
+      createdAt: new Date(),
+      resultSummary: {
+        repairContext: { remediationContext: 'event-datetime-v1' },
+      },
+    });
+    prismaMock.affiliateSourceMappingJobs.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.affiliateSourceIntakes.findUnique.mockResolvedValue({
+      id: 'intake_1', sourceKey: 'rose-city-hockey', status: 'READY_FOR_MAPPING',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+
+    await expect(claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' }))
+      .resolves.toEqual(expect.objectContaining({
+        repairContext: expect.objectContaining({
+          remediationContext: 'event-datetime-v1',
+        }),
+      }));
   });
 
   it('resumes and renews an active claim owned by the same mapper', async () => {
@@ -274,6 +321,53 @@ describe('affiliate source mapping queue', () => {
     });
     expect(prismaMock.affiliateApprovalJobs.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.affiliateApprovalJobs.update).not.toHaveBeenCalled();
+  });
+
+  it('requires datetime review evidence for an event-datetime remediation claim', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      resultSummary: {
+        mappingRepairHistory: [{ remediationContext: 'event-datetime-v1' }],
+      },
+    });
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    })).rejects.toThrow('require a valid dateTimeReview section');
+    expect(prismaMock.affiliateSourceMappingJobs.update).not.toHaveBeenCalled();
+  });
+
+  it('accepts datetime review evidence for an event-datetime remediation claim', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      resultSummary: {
+        mappingFullReviewHistory: [{ remediationContexts: ['event-datetime-v1'] }],
+      },
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+    prismaMock.affiliateApprovalJobs.findUnique.mockResolvedValue(null);
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: {
+        result: {
+          status: 'REVIEW_REQUIRED',
+          dateTimeReview: eventDateTimeReview,
+        },
+      },
+    })).resolves.toEqual(expect.objectContaining({ status: 'REVIEW_REQUIRED' }));
   });
 
   it('preserves repair history and reopens a rejected approval after a repaired package completes', async () => {

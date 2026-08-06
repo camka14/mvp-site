@@ -109,6 +109,17 @@ job as `HUMAN_REVIEW_REQUIRED` with reason code `SPORT_NOT_IN_CATALOG`.
 
 Never invent dates, prices, addresses, divisions, tags, organization facts, or logos. Image tools may crop, resize, remove transparency from, or normalize an official stored asset. They must not create a new brand mark. When no reliable official mark exists, set the logo disposition to manual review and record the completed evidence search. The independent reviewer may accept that absence; the producer does not approve or publish the organization.
 
+For a claimed job with `repairContext.remediationContext =
+event-datetime-v1`, perform the datetime review for every expected occurrence,
+not only the first five candidates. Classify each row as `SCHEDULED`,
+`DATE_ONLY`, `NO_FIXED_DATE`, or `ONGOING`. Verify the source or coordinate
+timezone evidence, start precision, explicit end or duration disposition,
+duration warnings, DST behavior, and any title-leading clock text. Run the
+same fixture under `TZ=UTC` and a non-UTC host and record a passing comparison.
+Evergreen rows must have source-backed schedule text, no hidden dated session,
+and no tryout or evaluation classification. Record every transition to or from
+an evergreen mode and every applicable `EVENT_DATETIME_*` repair reason.
+
 Write event and organization descriptions from stored first-party page content.
 Describe the activity, audience, format, schedule, venue, experience, or material
 participation terms. Do not describe how the record was found. Phrases such as
@@ -233,6 +244,13 @@ The goal may produce review-ready code, local database records, fixtures, and va
 - change live organization/source/mapping rows unless the launch command and active user authorization explicitly allow live application.
 
 A `REVIEW_REQUIRED` queue result is not approval. An `EXPANDED` result only records that child URLs were submitted; it is not a source mapping or a training example. Human or independent reviewer approval remains mandatory before publication or training eligibility.
+
+When the claimed job carries the `event-datetime-v1` remediation context, a
+`REVIEW_REQUIRED` result is incomplete without a schema-valid `dateTimeReview`
+section. Keep it compact. Put detailed per-candidate evidence in the package
+report and fixtures. The completion command rejects the result when the
+section is absent or when its counts, evergreen evidence, or UTC-host result
+are inconsistent.
 
 ## Report progress
 

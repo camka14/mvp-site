@@ -1351,7 +1351,7 @@ describe('affiliate import service', () => {
       id: 'org_rose_city',
       name: 'Rose City Volleyball',
       location: 'Portland, OR',
-      updatedAt: new Date('2099-08-01T00:00:00.000Z'),
+      updatedAt: null,
     });
     prismaMock.sports.findFirst.mockResolvedValue({ id: 'sport_indoor_volleyball' });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -1388,7 +1388,7 @@ describe('affiliate import service', () => {
     expect(prismaMock.organizations.update).toHaveBeenCalledWith(expect.objectContaining({
       where: {
         id: 'org_rose_city',
-        updatedAt: new Date('2099-08-01T00:00:00.000Z'),
+        updatedAt: null,
       },
     }));
   });
@@ -1715,7 +1715,7 @@ describe('affiliate import service', () => {
       }),
     }));
     expect(prismaMock.organizations.update).toHaveBeenCalledWith({
-      where: { id: 'org_downtown' },
+      where: { id: 'org_downtown', updatedAt: null },
       data: {
         status: 'LISTED',
         coordinates: [-122.6765, 45.5231],
@@ -2632,7 +2632,7 @@ describe('affiliate import service', () => {
       data: expect.objectContaining({ state: 'PUBLISHED' }),
     });
     expect(prismaMock.organizations.update).toHaveBeenCalledWith({
-      where: { id: 'org_automatic' },
+      where: { id: 'org_automatic', updatedAt: null },
       data: {
         status: 'LISTED',
         coordinates: [-122.6765, 45.5231],

@@ -10,6 +10,7 @@ const checks = {
   packageValidationPassed: false,
   sportQualityVerified: false,
   descriptionQualityVerified: false,
+  dateTimeQualityVerified: false,
   officialLogoVerified: false,
   logoAbsenceAccepted: false,
   duplicateSafetyVerified: false,
@@ -65,6 +66,7 @@ describe('affiliate approval result', () => {
         packageValidationPassed: true,
         sportQualityVerified: true,
         descriptionQualityVerified: true,
+        dateTimeQualityVerified: true,
         logoAbsenceAccepted: true,
         duplicateSafetyVerified: true,
       },
@@ -81,6 +83,7 @@ describe('affiliate approval result', () => {
         ...checks,
         packageValidationPassed: true,
         sportQualityVerified: true,
+        dateTimeQualityVerified: true,
         descriptionQualityVerified: true,
         officialLogoVerified: true,
         logoAbsenceAccepted: true,
@@ -108,9 +111,27 @@ describe('affiliate approval result', () => {
         packageValidationPassed: true,
         sportQualityVerified: true,
         officialLogoVerified: true,
+        dateTimeQualityVerified: true,
         duplicateSafetyVerified: true,
       },
     })).toThrow('description validation');
+  });
+
+  it('requires independent datetime verification for mapping approval', () => {
+    expect(() => affiliateApprovalResultSchema.parse({
+      ...domainResult,
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      decision: 'APPROVE',
+      checks: {
+        ...checks,
+        packageValidationPassed: true,
+        sportQualityVerified: true,
+        descriptionQualityVerified: true,
+        officialLogoVerified: true,
+        duplicateSafetyVerified: true,
+      },
+    })).toThrow('datetime validation');
   });
 
   it('requires an explicit follow-up disposition for a rejected mapping package', () => {

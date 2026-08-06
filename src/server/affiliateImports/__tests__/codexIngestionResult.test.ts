@@ -7,6 +7,28 @@ import {
 } from '../codexIngestionResult';
 
 const HASH = 'a'.repeat(64);
+const eventDateTimeReview = {
+  contractRevision: 'event-datetime-v1' as const,
+  candidateCount: 3,
+  timeZoneEvidence: { SOURCE_FIELD: 3, COORDINATES: 0, EXPLICIT_OFFSET: 0, NONE: 0 },
+  startPrecision: { DATE_TIME: 3, DATE_ONLY: 0, NONE: 0 },
+  endDerivation: { EXPLICIT_END: 0, EXPLICIT_DURATION: 0, NONE: 3 },
+  durationWarnings: 0,
+  utcHostRegression: {
+    passed: true,
+    comparedCandidateCount: 3,
+    hostTimeZones: ['UTC', 'America/Los_Angeles'],
+  },
+  displayModeCounts: { SCHEDULED: 3, DATE_ONLY: 0, NO_FIXED_DATE: 0, ONGOING: 0 },
+  evergreenTransitions: [],
+  evergreenEvidence: {
+    scheduleTextBacked: 0,
+    datedSessionsMappedSeparately: 0,
+    hiddenDatedOccurrences: 0,
+    tryoutOrEvaluationMarkedEvergreen: 0,
+  },
+  repairReasonCodes: [],
+};
 const successfulResult = {
   schemaVersion: 1,
   jobId: 'job_1',
@@ -50,6 +72,33 @@ describe('Codex affiliate ingestion result', () => {
     expect(codexAffiliateIngestionResultSchema.parse(successfulResult)).toEqual(
       successfulResult,
     );
+  });
+
+  it('requires complete datetime evidence for a remediation review', () => {
+    const remediationResult = {
+      ...successfulResult,
+      dateTimeReview: eventDateTimeReview,
+    };
+    expect(codexAffiliateIngestionResultSchema.parse(remediationResult).dateTimeReview).toEqual(
+      eventDateTimeReview,
+    );
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...remediationResult,
+      dateTimeReview: {
+        ...eventDateTimeReview,
+        utcHostRegression: {
+          ...eventDateTimeReview.utcHostRegression,
+          passed: false,
+        },
+      },
+    })).toThrow('UTC-host regression');
+    expect(() => codexAffiliateIngestionResultSchema.parse({
+      ...remediationResult,
+      dateTimeReview: {
+        ...eventDateTimeReview,
+        candidateCount: 2,
+      },
+    })).toThrow('candidateCount');
   });
 
   it('rejects review-ready claims without stable duplicate-safe scrapes', () => {

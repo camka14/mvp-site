@@ -310,6 +310,27 @@ describe(${json(`${input.draft.sourceKey} generated affiliate mapping`)}, () => 
       ).toBe(true);
     });
   });
+
+  it('classifies every expected candidate and preserves evergreen meaning', () => {
+    const counts = {
+      SCHEDULED: 0,
+      DATE_ONLY: 0,
+      NO_FIXED_DATE: 0,
+      ONGOING: 0,
+    };
+    for (const candidate of ${symbolName}_EXPECTED_CANDIDATES) {
+      const mode = candidate.dateDisplayMode
+        ?? (candidate.startsAt ? 'SCHEDULED' : 'NO_FIXED_DATE');
+      counts[mode as keyof typeof counts] += 1;
+      if (mode === 'NO_FIXED_DATE' || mode === 'ONGOING') {
+        expect(candidate.dateDisplayText).toBeTruthy();
+        expect(candidate.startsAt ?? null).toBeNull();
+        expect(candidate.endsAt ?? null).toBeNull();
+      }
+    }
+    expect(Object.values(counts).reduce((total, count) => total + count, 0))
+      .toBe(${symbolName}_EXPECTED_CANDIDATES.length);
+  });
 });
 `;
 };
