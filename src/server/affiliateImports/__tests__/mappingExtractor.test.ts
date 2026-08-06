@@ -46,6 +46,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
         required: true,
       },
       startsAt: { selector: '.date', mode: 'text', transform: 'dateTime' },
+      timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
       priceText: { selector: '.price', mode: 'text' },
       venueName: { selector: '.venue', mode: 'text' },
       organizerName: { selector: ':scope', mode: 'literal', value: 'Example Organizer' },
@@ -315,6 +316,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
         officialActionUrl: { selector: ':scope', mode: 'literal', value: 'https://example.com/register', required: true },
         startsAt: { selector: 'td:nth-child(2)', mode: 'text', transform: 'dateTime' },
         endsAt: { selector: 'td:nth-child(2)', mode: 'text', transform: 'dateRangeEnd' },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
       },
     };
 
@@ -376,6 +378,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
           regex: '((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[A-Za-z]*\\.?\\s+\\d{1,2}.*?\\b20\\d{2}\\b)',
           transform: 'dateRangeEnd',
         },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
       },
     };
 
@@ -438,6 +441,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
         divisionText: { selector: 'dd:nth-of-type(2)' },
         startsAt: { selector: 'dd:nth-of-type(3)', transform: 'dateTime' },
         endsAt: { selector: 'dd:nth-of-type(3)', transform: 'dateRangeEnd' },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
       },
     };
 
@@ -511,6 +515,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
           required: true,
           transform: 'dateTime',
         },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
         priceText: { selector: '.price-row', mode: 'text' },
         statusText: { selector: '.spot-count', mode: 'text' },
         description: { selector: '.blurb-text', mode: 'text' },
@@ -601,6 +606,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
           required: true,
           transform: 'previousDaySectionDateTime',
         },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
         priceText: { selector: '.game-desc strong', mode: 'text' },
         description: {
           selector: '.game-desc',
@@ -699,6 +705,127 @@ describe('extractAffiliateCandidatesFromPage', () => {
     expect(outputs[1].endsAt).toBe(outputs[0].endsAt);
   });
 
+  it('does not substitute the host timezone when a mapping has no timezone evidence', () => {
+    const noTimeZonePage: ScrapedPage = {
+      ...page,
+      fetchedAt: '2026-08-01T12:00:00.000Z',
+      body: `
+        <section class="event-card">
+          <a class="event-title" href="/events/rose-city">Rose City Volleyball</a>
+          <span class="date">August 10, 2026 9:30 PM</span>
+        </section>
+      `,
+    };
+    const noTimeZoneMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: '.event-card',
+      fields: {
+        title: { selector: '.event-title', required: true },
+        officialActionUrl: {
+          selector: '.event-title',
+          mode: 'attribute',
+          attribute: 'href',
+          transform: 'absoluteUrl',
+          required: true,
+        },
+        startsAt: { selector: '.date', transform: 'dateTime', required: true },
+      },
+    };
+    const originalTimeZone = process.env.TZ;
+    const outputs: AffiliateCandidateInput[] = [];
+    try {
+      for (const hostTimeZone of ['UTC', 'America/Los_Angeles']) {
+        process.env.TZ = hostTimeZone;
+        outputs.push(...extractAffiliateCandidatesFromPage(noTimeZonePage, noTimeZoneMapping));
+      }
+    } finally {
+      process.env.TZ = originalTimeZone;
+    }
+
+    expect(outputs).toHaveLength(2);
+    outputs.forEach((candidate) => {
+      expect(candidate.startsAt).toBeUndefined();
+      expect(candidate.endsAt).toBeUndefined();
+      expect(candidate.warnings).toEqual(expect.arrayContaining(['timeZone:MISSING_IANA_TIME_ZONE']));
+    });
+  });
+
+  it('clears invalid manual datetime values after normalization', () => {
+    const candidates = extractAffiliateCandidatesFromPage(page, {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: 'body',
+      fields: {
+        title: { selector: 'body' },
+        officialActionUrl: { selector: 'body' },
+      },
+      manualCandidates: [{
+        title: 'DST transition event',
+        officialActionUrl: 'https://example.com/events/dst',
+        startsAt: 'March 8, 2026 2:30 AM',
+        timeZone: 'America/Los_Angeles',
+        dateDisplayMode: 'SCHEDULED',
+      }],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      startsAt: null,
+      warnings: expect.arrayContaining(['start:NONEXISTENT_LOCAL_TIME']),
+    });
+  });
+
+  it('keeps duration-derived ends for manual candidates', () => {
+    const candidates = extractAffiliateCandidatesFromPage(page, {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: 'body',
+      fields: {
+        title: { selector: 'body' },
+        officialActionUrl: { selector: 'body' },
+      },
+      manualCandidates: [{
+        title: 'Manual timed event',
+        officialActionUrl: 'https://example.com/events/manual',
+        startsAt: 'August 10, 2026 9:30 PM',
+        durationText: '2 Hours 5 Mins',
+        timeZone: 'America/Los_Angeles',
+      }],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      startsAt: '2026-08-11T04:30:00.000Z',
+      endsAt: '2026-08-11T06:35:00.000Z',
+    });
+  });
+
+  it('does not retain an invalid timezone on an explicit-offset manual candidate', () => {
+    const candidates = extractAffiliateCandidatesFromPage(page, {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: 'body',
+      fields: {
+        title: { selector: 'body' },
+        officialActionUrl: { selector: 'body' },
+      },
+      manualCandidates: [{
+        title: 'Explicit offset event',
+        officialActionUrl: 'https://example.com/events/offset',
+        startsAt: '2026-08-10T21:00:00-05:00',
+        timeZone: 'CST',
+      }],
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({
+      startsAt: '2026-08-11T02:00:00.000Z',
+      timeZone: null,
+      warnings: expect.arrayContaining(['start:INVALID_TIME_ZONE']),
+    });
+  });
+
   it('extracts Telerik postback URLs from TeamSideline-style More Info buttons', () => {
     const teamSidelinePage: ScrapedPage = {
       ...page,
@@ -742,6 +869,7 @@ describe('extractAffiliateCandidatesFromPage', () => {
         },
         startsAt: { selector: '[id$="_ProgramDurationLabel"]', transform: 'dateTime' },
         endsAt: { selector: '[id$="_ProgramDurationLabel"]', transform: 'dateRangeEnd' },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
         priceText: { selector: '[id$="_RegularRegistrationCostLabel"]' },
         statusText: { selector: '[id$="_RegistrationStatusLabel"]' },
         registrationDeadlineText: { selector: '[id$="_RegularRegistrationLabel"]', regex: '[-–]\\s*(.+)$' },

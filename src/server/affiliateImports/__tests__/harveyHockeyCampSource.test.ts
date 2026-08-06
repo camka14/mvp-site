@@ -23,7 +23,7 @@ describe('Harvey hockey camp source', () => {
       listingKind: 'EVENT',
       title: 'Colton Orr Harvey Hockey Summer Camp 2026',
       dateDisplayMode: 'ONGOING',
-      startsAt: '2026-07-27T08:30:00-04:00',
+      startsAt: '2026-07-27T12:30:00.000Z',
       priceText: '$800 cash weekly rate; $824 credit-card weekly rate',
     }));
   });

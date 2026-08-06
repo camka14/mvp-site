@@ -2397,6 +2397,7 @@ describe('affiliate import service', () => {
           divisionText: { selector: '.level' },
           startsAt: { selector: '.date-range', transform: 'dateTime' },
           endsAt: { selector: '.date-range', transform: 'dateRangeEnd' },
+          timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
         },
       },
     });

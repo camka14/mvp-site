@@ -72,35 +72,6 @@ const normalizeTagInputs = (value: unknown): string[] => {
   return tags;
 };
 
-const normalizeDateText = (value: string): string => (
-  normalizeWhitespace(value)
-    .replace(/\b(\d{1,2})(st|nd|rd|th)\b/gi, '$1')
-    .replace(/\bSept\.?\b/gi, 'September')
-    .replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.\b/gi, '$1')
-    .replace(/\s+(?:&|and)\s+/gi, ' – ')
-    .replace(/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s+/gi, '')
-);
-
-const parseDateWithOptionalYear = (
-  value: string,
-  referenceDate: Date,
-  options: { endOfDay?: boolean } = {},
-): Date | null => {
-  const normalized = normalizeDateText(value);
-  if (!normalized) return null;
-
-  const hasYear = /\b\d{4}\b/.test(normalized);
-  const text = hasYear ? normalized : `${normalized}, ${referenceDate.getFullYear()}`;
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-  if (options.endOfDay) {
-    parsed.setHours(23, 59, 59, 999);
-  }
-  return parsed;
-};
-
 const toAbsoluteUrl = (value: string, baseUrl: string): string => {
   try {
     return new URL(value, baseUrl).toString();
@@ -130,105 +101,6 @@ const findTelerikPostBackUrl = (dom: Document, elementId: string, baseUrl: strin
   return rawUrl ? toAbsoluteUrl(rawUrl, baseUrl) : null;
 };
 
-const parseDateTimeValue = (value: string, referenceDate: Date): string => {
-  const trimmed = normalizeDateText(value);
-  if (!trimmed) return '';
-
-  const numericDate = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/);
-  if (numericDate) {
-    const month = Number.parseInt(numericDate[1], 10);
-    const day = Number.parseInt(numericDate[2], 10);
-    const rawYear = Number.parseInt(numericDate[3], 10);
-    const year = numericDate[3].length === 2 ? 2000 + rawYear : rawYear;
-    const parsed = new Date(year, month - 1, day);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  const explicitStart = trimmed.match(/^([A-Za-z]+\s+\d{1,2},\s*\d{4})\b/);
-  if (explicitStart) {
-    const explicitStartDate = new Date(explicitStart[1]);
-    if (!Number.isNaN(explicitStartDate.getTime())) {
-      return explicitStartDate.toISOString();
-    }
-  }
-
-  const compactRangeStart = trimmed.match(/^([A-Za-z]+)\s+(\d{1,2})\s*[-–]\s*\d{1,2},\s*(\d{4})\b/);
-  if (compactRangeStart) {
-    const compactStartDate = new Date(`${compactRangeStart[1]} ${compactRangeStart[2]}, ${compactRangeStart[3]}`);
-    if (!Number.isNaN(compactStartDate.getTime())) {
-      return compactStartDate.toISOString();
-    }
-  }
-
-  const crossMonthRangeStart = trimmed.match(/^([A-Za-z]+)\s+(\d{1,2})\s*[-–]\s*[A-Za-z]+\s+\d{1,2},\s*(\d{4})\b/);
-  if (crossMonthRangeStart) {
-    const crossMonthStartDate = new Date(`${crossMonthRangeStart[1]} ${crossMonthRangeStart[2]}, ${crossMonthRangeStart[3]}`);
-    if (!Number.isNaN(crossMonthStartDate.getTime())) {
-      return crossMonthStartDate.toISOString();
-    }
-  }
-
-  const noYearRangeStart = !/\b\d{4}\b/.test(trimmed)
-    ? trimmed.match(/^([A-Za-z]+\s+\d{1,2})\s*[-–]\s*(?:[A-Za-z]+\s+)?\d{1,2}\b/)
-    : null;
-  if (noYearRangeStart) {
-    const noYearStartDate = parseDateWithOptionalYear(noYearRangeStart[1], referenceDate);
-    if (noYearStartDate) {
-      return noYearStartDate.toISOString();
-    }
-  }
-
-  if (!/\b\d{4}\b/.test(trimmed)) {
-    const noYearDate = parseDateWithOptionalYear(trimmed, referenceDate);
-    if (noYearDate) {
-      return noYearDate.toISOString();
-    }
-  } else {
-    const parsed = new Date(trimmed);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  return trimmed;
-};
-
-const parseDateRangeEndValue = (value: string, referenceDate: Date): string => {
-  const trimmed = normalizeDateText(value);
-  if (!trimmed) return '';
-
-  const explicitEnd = trimmed.match(/[-–]\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})\b/);
-  if (explicitEnd) {
-    const explicitEndDate = new Date(explicitEnd[1]);
-    if (!Number.isNaN(explicitEndDate.getTime())) {
-      return explicitEndDate.toISOString();
-    }
-  }
-
-  const compactEnd = trimmed.match(/^([A-Za-z]+)\s+\d{1,2}\s*[-–]\s*(\d{1,2}),\s*(\d{4})\b/);
-  if (compactEnd) {
-    const compactEndDate = new Date(`${compactEnd[1]} ${compactEnd[2]}, ${compactEnd[3]}`);
-    if (!Number.isNaN(compactEndDate.getTime())) {
-      return compactEndDate.toISOString();
-    }
-  }
-
-  const noYearEnd = trimmed.match(/^([A-Za-z]+)\s+\d{1,2}\s*[-–]\s*([A-Za-z]+\s+\d{1,2}|\d{1,2})\b/);
-  if (noYearEnd) {
-    const endText = /^[A-Za-z]+/.test(noYearEnd[2])
-      ? noYearEnd[2]
-      : `${noYearEnd[1]} ${noYearEnd[2]}`;
-    const noYearEndDate = parseDateWithOptionalYear(endText, referenceDate);
-    if (noYearEndDate) {
-      return noYearEndDate.toISOString();
-    }
-  }
-
-  return parseDateTimeValue(trimmed, referenceDate);
-};
-
 const findNearestPreviousText = (element: Element, selector: string): string | null => {
   let current: Element | null = element;
   while (current) {
@@ -247,32 +119,6 @@ const findNearestPreviousText = (element: Element, selector: string): string | n
     current = current.parentElement;
   }
   return null;
-};
-
-const parsePreviousDaySectionDateTimeValue = (
-  element: Element | null,
-  value: string,
-  referenceDate: Date,
-): string => {
-  if (!element) return '';
-  const timeMatch = normalizeWhitespace(value).match(/\b(\d{1,2}:\d{2}\s*[AP]M)\b/i);
-  if (!timeMatch?.[1]) return '';
-  const dayText = findNearestPreviousText(element, '.day-section');
-  if (!dayText) return '';
-
-  const normalizedDay = normalizeDateText(dayText);
-  const parsed = new Date(`${normalizedDay}, ${referenceDate.getFullYear()} ${timeMatch[1]}`);
-  if (Number.isNaN(parsed.getTime())) {
-    return '';
-  }
-
-  const dayStart = new Date(referenceDate);
-  dayStart.setHours(0, 0, 0, 0);
-  if (parsed.getTime() < dayStart.getTime() - 24 * 60 * 60 * 1000) {
-    parsed.setFullYear(parsed.getFullYear() + 1);
-  }
-
-  return parsed.toISOString();
 };
 
 const selectElement = (root: Element, selector: string): Element | null => {
@@ -474,21 +320,6 @@ const extractFieldValue = (
   return value.length > 0 ? value : null;
 };
 
-const legacyDateTransformValue = (
-  value: string | null,
-  mapping: FieldMapping | undefined,
-  element: Element | null,
-  referenceDate: Date,
-): string | null => {
-  if (!value || !mapping) return value;
-  if (mapping.transform === 'dateTime') return parseDateTimeValue(value, referenceDate) || null;
-  if (mapping.transform === 'dateRangeEnd') return parseDateRangeEndValue(value, referenceDate) || null;
-  if (mapping.transform === 'previousDaySectionDateTime') {
-    return parsePreviousDaySectionDateTimeValue(element, value, referenceDate) || null;
-  }
-  return value;
-};
-
 const normalizeExtractedDateTimeFields = (params: {
   fieldValues: Partial<Record<ExtractedFieldName, string | null>>;
   fieldMappings: AffiliateScrapeMapping['fields'];
@@ -502,7 +333,6 @@ const normalizeExtractedDateTimeFields = (params: {
   const rawTimeZone = fieldValues.timeZone ?? null;
   const startElement = fieldElements.startsAt ?? null;
   const startMapping = fieldMappings.startsAt;
-  const endMapping = fieldMappings.endsAt;
   let startSource = rawStartsAt;
 
   if (startMapping?.transform === 'previousDaySectionDateTime' && startElement && rawStartsAt) {
@@ -519,29 +349,15 @@ const normalizeExtractedDateTimeFields = (params: {
     referenceDate,
   });
 
-  const allowLegacyFallback = !rawTimeZone
-    && normalized.metadata.warnings.includes('timeZone:MISSING_IANA_TIME_ZONE');
-  const legacyStart = normalized.startsAt
-    ?? (allowLegacyFallback
-      ? legacyDateTransformValue(rawStartsAt, startMapping, startElement, referenceDate)
-      : null);
-  const legacyEnd = normalized.endsAt
-    ?? (allowLegacyFallback
-      ? legacyDateTransformValue(rawEndsAt, endMapping, fieldElements.endsAt ?? null, referenceDate)
-      : null);
-
-  if (rawStartsAt) fieldValues.startsAt = legacyStart;
-  if (normalized.endsAt) {
+  if (rawStartsAt) fieldValues.startsAt = normalized.startsAt;
+  if (normalized.endsAt || rawEndsAt) {
     fieldValues.endsAt = normalized.endsAt;
-  } else if (rawEndsAt) {
-    fieldValues.endsAt = legacyEnd;
   }
+  if (rawTimeZone) fieldValues.timeZone = normalized.metadata.timeZone;
   if (normalized.dateDisplayMode) fieldValues.dateDisplayMode = normalized.dateDisplayMode;
 
   return {
     normalized,
-    legacyStart,
-    legacyEnd,
   };
 };
 
@@ -586,8 +402,11 @@ export const extractAffiliateCandidatesFromPage = (
         dateDisplayMode: manualCandidate.dateDisplayMode ?? null,
         referenceDate: new Date(page.fetchedAt),
       });
-      if (normalizedDateTime.startsAt) candidate.startsAt = normalizedDateTime.startsAt;
-      if (normalizedDateTime.endsAt) candidate.endsAt = normalizedDateTime.endsAt;
+      if (manualCandidate.startsAt != null) candidate.startsAt = normalizedDateTime.startsAt;
+      if (manualCandidate.endsAt != null || normalizedDateTime.endsAt != null) {
+        candidate.endsAt = normalizedDateTime.endsAt;
+      }
+      if (manualCandidate.timeZone != null) candidate.timeZone = normalizedDateTime.metadata.timeZone;
       if (normalizedDateTime.dateDisplayMode) candidate.dateDisplayMode = normalizedDateTime.dateDisplayMode;
       candidate.warnings = [...(candidate.warnings ?? []), ...normalizedDateTime.metadata.warnings];
       (candidate.rawPayload as Record<string, unknown>).normalizedImport = {

@@ -46,9 +46,9 @@ separate implementation or operator approval.
   remediation plan.
 - [ ] (2026-08-06 11:52 PDT) Implement the shared affiliate date, time, duration, and evidence contract
   (completed: deterministic normalizer, duration parser, `DATE_ONLY`, raw
-  field preservation, end derivation, provenance, and focused regression tests;
-  remaining: remove the temporary legacy parser bridge, add coordinate-based
-  timezone resolution, and enforce accepted-output rejection).
+  field preservation, end derivation, provenance, focused regression tests,
+  and removal of the host-local legacy parser bridge; remaining:
+  coordinate-based timezone resolution and accepted-output rejection).
 - [ ] Implement and test the named producer-remediation cohort.
 - [ ] Update the mapper and independent reviewer instructions.
 - [ ] Preview, approve, and arm the live cohort after current leases drain.
@@ -124,11 +124,10 @@ separate implementation or operator approval.
 
 - Observation: Existing generic mappings do not all provide an IANA timezone
   field yet.
-  Evidence: The extractor now uses the strict normalizer when the mapping
-  provides timezone evidence. For an old local-text mapping with no timezone,
-  it preserves the previous host-local value and adds
-  `timeZone:MISSING_IANA_TIME_ZONE` to candidate warnings. This keeps current
-  sources reviewable until the producer-remediation cohort repairs them.
+  Evidence: The extractor now leaves timezone-less local values unresolved and
+  adds `timeZone:MISSING_IANA_TIME_ZONE` to candidate warnings. It does not
+  preserve a host-local timestamp, so the same source cannot produce different
+  UTC instants on different hosts.
 
 - Observation: A local wall-clock time can be invalid even when its date and
   time text are syntactically valid.
@@ -208,11 +207,13 @@ separate implementation or operator approval.
   own review and expected-count guard.
   Date/Author: 2026-08-06 / Codex
 
-- Decision: Apply the automatic row repair only to current and future,
-  non-archived affiliate events. Report past and archived rows separately.
+- Decision: Apply the automatic row repair only to future, non-archived
+  affiliate events whose existing start is on or after one captured repair
+  cutoff. Report events before that cutoff and archived rows separately.
   Rationale: Historical rows can have reporting and registration consequences.
-  Their correction should use an explicit operator scope instead of an implicit
-  bulk write.
+  A single captured cutoff prevents the eligible set from changing during the
+  dry-run and apply steps. Past and archived corrections should use an explicit
+  operator scope instead of an implicit bulk write.
   Date/Author: 2026-08-06 / Codex
 
 - Decision: Hide the public Timeline section when it has no preview items.
@@ -220,13 +221,12 @@ separate implementation or operator approval.
   matches or time slots exist. An empty schedule message adds no event detail.
   Date/Author: 2026-08-06 / Codex
 
-- Decision: Keep a temporary compatibility bridge for mappings without timezone
-  evidence, but emit a machine-readable warning and never use that bridge when
-  an invalid or ambiguous timezone-aware value is supplied.
-  Rationale: Existing source mappings must remain runnable while the planned
-  producer cohort repairs their stored mappings. Strict parsing is already the
-  only path for the new timezone-backed contract, and the warning makes legacy
-  work visible to the later cohort.
+- Decision: Do not keep a host-local compatibility bridge for mappings without
+  timezone evidence. Emit a machine-readable warning and leave the datetime
+  unresolved until the producer supplies defensible timezone evidence.
+  Rationale: A compatibility value recreates the original defect and can differ
+  by deployment host. An unresolved value is safe for review and makes the
+  producer-remediation requirement visible.
   Date/Author: 2026-08-06 / Codex
 
 ## Outcomes & Retrospective
@@ -238,7 +238,8 @@ backend handling for explicit affiliate ends. No queue rows, live mappings,
 candidates, events, processes, production data, or mobile files changed.
 
 The slice is intentionally not rollout-complete. Mappings without timezone
-evidence still use the compatibility bridge and require producer remediation.
+evidence remain unresolved and require producer remediation; they never use the
+host timezone as a substitute.
 The cohort, agent/reviewer contract, live data repair, web presentation, and
 mobile parity remain unimplemented.
 
@@ -315,10 +316,9 @@ end, duration, and timezone text until all fields for an item are extracted.
 Change the generic extractor to use two passes: collect raw field values, then
 apply date and time transforms with the resolved timezone and occurrence
 context. Do not call `new Date(localText)` or `Date.parse(localText)` for a
-source-local value. The local extractor now follows this rule when a mapping
-supplies an IANA timezone. A temporary compatibility path remains only for
-older mappings that supply no timezone field; it emits a warning and is
-scheduled for removal after the producer-remediation cohort.
+source-local value. The extractor leaves a source-local value unresolved when
+the mapping supplies no defensible IANA timezone and emits a warning for
+producer remediation.
 
 Extend `FieldMapping` and `AffiliateCandidateInput` with `durationText`. Add a
 small duration parser that returns an integer number of minutes and a specific
@@ -494,8 +494,9 @@ For each exact match, preview these changes:
 Before apply, check that the corrected dedupe key does not collide with another
 candidate. Apply the candidate and linked event in one transaction. Require an
 explicit ID set, expected counts by issue class, no published-registration
-conflict, and unchanged current values. Keep current and future non-archived
-events in the default apply set. Write past, archived, ambiguous, and
+conflict, and unchanged current values. Keep only future, non-archived events
+whose existing start is on or after the captured repair cutoff in the default
+apply set. Write past, archived, ambiguous, and
 registration-sensitive rows to separate report sections.
 
 After the guarded repair, run one review scrape for each corrected source. The
@@ -655,7 +656,8 @@ Work first in `/Users/elesesy/StudioProjects/mvp-site`.
 
 10. After all packages reach a terminal outcome, run the row-repair command in
     preview mode. Review every automatic match and exclusion. Under separate
-    data-write approval, apply only the exact expected current/future set.
+    data-write approval, apply only the exact expected future set selected by
+    the captured cutoff.
 
 Then work in `/Users/elesesy/StudioProjects/mvp-app`.
 
@@ -792,9 +794,28 @@ open-end flag, and mobile device-timezone and placeholder-end behavior.
 Revision note, 2026-08-06 11:52 PDT: Implemented the first local importer
 milestone. Added `affiliateDateTime.ts`, extended the mapping and candidate
 contracts with duration and `DATE_ONLY`, changed extraction to collect raw
-fields before datetime normalization, preserved a warning-backed legacy bridge
-for timezone-less mappings, and recorded focused validation results. No live
-queue, data, process, deployment, or mobile action was performed.
+fields before datetime normalization, and recorded focused validation results.
+No live queue, data, process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06: Addressed the importer review findings. Removed the
+host-local compatibility parser, selected the trailing clock for range ends,
+inferred cross-year range starts, cleared invalid manual datetime values,
+derived `DATE_ONLY` from date-only evidence, narrowed duration fallback, and
+changed the repair scope to future events after one captured cutoff.
+
+Revision note, 2026-08-06: Addressed the second importer review pass. Preserved
+manual duration-derived ends and stored `DATE_ONLY`, rolled no-year dates across
+year boundaries, rejected timezone abbreviations, supported same-month `and`
+ranges and overnight clocks, and used event-local calendar days for whole-day
+durations across DST.
+
+Revision note, 2026-08-06: Corrected yearless cross-year range inference so a
+December reference resolves `December 31 - January 2` to the current December
+and following January instead of the previous year pair.
+
+Revision note, 2026-08-06: Corrected the early-January case so an active
+December–January range uses the previous December and current January rather
+than advancing both dates by one year.
 
 ## Interfaces and Dependencies
 

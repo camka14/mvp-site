@@ -23,7 +23,7 @@ describe('House of Sports NY volleyball source', () => {
     expect(candidates.filter((candidate) => candidate.dateDisplayText === 'August 30, 2026')).toHaveLength(11);
     expect(candidates[0]).toEqual(expect.objectContaining({
       title: 'House of Sports NY 12U Regional Team Tryout',
-      startsAt: '2026-08-23T09:00:00-04:00',
+      startsAt: '2026-08-23T13:00:00.000Z',
       dateDisplayMode: 'SCHEDULED',
     }));
   });
