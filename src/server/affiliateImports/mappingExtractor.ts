@@ -1,4 +1,7 @@
 import { JSDOM, VirtualConsole } from 'jsdom';
+import {
+  normalizeAffiliateEventDateTime,
+} from './affiliateDateTime';
 import type {
   AffiliateCandidateInput,
   AffiliateScrapeMapping,
@@ -20,6 +23,7 @@ const nullableFieldNames = [
   'locationEvidence',
   'startsAt',
   'endsAt',
+  'durationText',
   'timeZone',
   'scheduleText',
   'dateDisplayMode',
@@ -449,14 +453,12 @@ const extractFieldValue = (
   }
 
   const transform = mapping.transform ?? 'trim';
+  if (transform === 'dateTime' || transform === 'dateRangeEnd' || transform === 'previousDaySectionDateTime') {
+    return normalizeWhitespace(value) || null;
+  }
+
   if (transform === 'absoluteUrl') {
     value = toAbsoluteUrl(normalizeWhitespace(value), baseUrl);
-  } else if (transform === 'dateTime') {
-    value = parseDateTimeValue(value, referenceDate);
-  } else if (transform === 'dateRangeEnd') {
-    value = parseDateRangeEndValue(value, referenceDate);
-  } else if (transform === 'previousDaySectionDateTime') {
-    value = parsePreviousDaySectionDateTimeValue(element, value, referenceDate);
   } else if (transform === 'priceText') {
     value = normalizePriceTextValue(value);
   } else if (transform === 'venueFromLocationText') {
@@ -470,6 +472,77 @@ const extractFieldValue = (
   }
 
   return value.length > 0 ? value : null;
+};
+
+const legacyDateTransformValue = (
+  value: string | null,
+  mapping: FieldMapping | undefined,
+  element: Element | null,
+  referenceDate: Date,
+): string | null => {
+  if (!value || !mapping) return value;
+  if (mapping.transform === 'dateTime') return parseDateTimeValue(value, referenceDate) || null;
+  if (mapping.transform === 'dateRangeEnd') return parseDateRangeEndValue(value, referenceDate) || null;
+  if (mapping.transform === 'previousDaySectionDateTime') {
+    return parsePreviousDaySectionDateTimeValue(element, value, referenceDate) || null;
+  }
+  return value;
+};
+
+const normalizeExtractedDateTimeFields = (params: {
+  fieldValues: Partial<Record<ExtractedFieldName, string | null>>;
+  fieldMappings: AffiliateScrapeMapping['fields'];
+  fieldElements: Partial<Record<ExtractedFieldName, Element | null>>;
+  referenceDate: Date;
+}) => {
+  const { fieldValues, fieldMappings, fieldElements, referenceDate } = params;
+  const rawStartsAt = fieldValues.startsAt ?? null;
+  const rawEndsAt = fieldValues.endsAt ?? null;
+  const rawDurationText = fieldValues.durationText ?? null;
+  const rawTimeZone = fieldValues.timeZone ?? null;
+  const startElement = fieldElements.startsAt ?? null;
+  const startMapping = fieldMappings.startsAt;
+  const endMapping = fieldMappings.endsAt;
+  let startSource = rawStartsAt;
+
+  if (startMapping?.transform === 'previousDaySectionDateTime' && startElement && rawStartsAt) {
+    const dayText = findNearestPreviousText(startElement, '.day-section');
+    if (dayText) startSource = `${dayText} ${rawStartsAt}`;
+  }
+
+  const normalized = normalizeAffiliateEventDateTime({
+    startsAt: startSource,
+    endsAt: rawEndsAt,
+    durationText: rawDurationText,
+    timeZone: rawTimeZone,
+    dateDisplayMode: fieldValues.dateDisplayMode ?? null,
+    referenceDate,
+  });
+
+  const allowLegacyFallback = !rawTimeZone
+    && normalized.metadata.warnings.includes('timeZone:MISSING_IANA_TIME_ZONE');
+  const legacyStart = normalized.startsAt
+    ?? (allowLegacyFallback
+      ? legacyDateTransformValue(rawStartsAt, startMapping, startElement, referenceDate)
+      : null);
+  const legacyEnd = normalized.endsAt
+    ?? (allowLegacyFallback
+      ? legacyDateTransformValue(rawEndsAt, endMapping, fieldElements.endsAt ?? null, referenceDate)
+      : null);
+
+  if (rawStartsAt) fieldValues.startsAt = legacyStart;
+  if (normalized.endsAt) {
+    fieldValues.endsAt = normalized.endsAt;
+  } else if (rawEndsAt) {
+    fieldValues.endsAt = legacyEnd;
+  }
+  if (normalized.dateDisplayMode) fieldValues.dateDisplayMode = normalized.dateDisplayMode;
+
+  return {
+    normalized,
+    legacyStart,
+    legacyEnd,
+  };
 };
 
 export const extractAffiliateCandidatesFromPage = (
@@ -505,6 +578,22 @@ export const extractAffiliateCandidatesFromPage = (
         candidate.sportNames = manualCandidate.sportNames.map((value) => value.trim()).filter(Boolean);
       }
 
+      const normalizedDateTime = normalizeAffiliateEventDateTime({
+        startsAt: manualCandidate.startsAt ?? null,
+        endsAt: manualCandidate.endsAt ?? null,
+        durationText: manualCandidate.durationText ?? null,
+        timeZone: manualCandidate.timeZone ?? null,
+        dateDisplayMode: manualCandidate.dateDisplayMode ?? null,
+        referenceDate: new Date(page.fetchedAt),
+      });
+      if (normalizedDateTime.startsAt) candidate.startsAt = normalizedDateTime.startsAt;
+      if (normalizedDateTime.endsAt) candidate.endsAt = normalizedDateTime.endsAt;
+      if (normalizedDateTime.dateDisplayMode) candidate.dateDisplayMode = normalizedDateTime.dateDisplayMode;
+      candidate.warnings = [...(candidate.warnings ?? []), ...normalizedDateTime.metadata.warnings];
+      (candidate.rawPayload as Record<string, unknown>).normalizedImport = {
+        dateTime: normalizedDateTime.metadata,
+      };
+
       return candidate;
     });
   }
@@ -525,6 +614,7 @@ export const extractAffiliateCandidatesFromPage = (
     .map((element, index): AffiliateCandidateInput | null => {
       const warnings: string[] = [];
       const fieldValues: Partial<Record<ExtractedFieldName, string | null>> = {};
+      const fieldElements: Partial<Record<ExtractedFieldName, Element | null>> = {};
 
       for (const [fieldName, fieldMapping] of Object.entries(mapping.fields) as Array<[ExtractedFieldName, FieldMapping]>) {
         const value = extractFieldValue(element, fieldMapping, baseUrl, effectiveReferenceDate);
@@ -532,7 +622,17 @@ export const extractAffiliateCandidatesFromPage = (
           warnings.push(`Missing required field: ${fieldName}`);
         }
         fieldValues[fieldName] = value;
+        fieldElements[fieldName] = selectElement(element, fieldMapping.selector);
       }
+
+      const rawFieldValues = { ...fieldValues };
+      const dateTimeResult = normalizeExtractedDateTimeFields({
+        fieldValues,
+        fieldMappings: mapping.fields,
+        fieldElements,
+        referenceDate: effectiveReferenceDate,
+      });
+      warnings.push(...dateTimeResult.normalized.metadata.warnings);
 
       const title = fieldValues.title;
       const officialActionUrl = fieldValues.officialActionUrl;
@@ -551,6 +651,10 @@ export const extractAffiliateCandidatesFromPage = (
         rawPayload: {
           sourceIndex: index,
           extractedFields: fieldValues,
+          rawExtractedFields: rawFieldValues,
+          normalizedImport: {
+            dateTime: dateTimeResult.normalized.metadata,
+          },
           tags: normalizeTagInputs(fieldValues.tagText),
         },
         warnings,

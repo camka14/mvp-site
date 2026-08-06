@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export type AffiliateListingKind = 'EVENT' | 'RENTAL' | 'TEAM' | 'CLUB';
-export type AffiliateDateDisplayMode = 'SCHEDULED' | 'NO_FIXED_DATE' | 'ONGOING';
+export type AffiliateDateDisplayMode = 'SCHEDULED' | 'DATE_ONLY' | 'NO_FIXED_DATE' | 'ONGOING';
 export type AffiliateLocationSource = 'CANDIDATE' | 'SOURCE_ORGANIZATION';
 
 export type ScrapedPage = {
@@ -32,6 +32,7 @@ export const fieldMappingSchema = z.object({
       'priceText',
       'dateTime',
       'dateRangeEnd',
+      'duration',
       'absoluteUrl',
       'telerikPostBackUrl',
       'previousDaySectionDateTime',
@@ -44,7 +45,7 @@ export const fieldMappingSchema = z.object({
 
 export type FieldMapping = z.infer<typeof fieldMappingSchema>;
 
-const affiliateDateDisplayModeSchema = z.enum(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']);
+const affiliateDateDisplayModeSchema = z.enum(['SCHEDULED', 'DATE_ONLY', 'NO_FIXED_DATE', 'ONGOING']);
 
 const optionalNullableStringSchema = z.string().nullable().optional();
 
@@ -81,6 +82,7 @@ const affiliateManualCandidateSchema = z.object({
   locationEvidence: optionalNullableStringSchema,
   startsAt: optionalNullableStringSchema,
   endsAt: optionalNullableStringSchema,
+  durationText: optionalNullableStringSchema,
   timeZone: optionalNullableStringSchema,
   scheduleText: optionalNullableStringSchema,
   dateDisplayMode: affiliateDateDisplayModeSchema.optional(),
@@ -133,6 +135,7 @@ export const affiliateScrapeMappingSchema = z.object({
     locationEvidence: fieldMappingSchema.optional(),
     startsAt: fieldMappingSchema.optional(),
     endsAt: fieldMappingSchema.optional(),
+    durationText: fieldMappingSchema.optional(),
     timeZone: fieldMappingSchema.optional(),
     scheduleText: fieldMappingSchema.optional(),
     dateDisplayMode: fieldMappingSchema.optional(),
@@ -184,6 +187,7 @@ export type AffiliateCandidateInput = {
   locationEvidence?: string | null;
   startsAt?: string | null;
   endsAt?: string | null;
+  durationText?: string | null;
   timeZone?: string | null;
   scheduleText?: string | null;
   dateDisplayMode?: AffiliateDateDisplayMode | string | null;

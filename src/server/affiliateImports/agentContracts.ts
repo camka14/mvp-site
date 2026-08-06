@@ -62,7 +62,7 @@ const affiliateCandidateAssertionSchema = z.object({
   city: nullableNonEmptyStringSchema.optional(),
   startsAt: isoDateTimeSchema.nullable().optional(),
   endsAt: isoDateTimeSchema.nullable().optional(),
-  dateDisplayMode: z.enum(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']).optional(),
+  dateDisplayMode: z.enum(['SCHEDULED', 'DATE_ONLY', 'NO_FIXED_DATE', 'ONGOING']).optional(),
   dateDisplayText: nullableNonEmptyStringSchema.optional(),
   priceText: nullableNonEmptyStringSchema.optional(),
   divisions: z.array(nonEmptyStringSchema).default([]),

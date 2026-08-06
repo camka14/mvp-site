@@ -114,7 +114,7 @@ const recordValue = (value: unknown): Record<string, unknown> => (
 const sleep = (milliseconds: number): Promise<void> =>
   milliseconds > 0 ? new Promise((resolve) => setTimeout(resolve, milliseconds)) : Promise.resolve();
 
-const AFFILIATE_DATE_DISPLAY_MODES = new Set(['SCHEDULED', 'NO_FIXED_DATE', 'ONGOING']);
+const AFFILIATE_DATE_DISPLAY_MODES = new Set(['SCHEDULED', 'DATE_ONLY', 'NO_FIXED_DATE', 'ONGOING']);
 const EVERGREEN_AFFILIATE_START_DATE = new Date('2099-12-31T12:00:00.000Z');
 
 const normalizeDateDisplayMode = (value: unknown): AffiliateDateDisplayMode => {
@@ -124,8 +124,10 @@ const normalizeDateDisplayMode = (value: unknown): AffiliateDateDisplayMode => {
     : 'SCHEDULED';
 };
 
-const isEvergreenAffiliateCandidate = (candidate: any): boolean =>
-  normalizeDateDisplayMode(candidate?.dateDisplayMode) !== 'SCHEDULED';
+const isEvergreenAffiliateCandidate = (candidate: any): boolean => {
+  const mode = normalizeDateDisplayMode(candidate?.dateDisplayMode);
+  return mode === 'NO_FIXED_DATE' || mode === 'ONGOING';
+};
 
 const dateDisplayTextFromCandidate = (candidate: any): string | null =>
   nullableString(candidate.dateDisplayText) ??
@@ -1155,6 +1157,8 @@ const buildAffiliateEventPricing = (candidate: any, divisionDetails: Array<{ pri
 const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
   const ageRange = inferAgeRange(candidate);
   const participantAvailability = inferCandidateParticipantAvailability(candidate);
+  const candidateRawPayload = recordValue(candidate.rawPayload);
+  const extractedNormalizedImport = recordValue(candidateRawPayload.normalizedImport);
   return {
     division: buildAffiliateDivisionDetail(candidate),
     divisions: buildAffiliateDivisionDetails(candidate),
@@ -1167,6 +1171,7 @@ const buildAffiliateImportMetadata = (candidate: AffiliateCandidateInput) => {
     tags: buildAffiliateEventTagNames(candidate),
     sportName: nullableString(candidate.sportName),
     sportNames: candidateSportNames(candidate),
+    dateTime: extractedNormalizedImport.dateTime ?? candidateRawPayload.dateTime ?? null,
   };
 };
 
@@ -1462,7 +1467,7 @@ const buildAffiliateEventData = async (
   const dateDisplayText = dateDisplayTextFromCandidate(candidate);
   const start = eventStartFromCandidate(candidate);
   const end =
-    dateDisplayMode === 'SCHEDULED'
+    (dateDisplayMode === 'SCHEDULED' || dateDisplayMode === 'DATE_ONLY')
       ? candidate.endsAt instanceof Date
         ? candidate.endsAt
         : parseDateOrNull(typeof candidate.endsAt === 'string' ? candidate.endsAt : null)
@@ -1545,7 +1550,7 @@ const buildAffiliateEventData = async (
     maxAge: ageRange.maxAge,
     hostId: null,
     assistantHostIds: [],
-    noFixedEndDateTime: true,
+    noFixedEndDateTime: end === null,
     price: affiliatePricing.priceCents ?? 0,
     taxHandling: 'ORGANIZER_COLLECTS',
     organizerManualTaxRateBps: 0,

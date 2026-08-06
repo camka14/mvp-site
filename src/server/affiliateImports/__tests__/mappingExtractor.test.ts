@@ -1,5 +1,10 @@
 import { TextDecoder, TextEncoder } from 'util';
-import { parseAffiliateScrapeMapping, type AffiliateScrapeMapping, type ScrapedPage } from '../types';
+import {
+  parseAffiliateScrapeMapping,
+  type AffiliateCandidateInput,
+  type AffiliateScrapeMapping,
+  type ScrapedPage,
+} from '../types';
 
 Object.assign(global, { TextDecoder, TextEncoder });
 
@@ -630,6 +635,68 @@ describe('extractAffiliateCandidatesFromPage', () => {
       sportName: 'Indoor Volleyball',
       organizerName: 'Rose City Volleyball',
     });
+  });
+
+  it('normalizes source-local event times independently of the host timezone', () => {
+    const localTimePage: ScrapedPage = {
+      ...page,
+      fetchedAt: '2026-08-01T12:00:00.000Z',
+      body: `
+        <section class="event-card">
+          <a class="event-title" href="/events/rose-city">9:30 PM Rose City Volleyball</a>
+          <span class="date">August 10, 2026 9:30 PM</span>
+          <span class="duration">2 Hours 5 Mins</span>
+        </section>
+      `,
+    };
+    const localTimeMapping: AffiliateScrapeMapping = {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: '.event-card',
+      fields: {
+        title: { selector: '.event-title', required: true },
+        officialActionUrl: {
+          selector: '.event-title',
+          mode: 'attribute',
+          attribute: 'href',
+          transform: 'absoluteUrl',
+          required: true,
+        },
+        startsAt: { selector: '.date', transform: 'dateTime', required: true },
+        durationText: { selector: '.duration' },
+        timeZone: { selector: ':scope', mode: 'literal', value: 'America/Los_Angeles' },
+      },
+    };
+
+    const originalTimeZone = process.env.TZ;
+    const outputs: AffiliateCandidateInput[] = [];
+    try {
+      for (const hostTimeZone of ['UTC', 'America/Los_Angeles']) {
+        process.env.TZ = hostTimeZone;
+        outputs.push(...extractAffiliateCandidatesFromPage(localTimePage, localTimeMapping));
+      }
+    } finally {
+      process.env.TZ = originalTimeZone;
+    }
+
+    expect(outputs).toHaveLength(2);
+    expect(outputs[0]).toMatchObject({
+      startsAt: '2026-08-11T04:30:00.000Z',
+      endsAt: '2026-08-11T06:35:00.000Z',
+      dateDisplayMode: 'SCHEDULED',
+      durationText: '2 Hours 5 Mins',
+      rawPayload: {
+        extractedFields: expect.objectContaining({ durationText: '2 Hours 5 Mins' }),
+        normalizedImport: {
+          dateTime: expect.objectContaining({
+            endDerivation: 'EXPLICIT_DURATION',
+            durationMinutes: 125,
+          }),
+        },
+      },
+    });
+    expect(outputs[1].startsAt).toBe(outputs[0].startsAt);
+    expect(outputs[1].endsAt).toBe(outputs[0].endsAt);
   });
 
   it('extracts Telerik postback URLs from TeamSideline-style More Info buttons', () => {

@@ -245,6 +245,7 @@ const normalizedDisplayMode = (
   startsAt: string | null,
 ): AffiliateDateDisplayMode => {
   const value = nullableText(candidate.dateDisplayMode)?.toUpperCase();
+  if (value === 'DATE_ONLY') return value;
   if (value === 'NO_FIXED_DATE' || value === 'ONGOING') return value;
   return startsAt ? 'SCHEDULED' : 'ONGOING';
 };
