@@ -132,12 +132,14 @@ describe('affiliate source mapping queue', () => {
     });
     prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
 
-    await expect(claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' }))
-      .resolves.toEqual(expect.objectContaining({
-        repairContext: expect.objectContaining({
-          remediationContext: 'event-datetime-v1',
-        }),
-      }));
+    const claim = await claimNextAffiliateSourceIntakeForMapping({ workerId: 'worker-1' });
+    expect(claim).toEqual(expect.objectContaining({
+      repairContext: expect.objectContaining({
+        remediationContext: 'event-datetime-v1',
+      }),
+    }));
+    expect(claim?.repairContext).not.toHaveProperty('repairReason');
+    expect(claim?.repairContext).not.toHaveProperty('repairReasons');
   });
 
   it('resumes and renews an active claim owned by the same mapper', async () => {
@@ -327,9 +329,9 @@ describe('affiliate source mapping queue', () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1',
       intakeId: 'intake_1',
-      status: 'CLAIMED',
-      resultSummary: {
-        mappingRepairHistory: [{ remediationContext: 'event-datetime-v1' }],
+    status: 'CLAIMED',
+    resultSummary: {
+        mappingRepairHistory: [{ cohortKey: 'event-datetime-v1' }],
       },
     });
 
@@ -368,6 +370,45 @@ describe('affiliate source mapping queue', () => {
         },
       },
     })).resolves.toEqual(expect.objectContaining({ status: 'REVIEW_REQUIRED' }));
+  });
+
+  it('preserves datetime remediation context after completion', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      resultSummary: {
+        mappingFullReviewHistory: [{ cohortKey: 'event-datetime-v1' }],
+      },
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+    prismaMock.affiliateApprovalJobs.findUnique.mockResolvedValue(null);
+
+    await finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: {
+        result: {
+          status: 'REVIEW_REQUIRED',
+          dateTimeReview: eventDateTimeReview,
+        },
+      },
+    });
+
+    expect(prismaMock.affiliateSourceMappingJobs.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        resultSummary: expect.objectContaining({
+          cohortKey: 'event-datetime-v1',
+          remediationContext: 'event-datetime-v1',
+          remediationContexts: ['event-datetime-v1'],
+        }),
+      }),
+    }));
   });
 
   it('preserves repair history and reopens a rejected approval after a repaired package completes', async () => {

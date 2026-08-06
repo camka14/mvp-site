@@ -35,15 +35,24 @@ const hasEventDateTimeRemediationContext = (value: unknown): boolean => {
   const directContexts = [
     envelope.remediationContext,
     envelope.remediationContexts,
+    envelope.cohortKey,
+    envelope.cohortKeys,
     recordValue(envelope.repairContext).remediationContext,
     recordValue(envelope.repairContext).remediationContexts,
+    recordValue(envelope.repairContext).cohortKey,
+    recordValue(envelope.repairContext).cohortKeys,
   ].flatMap(stringValues);
   if (directContexts.includes(AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT)) return true;
   return [envelope.mappingRepairHistory, envelope.mappingFullReviewHistory]
     .flatMap((history) => (Array.isArray(history) ? history : []))
     .some((entry) => {
       const record = recordValue(entry);
-      return [record.remediationContext, record.remediationContexts]
+      return [
+        record.remediationContext,
+        record.remediationContexts,
+        record.cohortKey,
+        record.cohortKeys,
+      ]
         .flatMap(stringValues)
         .includes(AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT);
     });
@@ -75,12 +84,28 @@ const latestMappingRepairContext = (resultSummary: unknown) => {
     latest.remediationContexts,
     latestFullReview.remediationContext,
     latestFullReview.remediationContexts,
+    ...[
+      envelope.cohortKey,
+      envelope.cohortKeys,
+      recordValue(envelope.repairContext).cohortKey,
+      recordValue(envelope.repairContext).cohortKeys,
+      latest.cohortKey,
+      latest.cohortKeys,
+      latestFullReview.cohortKey,
+      latestFullReview.cohortKeys,
+    ]
+      .flatMap(stringValues)
+      .filter((context) => context === AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT),
   ]
     .flatMap(stringValues);
   if (!repairReason && !remediationContexts.length) return null;
   return {
-    repairReason,
-    repairReasons: repairReasons.length ? repairReasons : [repairReason],
+    ...(repairReason
+      ? {
+          repairReason,
+          repairReasons: repairReasons.length ? repairReasons : [repairReason],
+        }
+      : {}),
     queuedAt: stringValue(latest.queuedAt),
     priorMappingStatus: stringValue(latest.priorMappingStatus),
     priorMappingErrorMessage: stringValue(latest.priorMappingErrorMessage),
@@ -272,6 +297,7 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   const fullReviewHistory = Array.isArray(previousEnvelope.mappingFullReviewHistory)
     ? previousEnvelope.mappingFullReviewHistory
     : [];
+  const carriesEventDateTimeContext = hasEventDateTimeRemediationContext(job.resultSummary);
   if (
     input.status === 'REVIEW_REQUIRED'
     && hasEventDateTimeRemediationContext(job.resultSummary)
@@ -288,6 +314,13 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   const nextResultSummary = input.resultSummary
     ? {
         ...input.resultSummary,
+        ...(carriesEventDateTimeContext
+          ? {
+              cohortKey: AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT,
+              remediationContext: AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT,
+              remediationContexts: [AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT],
+            }
+          : {}),
         ...(repairHistory.length ? { mappingRepairHistory: repairHistory } : {}),
         ...(fullReviewHistory.length ? { mappingFullReviewHistory: fullReviewHistory } : {}),
       }
