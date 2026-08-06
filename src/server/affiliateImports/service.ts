@@ -17,7 +17,12 @@ import { syncEventDivisions } from '@/server/repositories/events';
 import { isMultiSportEventType, validateEventSportIds } from '@/server/eventSports';
 import { syncEventTags } from '@/server/eventTags';
 import { downloadPublicRemoteImage } from '@/server/publicRemoteImage';
-import { extractAffiliateCandidatesFromPage, extractAffiliateFieldValuesFromPage } from './mappingExtractor';
+import {
+  extractAffiliateCandidatesFromPage,
+  extractAffiliateFieldValuesFromPage,
+  normalizeAffiliateCandidateDateTime,
+} from './mappingExtractor';
+import { isValidAffiliateTimeZone } from './affiliateDateTime';
 import { inferAffiliateParticipantAvailability, parseAffiliateMaxParticipants } from './participantAvailability';
 import { scrapingDogClient } from './scrapingDogClient';
 import { inferAffiliateEventTagNames } from './tags';
@@ -45,6 +50,7 @@ import {
   type ScrapePageClient,
 } from './types';
 import { affiliateOrganizationInitialOwnership } from './organizationOwnership';
+import { tryResolveTimeZoneFromCoordinates } from '@/server/timeZones';
 
 type AffiliateSourceCreateInput = {
   name: string;
@@ -209,6 +215,14 @@ export const candidateImportRejectionReasons = (
 ): string[] => {
   if (candidate.listingKind === 'RENTAL' || candidate.listingKind === 'CLUB') return [];
   const reasons: string[] = [];
+  const dateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
+  if (
+    candidate.listingKind === 'EVENT'
+    && (dateDisplayMode === 'SCHEDULED' || dateDisplayMode === 'DATE_ONLY')
+    && !isValidAffiliateTimeZone(nullableString(candidate.timeZone) ?? '')
+  ) {
+    reasons.push('timeZone:MISSING_IANA_TIME_ZONE');
+  }
   const start = candidateStartDate(candidate);
   if (isEvergreenAffiliateCandidate(candidate) && isTryoutCandidate(candidate)) {
     reasons.push('tryouts cannot be evergreen');
@@ -1301,6 +1315,30 @@ const candidateResolvedCoordinates = (candidate: AffiliateCandidateInput | any):
   return normalizeAffiliateCoordinates(resolution.coordinates);
 };
 
+const enrichAffiliateEventDateTimeFromCoordinates = (params: {
+  candidate: AffiliateCandidateInput;
+  referenceDate: Date;
+}): AffiliateCandidateInput => {
+  const { candidate, referenceDate } = params;
+  const dateDisplayMode = normalizeDateDisplayMode(candidate.dateDisplayMode);
+  if (
+    candidate.listingKind !== 'EVENT'
+    || (dateDisplayMode !== 'SCHEDULED' && dateDisplayMode !== 'DATE_ONLY')
+    || isValidAffiliateTimeZone(nullableString(candidate.timeZone) ?? '')
+  ) {
+    return candidate;
+  }
+
+  const coordinates = candidateResolvedCoordinates(candidate);
+  const timeZone = coordinates ? tryResolveTimeZoneFromCoordinates(coordinates) : null;
+  if (!timeZone) return candidate;
+
+  return normalizeAffiliateCandidateDateTime(candidate, {
+    timeZone,
+    referenceDate,
+  });
+};
+
 type AffiliateSourceOrganizationLocation = {
   id: string;
   name?: string | null;
@@ -1511,6 +1549,19 @@ const buildAffiliateEventData = async (
     candidateResolvedCoordinates(candidate)
     ?? (await geocodeFirstAvailableAddress(geocodeQueries))
     ?? normalizeAffiliateCoordinates(fallbackCoordinates);
+  const sourceTimeZone = nullableString(candidate.timeZone);
+  const eventTimeZone = isValidAffiliateTimeZone(sourceTimeZone ?? '')
+    ? sourceTimeZone
+    : tryResolveTimeZoneFromCoordinates(coordinates);
+  if (
+    state === 'PUBLISHED'
+    && (dateDisplayMode === 'SCHEDULED' || dateDisplayMode === 'DATE_ONLY')
+    && !eventTimeZone
+  ) {
+    throw new Error(
+      'Affiliate scheduled and date-only events require an evidence-backed IANA time zone before publication.',
+    );
+  }
   if (state === 'PUBLISHED') {
     assertAffiliateCoordinatesForPublication({
       coordinates,
@@ -1526,7 +1577,7 @@ const buildAffiliateEventData = async (
     updatedAt: new Date(),
     start,
     end,
-    timeZone: nullableString(candidate.timeZone) ?? 'America/Los_Angeles',
+    timeZone: eventTimeZone ?? 'UTC',
     description: buildAffiliateEventDescription(candidate, affiliatePricing.detailsText),
     affiliateUrl: nullableString(candidate.officialActionUrl),
     sourceType: 'AFFILIATE_IMPORT',
@@ -2292,10 +2343,22 @@ export const runAffiliateSourceScrape = async (
     const now = new Date();
     const rejectedCandidates: Array<{ title: string; reasons: string[] }> = [];
     const importableCandidates: AffiliateCandidateInput[] = [];
+    const referenceDate = new Date(page.fetchedAt);
+    const effectiveReferenceDate = Number.isNaN(referenceDate.getTime()) ? new Date() : referenceDate;
     for (const candidate of extractedCandidates) {
-      const reasons = candidateImportRejectionReasons(candidate, now);
-      if (reasons.length) {
-        rejectedCandidates.push({ title: candidate.title, reasons });
+      const initialReasons = candidateImportRejectionReasons(candidate, now);
+      const rawPayload = recordValue(candidate.rawPayload);
+      const dateTimeInputs = recordValue(rawPayload.dateTimeInputs);
+      const rawExtractedFields = recordValue(rawPayload.rawExtractedFields);
+      const hasSourceDateTime = Boolean(
+        nullableString(dateTimeInputs.startsAt)
+        ?? nullableString(rawExtractedFields.startsAt),
+      );
+      const canResolveCandidateDateTime = candidate.listingKind === 'EVENT'
+        && ['SCHEDULED', 'DATE_ONLY'].includes(normalizeDateDisplayMode(candidate.dateDisplayMode))
+        && hasSourceDateTime;
+      if (initialReasons.length && !canResolveCandidateDateTime) {
+        rejectedCandidates.push({ title: candidate.title, reasons: initialReasons });
         continue;
       }
       const locationResult = await resolveAffiliateEventCandidateLocation({
@@ -2306,7 +2369,16 @@ export const runAffiliateSourceScrape = async (
         rejectedCandidates.push({ title: candidate.title, reasons: locationResult.reasons });
         continue;
       }
-      importableCandidates.push(locationResult.candidate);
+      const normalizedCandidate = enrichAffiliateEventDateTimeFromCoordinates({
+        candidate: locationResult.candidate,
+        referenceDate: effectiveReferenceDate,
+      });
+      const reasons = candidateImportRejectionReasons(normalizedCandidate, now);
+      if (reasons.length) {
+        rejectedCandidates.push({ title: normalizedCandidate.title, reasons });
+        continue;
+      }
+      importableCandidates.push(normalizedCandidate);
     }
     const rejectionSummary = rejectedCandidates.reduce<Record<string, number>>((summary, candidate) => {
       candidate.reasons.forEach((reason) => {

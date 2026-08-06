@@ -29,7 +29,7 @@ export type AffiliateDateTimeMetadata = {
   contractVersion: number;
   startPrecision: AffiliateDateTimeStartPrecision;
   timeZone: string | null;
-  timeZoneEvidence: 'SOURCE_FIELD' | 'EXPLICIT_OFFSET' | 'NONE';
+  timeZoneEvidence: 'SOURCE_FIELD' | 'COORDINATES' | 'EXPLICIT_OFFSET' | 'NONE';
   endDerivation: AffiliateEndDerivation;
   durationText: string | null;
   durationMinutes: number | null;
@@ -128,7 +128,7 @@ const isValidDateTimeParts = (parts: DateTimeParts): boolean => {
     && roundTrip.getUTCSeconds() === parts.second;
 };
 
-const isValidIanaTimeZone = (timeZone: string): boolean => {
+export const isValidAffiliateTimeZone = (timeZone: string): boolean => {
   const normalized = timeZone.trim();
   if (!IANA_TIME_ZONE_PATTERN.test(normalized)) return false;
   try {
@@ -217,7 +217,7 @@ const parseDateParts = (
   const firstMonth = Number(MONTHS[firstMonthMatch[1].toLowerCase().replace('.', '')]);
   const lastMonth = Number(MONTHS[lastMonthMatch[1].toLowerCase().replace('.', '')]);
   const isCrossYearRange = monthMatches.length > 1 && firstMonth > lastMonth;
-  const referenceParts = timeZone && isValidIanaTimeZone(timeZone)
+  const referenceParts = timeZone && isValidAffiliateTimeZone(timeZone)
     ? getDateTimePartsInTimeZone(referenceDate, timeZone)
     : null;
   const referenceYear = referenceParts?.year ?? referenceDate.getUTCFullYear();
@@ -249,7 +249,7 @@ const timeZoneOffsetMs = (instantMs: number, timeZone: string): number => {
 };
 
 const parseLocalTimeInTimeZone = (parts: DateTimeParts, timeZone: string): { date: Date | null; error: AffiliateDateTimeError | null } => {
-  if (!isValidIanaTimeZone(timeZone)) {
+  if (!isValidAffiliateTimeZone(timeZone)) {
     return { date: null, error: 'INVALID_TIME_ZONE' };
   }
 
@@ -316,7 +316,7 @@ const parseAffiliateDateParts = (
 
   if (hasExplicitTimeZoneOffset(trimmed)) {
     const parsed = new Date(trimmed);
-    const hasInvalidTimeZone = Boolean(normalizedTimeZone && !isValidIanaTimeZone(normalizedTimeZone));
+    const hasInvalidTimeZone = Boolean(normalizedTimeZone && !isValidAffiliateTimeZone(normalizedTimeZone));
     return {
       iso: Number.isNaN(parsed.getTime()) ? null : parsed.toISOString(),
       hasCalendarDate: !Number.isNaN(parsed.getTime()),
@@ -339,7 +339,7 @@ const parseAffiliateDateParts = (
       hasCalendarDate: false,
       hasClockTime: Boolean(clock),
       error: 'INVALID_DATE',
-      timeZoneEvidence: normalizedTimeZone && isValidIanaTimeZone(normalizedTimeZone) ? 'IANA_TIME_ZONE' : 'NONE',
+      timeZoneEvidence: normalizedTimeZone && isValidAffiliateTimeZone(normalizedTimeZone) ? 'IANA_TIME_ZONE' : 'NONE',
       parts: null,
     };
   }
@@ -362,7 +362,7 @@ const parseAffiliateDateParts = (
     hasCalendarDate: true,
     hasClockTime: Boolean(clock),
     error: converted.error,
-    timeZoneEvidence: isValidIanaTimeZone(normalizedTimeZone) ? 'IANA_TIME_ZONE' : 'NONE',
+    timeZoneEvidence: isValidAffiliateTimeZone(normalizedTimeZone) ? 'IANA_TIME_ZONE' : 'NONE',
     parts,
   };
 };
@@ -434,6 +434,7 @@ export const normalizeAffiliateEventDateTime = (params: {
   endsAt?: string | null;
   durationText?: string | null;
   timeZone?: string | null;
+  timeZoneEvidence?: 'SOURCE_FIELD' | 'COORDINATES';
   dateDisplayMode?: string | null;
   referenceDate: Date;
 }): AffiliateDateTimeNormalization => {
@@ -501,7 +502,7 @@ export const normalizeAffiliateEventDateTime = (params: {
     const isWholeDayDateOnly = dateDisplayMode === 'DATE_ONLY'
       && explicitWholeDayDuration
       && duration.minutes % (24 * 60) === 0;
-    const dateOnlyStartParts = isWholeDayDateOnly && params.timeZone && isValidIanaTimeZone(params.timeZone)
+    const dateOnlyStartParts = isWholeDayDateOnly && params.timeZone && isValidAffiliateTimeZone(params.timeZone)
       ? start.parts ?? getDateTimePartsInTimeZone(new Date(start.iso), params.timeZone.trim())
       : null;
     if (isWholeDayDateOnly && dateOnlyStartParts && params.timeZone) {
@@ -522,8 +523,8 @@ export const normalizeAffiliateEventDateTime = (params: {
   }
 
   const timeZoneEvidence = params.timeZone
-    && isValidIanaTimeZone(params.timeZone)
-      ? 'SOURCE_FIELD'
+    && isValidAffiliateTimeZone(params.timeZone)
+      ? params.timeZoneEvidence ?? 'SOURCE_FIELD'
       : start.timeZoneEvidence === 'EXPLICIT_OFFSET' || explicitEnd.timeZoneEvidence === 'EXPLICIT_OFFSET'
         ? 'EXPLICIT_OFFSET'
         : 'NONE';
@@ -539,7 +540,7 @@ export const normalizeAffiliateEventDateTime = (params: {
         : start.iso || start.hasCalendarDate
           ? (start.hasClockTime ? 'DATE_TIME' : 'DATE_ONLY')
         : 'NONE',
-      timeZone: params.timeZone && isValidIanaTimeZone(params.timeZone)
+      timeZone: params.timeZone && isValidAffiliateTimeZone(params.timeZone)
         ? params.timeZone.trim()
         : null,
       timeZoneEvidence,

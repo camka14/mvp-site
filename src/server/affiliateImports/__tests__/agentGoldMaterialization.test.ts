@@ -82,6 +82,7 @@ describe('affiliate mapping gold materialization', () => {
       sourceUrl: 'https://river.example/events',
       sportName: 'Grass Soccer',
       startsAt,
+      timeZone: 'America/Los_Angeles',
       dateDisplayMode: 'SCHEDULED',
       dateDisplayText: 'September 1, 2026',
       divisions: [{ name: 'Adult' }],
@@ -179,6 +180,7 @@ describe('affiliate mapping gold materialization', () => {
       officialActionUrl: 'https://calendar.google.com/calendar?cid=coach@river.example',
       sourceUrl: 'https://river.example/events',
       startsAt: '2026-09-01T18:00:00.000Z',
+      timeZone: 'America/Los_Angeles',
       dateDisplayMode: 'SCHEDULED',
       dateDisplayText: 'September 1, 2026',
     });

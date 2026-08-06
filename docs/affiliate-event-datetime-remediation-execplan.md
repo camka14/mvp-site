@@ -14,17 +14,22 @@ stored evidence does not support one.
 
 This work has four visible outcomes. First, every previously approved event
 mapping enters one named producer-remediation cohort and receives the new date
-and time review. Second, future mapping packages cannot pass independent review
-without timezone-stable date and time evidence. Third, a guarded repair updates
-the affected unpublished candidates and published affiliate events without
-creating duplicate occurrences. Fourth, web, Android, and iOS show the same
-event-local start and end semantics.
+and time review. Second, scheduled and date-only candidates cannot pass
+independent review without timezone-stable date evidence, while evergreen
+candidates must prove their classification and schedule text. Third, a guarded
+repair updates the affected unpublished candidates and published affiliate
+events without creating duplicate occurrences. Fourth, web, Android, and iOS
+show the same event-local start and end semantics.
 
 For a scheduled event with a start but no end, the public UI must show one
 `Starts` row with the full event-local date and time and no `Ends` row. For a
 same-day range, it must show the full start date and time and then the end time.
 For a range that crosses a day, it must show the full date and time for both
 ends. A source that gives a calendar date but no clock time must show a date only.
+An evergreen program, which is a listing with `NO_FIXED_DATE` or `ONGOING`
+display mode, must keep its source-backed schedule text and show no artificial
+start or end. If the same source page contains specific future occurrences,
+those occurrences must be mapped separately as `SCHEDULED` or `DATE_ONLY`.
 
 This plan does not authorize a live queue mutation, a process restart, a live
 candidate repair, a deployment, or a mobile release. Each action remains a
@@ -44,11 +49,15 @@ separate implementation or operator approval.
   `noFixedEndDateTime` to retain missing-end meaning.
 - [x] (2026-08-06 11:27 PDT) Wrote this cross-repository implementation and
   remediation plan.
-- [ ] (2026-08-06 11:52 PDT) Implement the shared affiliate date, time, duration, and evidence contract
+- [x] (2026-08-06 13:25 PDT) Implement the shared affiliate date, time, duration, and evidence contract
   (completed: deterministic normalizer, duration parser, `DATE_ONLY`, raw
   field preservation, end derivation, provenance, focused regression tests,
-  and removal of the host-local legacy parser bridge; remaining:
-  coordinate-based timezone resolution and accepted-output rejection).
+  removal of the host-local legacy parser bridge, coordinate-backed timezone
+  resolution, and accepted-output rejection for unresolved scheduled and
+  date-only events).
+- [x] (2026-08-06 13:25 PDT) Revised the plan so evergreen mapping packages
+  receive classification review but `NO_FIXED_DATE` and `ONGOING` rows cannot
+  enter automatic timestamp repair through their internal 2099 start value.
 - [ ] Implement and test the named producer-remediation cohort.
 - [ ] Update the mapper and independent reviewer instructions.
 - [ ] Preview, approve, and arm the live cohort after current leases drain.
@@ -135,6 +144,21 @@ separate implementation or operator approval.
   `NONEXISTENT_LOCAL_TIME` and `November 1, 2026 1:30 AM` as
   `AMBIGUOUS_LOCAL_TIME` in `America/Los_Angeles`.
 
+- Observation: A timezone-less local event cannot be accepted until its
+   location has been resolved.
+   Evidence: The service now resolves candidate or source-organization
+   coordinates first, derives an IANA timezone from those coordinates, and
+   re-runs the deterministic normalizer with the capture date. If that fails,
+   the run records `timeZone:MISSING_IANA_TIME_ZONE` and excludes the event.
+
+- Observation: Published evergreen affiliate events use a future sentinel start
+  even though the source provides no occurrence start.
+  Evidence: `eventStartFromCandidate` in
+  `src/server/affiliateImports/service.ts` substitutes
+  `2099-12-31T12:00:00.000Z` when an evergreen candidate has no `startsAt`.
+  A repair query that uses only `Events.start >= cutoff` would therefore select
+  evergreen rows as if the sentinel were source datetime evidence.
+
 ## Decision Log
 
 - Decision: Add a named producer-remediation cohort with the key
@@ -208,12 +232,31 @@ separate implementation or operator approval.
   Date/Author: 2026-08-06 / Codex
 
 - Decision: Apply the automatic row repair only to future, non-archived
-  affiliate events whose existing start is on or after one captured repair
-  cutoff. Report events before that cutoff and archived rows separately.
+  `SCHEDULED` and `DATE_ONLY` affiliate events whose real source-backed start is
+  on or after one captured repair cutoff. Report events before that cutoff,
+  archived rows, and evergreen rows separately.
   Rationale: Historical rows can have reporting and registration consequences.
   A single captured cutoff prevents the eligible set from changing during the
   dry-run and apply steps. Past and archived corrections should use an explicit
   operator scope instead of an implicit bulk write.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Include event-producing evergreen packages in the mapping-agent
+  cohort, but exclude `NO_FIXED_DATE` and `ONGOING` candidates and events from
+  automatic timestamp repair. Use `dateDisplayMode` as the repair gate and
+  never use the internal 2099 start sentinel as source date evidence.
+  Rationale: The mapping agent must still verify that the evergreen
+  classification and schedule text are correct. Genuine evergreen listings do
+  not have occurrence timestamps to repair. A mode change can also change the
+  dedupe identity and publication behavior, so it requires its own guarded,
+  operator-reviewed repair instead of the normal timestamp apply set.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Map a specific future occurrence separately from an evergreen
+  program summary. Do not classify tryouts or evaluations as evergreen.
+  Rationale: A program page can describe both year-round availability and dated
+  sessions. Preserving the summary must not hide a defensible occurrence, and a
+  tryout requires a real future date before it can be published as an event.
   Date/Author: 2026-08-06 / Codex
 
 - Decision: Hide the public Timeline section when it has no preview items.
@@ -243,11 +286,17 @@ host timezone as a substitute.
 The cohort, agent/reviewer contract, live data repair, web presentation, and
 mobile parity remain unimplemented.
 
+The plan now treats evergreen classification as a separate review outcome.
+Evergreen packages still enter producer and independent review, but their 2099
+database sentinel cannot qualify them for timestamp repair. No evergreen row or
+classification transition can enter the automatic apply set.
+
 When implementation finishes, record the final cohort count, every excluded
 source and reason, producer and reviewer outcomes, candidate and event repair
 counts, test results, deployment identifiers, mobile build identifiers, and
 screenshots here. Record any source that remains blocked because it has no
-defensible timezone, start time, end, duration, or stored evidence.
+defensible timezone, start time, end, duration, or stored evidence when its
+selected display mode requires that evidence.
 
 ## Context and Orientation
 
@@ -306,6 +355,11 @@ For this plan, a wall-clock value is the source text such as `9:30 PM on August
 `America/Los_Angeles`. A UTC instant is the stored moment such as
 `2026-08-11T04:30:00.000Z`. A duration-derived end is a UTC instant calculated
 by adding a source-provided elapsed duration to a correctly resolved start.
+An evergreen candidate is an event candidate with `dateDisplayMode` equal to
+`NO_FIXED_DATE` or `ONGOING`. Its source-backed `scheduleText` or
+`dateDisplayText` describes availability without claiming a specific
+occurrence. The `2099-12-31T12:00:00.000Z` evergreen start is an internal
+database sentinel, not source evidence and not a user-visible date.
 
 ## Plan of Work
 
@@ -336,6 +390,15 @@ when the source supplies a calendar date but no time. `NO_FIXED_DATE` and
 duration if the occurrence has no start time. An explicit whole-day duration
 may derive an end date while the display mode remains `DATE_ONLY`.
 
+Classify the candidate before applying occurrence datetime requirements.
+`NO_FIXED_DATE` and `ONGOING` candidates must preserve source-backed
+`scheduleText` or `dateDisplayText`; they do not require `startsAt`, `endsAt`, a
+duration, or a timezone, and the normalizer must not derive an end for them. If
+the evidence contains a specific calendar occurrence, map that occurrence as a
+separate `SCHEDULED` or `DATE_ONLY` candidate. Treat an evergreen candidate
+whose title, description, or status identifies a tryout or evaluation as
+invalid accepted output.
+
 Make timezone a required, evidence-backed field for `SCHEDULED` and
 `DATE_ONLY` event candidates. Use `resolveTimeZoneFromCoordinates` when stored
 venue or organization coordinates provide the timezone. If the source
@@ -362,6 +425,11 @@ all of the following:
 - an inferred end is after the start and matches the parsed duration;
 - a `DATE_ONLY` candidate never presents an invented time.
 
+Add evergreen source tests that prove a genuine evergreen candidate keeps its
+schedule text without an occurrence start or end, the internal 2099 sentinel is
+not treated as source evidence, a dated session on the same page becomes a
+separate occurrence, and a tryout or evaluation cannot pass as evergreen.
+
 ### Milestone 2: Make the producer and reviewer contracts enforce the rule
 
 Add a compact `dateTimeReview` section to the producer completion result. Make
@@ -379,9 +447,22 @@ start, end, duration, timezone, precision, DST, and title consistency. A repair
 claim must update its source-scoped fixture and commit even when the existing
 mapping was otherwise correct.
 
+Require the producer to classify every expected candidate before datetime
+review. The completion result must report counts for `SCHEDULED`, `DATE_ONLY`,
+`NO_FIXED_DATE`, and `ONGOING`, plus every transition from or to an evergreen
+mode. The producer must prove that an evergreen candidate has schedule evidence
+and does not conceal a dated occurrence. Add repair reason codes for an
+evergreen candidate with occurrence evidence and for a tryout or evaluation
+marked evergreen.
+
 Add `dateTimeQualityVerified` to the independent approval checks. An event
 mapping cannot be approved until the reviewer independently verifies the UTC
 instant in the event timezone, the start precision, and the end disposition.
+For an evergreen candidate, the reviewer must instead verify the mode,
+source-backed schedule text, absent occurrence timestamps, and absence of dated
+sessions that should be separate candidates. An evergreen-to-scheduled or
+scheduled-to-evergreen transition must be stated explicitly in the approval
+result.
 Add producer reason codes for wrong start, missing or wrong timezone, wrong end,
 unapplied duration, date-only precision, and host-timezone-dependent parsing.
 Route those codes to `PRODUCER_REPAIR`. Use `INSUFFICIENT_STORED_EVIDENCE` only
@@ -404,6 +485,10 @@ recent candidate kinds. Join each package to its exact intake and mapping job.
 Report legacy mappings that have no intake or stored evidence. Create an
 evidence-backfill intake for those sources only through the normal capture and
 policy path; do not create a synthetic producer approval or a source-free job.
+Record package and candidate counts by all four display modes. Evergreen
+packages remain eligible for mapping-agent review because the agent must verify
+their classification. Do not exclude a package from the cohort only because
+all of its current candidates are evergreen.
 
 The cohort waits until these values are all zero: claimable producer jobs,
 active producer leases, ready intakes without jobs, queued or running allowed
@@ -454,12 +539,23 @@ scrapes; run the UTC-host regression; and create a new source-scoped commit.
 The producer must not apply its own live mapping, publish a candidate, or
 approve its result.
 
+For each evergreen candidate, the producer must record the source text that
+supports `NO_FIXED_DATE` or `ONGOING` and confirm that the page does not expose
+a specific future session that the package omitted. If the page has both a
+program summary and dated sessions, preserve the summary only when it is a
+useful distinct listing and emit each dated session as its own occurrence.
+
 Let the independent reviewer claim the returned mapping package. The reviewer
 must recompute representative instants, inspect every end derivation, confirm
 date-only handling, and reject any host-timezone-dependent path. A package with
 no defensible timezone or occurrence evidence stops for human review. A package
 with a concrete parser or mapping defect returns to the producer through the
 normal bounded repair loop.
+
+The reviewer must also inspect every evergreen candidate. It must confirm that
+schedule text is source-backed, the 2099 sentinel is absent from mapping
+evidence and user-facing output, tryouts and evaluations are not evergreen, and
+specific occurrences are represented separately.
 
 Track cohort completion by package, not only by total queue emptiness. The
 cohort is complete when every eligible job has a terminal current outcome of
@@ -481,6 +577,20 @@ index, and existing published event link. Use the old start only as evidence,
 not as the primary identity. An ambiguous, missing, or many-to-one match is not
 eligible for automatic repair.
 
+Split the audit before matching rows for automatic apply. The timestamp-repair
+set contains only `SCHEDULED` and `DATE_ONLY` candidates and linked events with
+a real source-backed future start. The evergreen-validation set contains
+`NO_FIXED_DATE` and `ONGOING` rows. Report their candidate ID, event ID, display
+mode, schedule text, stored start, and whether that start equals the evergreen
+sentinel, but do not propose a start or end write. Do not determine eligibility
+from `Events.start` alone.
+
+Put every change from or to an evergreen display mode in a separate
+classification-transition report. Do not apply those transitions through the
+automatic timestamp repair. Require an exact ID set, dedupe review, expected
+old mode, expected new mode, and separate operator approval because the change
+can alter occurrence identity and public presentation.
+
 For each exact match, preview these changes:
 
 - candidate `startsAt`, `endsAt`, `timeZone`, `dateDisplayMode`, normalized
@@ -495,9 +605,12 @@ Before apply, check that the corrected dedupe key does not collide with another
 candidate. Apply the candidate and linked event in one transaction. Require an
 explicit ID set, expected counts by issue class, no published-registration
 conflict, and unchanged current values. Keep only future, non-archived events
-whose existing start is on or after the captured repair cutoff in the default
-apply set. Write past, archived, ambiguous, and
-registration-sensitive rows to separate report sections.
+whose effective mode is `SCHEDULED` or `DATE_ONLY` and whose real source-backed
+start is on or after the captured repair cutoff in the default apply set. Write
+past, archived, evergreen, classification-transition, ambiguous, and
+registration-sensitive rows to separate report sections. Assert before commit
+that the automatic apply set contains no `NO_FIXED_DATE` or `ONGOING` row and no
+row whose only future value is the evergreen sentinel.
 
 After the guarded repair, run one review scrape for each corrected source. The
 new scrape must match the repaired candidate instead of creating a duplicate.
@@ -582,20 +695,24 @@ Work first in `/Users/elesesy/StudioProjects/mvp-site`.
 1. Record the baseline without writes. Save queue counts, event-producing source
    inventory, mapping job statuses, approval statuses, active leases, mapping
    modes, candidate date quality, published event links, and evidence coverage
-   under `output/affiliate-event-datetime-remediation/baseline/`.
+   under `output/affiliate-event-datetime-remediation/baseline/`. Record
+   evergreen package counts, rows that use the 2099 sentinel, and pages that
+   contain both evergreen summaries and dated sessions.
 
 2. Add the datetime normalizer, duration parser, `DATE_ONLY` contract, timezone
    evidence checks, candidate provenance, and focused tests. Repair
    `previousDaySectionDateTime` and every other local-text date transform.
 
 3. Update producer result, completion, generated-package, skill, goal, reviewer,
-   reason-code, and human-review guidance contracts. Add contract tests before
-   changing a live agent.
+   reason-code, and human-review guidance contracts. Add display-mode counts,
+   evergreen evidence, classification-transition reporting, and contract tests
+   before changing a live agent.
 
 4. Add the producer cohort service and guarded CLI. Test waiting, exact
    selection, active-lease protection, missing-evidence exclusions, transaction
    rollback, idempotence, history preservation, fresh repair budget, and
-   approval reopening.
+   approval reopening. Prove that an evergreen-only event package enters mapping
+   review without entering automatic timestamp repair.
 
 5. Implement the web event-window helper and apply it to public surfaces. Add
    UI and model tests.
@@ -656,8 +773,10 @@ Work first in `/Users/elesesy/StudioProjects/mvp-site`.
 
 10. After all packages reach a terminal outcome, run the row-repair command in
     preview mode. Review every automatic match and exclusion. Under separate
-    data-write approval, apply only the exact expected future set selected by
-    the captured cutoff.
+    data-write approval, apply only the exact expected scheduled and date-only
+    future set selected by the captured cutoff. Confirm that the evergreen
+    validation report is complete and that the automatic apply set contains no
+    evergreen or classification-transition row.
 
 Then work in `/Users/elesesy/StudioProjects/mvp-app`.
 
@@ -697,17 +816,29 @@ complete an `event-datetime-v1` package without its datetime review result. The
 reviewer cannot approve an event package without
 `dateTimeQualityVerified: true`.
 
+For `NO_FIXED_DATE` and `ONGOING`, the explicit disposition is evergreen rather
+than a fabricated start precision or end. Acceptance requires source-backed
+schedule text, no occurrence datetime derived from the 2099 sentinel, no
+evergreen tryout or evaluation, and separate candidates for every defensible
+dated session on the same source page.
+
 The cohort is accepted when preview and apply select the same exact approved
 event-mapping job IDs, active leases remain unchanged, no duplicate active job
 is created, all prior results and approvals remain in history, and reusing the
 same cohort key enqueues zero additional rows. Every legacy source without
-stored evidence appears in the exclusion report.
+stored evidence appears in the exclusion report. Evergreen-only event packages
+must remain in the mapping-review cohort and must be counted separately from
+the later timestamp-repair set.
 
 The data repair is accepted when every applied candidate has one exact corrected
 occurrence, every linked event matches its candidate, every corrected dedupe
 key is unique, and the second review scrape creates no duplicate candidate. The
 apply must not publish, unpublish, archive, delete, or change registration and
-payment data.
+payment data. The automatic apply set must contain only `SCHEDULED` and
+`DATE_ONLY` rows. Every `NO_FIXED_DATE` and `ONGOING` row must appear only in the
+evergreen-validation report unless a separately approved classification repair
+names its exact IDs. The 2099 sentinel must never make a row eligible for
+timestamp repair.
 
 The web and mobile UI are accepted when all of these cases pass in an event
 timezone that differs from the browser or device timezone:
@@ -717,6 +848,10 @@ timezone that differs from the browser or device timezone:
 - a range over midnight shows full date and time at both ends;
 - `DATE_ONLY` shows dates and no clock times;
 - evergreen events retain schedule text;
+- the evergreen 2099 sentinel never appears in a card, detail row, metadata, or
+  mobile label;
+- dated sessions on an evergreen program page appear as separate scheduled or
+  date-only occurrences;
 - invalid timezone input uses the documented safe fallback and emits a testable
   warning or diagnostic;
 - no empty public Timeline appears;
@@ -777,6 +912,8 @@ Store redacted implementation artifacts under
 - `packages/outcomes.json` for producer and reviewer results;
 - `repair/preview.json`, `repair/apply.json`, and `repair/postcheck.json` for
   candidate and event changes;
+- `repair/evergreen-validation.json` and
+  `repair/classification-transitions.json` for non-automatic evergreen review;
 - `ui/web/`, `ui/android/`, and `ui/ios/` for screenshots and timezone notes.
 
 Do not store credentials, signed artifact URLs, raw provider envelopes,
@@ -816,6 +953,21 @@ and following January instead of the previous year pair.
 Revision note, 2026-08-06: Corrected the early-January case so an active
 December–January range uses the previous December and current January rather
 than advancing both dates by one year.
+
+Revision note, 2026-08-06 13:25 PDT: Completed the remaining local Milestone 1
+timezone work. Preserved raw datetime inputs for a second normalization pass,
+resolved venue and source-organization coordinates to IANA zones, recorded
+coordinate timezone provenance, rejected unresolved scheduled and date-only
+events from accepted scrape output, and removed the new-event Pacific fallback.
+No live queue, data, process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06 13:25 PDT: Added explicit evergreen handling after
+reviewing the existing 2099 start sentinel. Evergreen event packages remain in
+the producer and independent-review cohort for classification and schedule-text
+verification, but `NO_FIXED_DATE` and `ONGOING` rows are excluded from automatic
+timestamp repair. Mode transitions require a separate guarded repair, and the
+acceptance tests now prove that the sentinel is never treated as source evidence
+or shown to users.
 
 ## Interfaces and Dependencies
 

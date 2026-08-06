@@ -30,6 +30,11 @@ export const resolveTimeZoneFromCoordinates = (
   coordinates: unknown,
   fallback = DEFAULT_EVENT_TIME_ZONE,
 ): string => {
+  const resolved = tryResolveTimeZoneFromCoordinates(coordinates);
+  return resolved ?? resolveTimeZone(null, fallback);
+};
+
+export const tryResolveTimeZoneFromCoordinates = (coordinates: unknown): string | null => {
   const fromArray = Array.isArray(coordinates)
     ? {
       lon: Number(coordinates[0]),
@@ -47,14 +52,19 @@ export const resolveTimeZoneFromCoordinates = (
     }
     : null;
   const candidate = fromArray ?? fromObject;
-  if (!candidate || !Number.isFinite(candidate.lat) || !Number.isFinite(candidate.lon)) {
-    return resolveTimeZone(null, fallback);
+  if (
+    !candidate
+    || !Number.isFinite(candidate.lat)
+    || !Number.isFinite(candidate.lon)
+    || (candidate.lat === 0 && candidate.lon === 0)
+  ) {
+    return null;
   }
 
   try {
-    return resolveTimeZone(tzLookup(candidate.lat, candidate.lon), fallback);
+    return resolveTimeZone(tzLookup(candidate.lat, candidate.lon), DEFAULT_EVENT_TIME_ZONE);
   } catch {
-    return resolveTimeZone(null, fallback);
+    return null;
   }
 };
 

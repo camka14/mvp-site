@@ -11,6 +11,7 @@ Object.assign(global, { TextDecoder, TextEncoder });
 const {
   extractAffiliateCandidatesFromPage,
   extractAffiliateFieldValuesFromPage,
+  normalizeAffiliateCandidateDateTime,
 } = require('../mappingExtractor') as typeof import('../mappingExtractor');
 
 describe('extractAffiliateCandidatesFromPage', () => {
@@ -748,6 +749,54 @@ describe('extractAffiliateCandidatesFromPage', () => {
       expect(candidate.startsAt).toBeUndefined();
       expect(candidate.endsAt).toBeUndefined();
       expect(candidate.warnings).toEqual(expect.arrayContaining(['timeZone:MISSING_IANA_TIME_ZONE']));
+    });
+  });
+
+  it('re-normalizes a timezone-less local value after coordinates resolve an IANA timezone', () => {
+    const noTimeZoneCandidate = extractAffiliateCandidatesFromPage({
+      ...page,
+      fetchedAt: '2026-08-01T12:00:00.000Z',
+      body: `
+        <section class="event-card">
+          <a class="event-title" href="/events/rose-city">Rose City Volleyball</a>
+          <span class="date">August 10, 2026 9:30 PM</span>
+        </section>
+      `,
+    }, {
+      kind: 'EVENT',
+      listUrl: 'https://example.com/events',
+      itemSelector: '.event-card',
+      fields: {
+        title: { selector: '.event-title' },
+        officialActionUrl: {
+          selector: '.event-title',
+          mode: 'attribute',
+          attribute: 'href',
+          transform: 'absoluteUrl',
+        },
+        startsAt: { selector: '.date', transform: 'dateTime' },
+      },
+    })[0];
+
+    const normalized = normalizeAffiliateCandidateDateTime(noTimeZoneCandidate, {
+      timeZone: 'America/Los_Angeles',
+      referenceDate: new Date('2026-08-01T12:00:00.000Z'),
+    });
+
+    expect(normalized).toMatchObject({
+      startsAt: '2026-08-11T04:30:00.000Z',
+      timeZone: 'America/Los_Angeles',
+      dateDisplayMode: 'SCHEDULED',
+      warnings: [],
+      rawPayload: {
+        dateTimeInputs: { startsAt: 'August 10, 2026 9:30 PM' },
+        normalizedImport: {
+          dateTime: expect.objectContaining({
+            timeZoneEvidence: 'COORDINATES',
+            warnings: [],
+          }),
+        },
+      },
     });
   });
 

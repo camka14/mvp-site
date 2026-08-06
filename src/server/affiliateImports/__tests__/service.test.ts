@@ -85,6 +85,9 @@ jest.mock('@/server/geocoding', () => ({
       && !(lng === 0 && lat === 0);
   },
 }));
+jest.mock('@/server/timeZones', () => ({
+  tryResolveTimeZoneFromCoordinates: jest.fn(),
+}));
 
 import {
   approveAffiliateSourceAutomation,
@@ -96,8 +99,10 @@ import {
   runAffiliateSourceScrape,
 } from '@/server/affiliateImports/service';
 import { geocodeAddressToCoordinates } from '@/server/geocoding';
+import { tryResolveTimeZoneFromCoordinates } from '@/server/timeZones';
 
 const geocodeAddressToCoordinatesMock = jest.mocked(geocodeAddressToCoordinates);
+const tryResolveTimeZoneFromCoordinatesMock = jest.mocked(tryResolveTimeZoneFromCoordinates);
 const canonicalSportNames = new Set([
   'Indoor Volleyball',
   'Beach Volleyball',
@@ -122,6 +127,7 @@ describe('affiliate import service', () => {
     jest.resetAllMocks();
     idCounter = 0;
     geocodeAddressToCoordinatesMock.mockResolvedValue([-122.6765, 45.5231]);
+    tryResolveTimeZoneFromCoordinatesMock.mockReturnValue('America/Los_Angeles');
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.affiliateImportCandidates.findFirst.mockResolvedValue(null);
     prismaMock.divisions.deleteMany.mockResolvedValue({ count: 0 });
@@ -1660,6 +1666,7 @@ describe('affiliate import service', () => {
         fields: {
           title: { selector: '.title' },
           officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
+          sportName: { selector: ':scope', mode: 'literal', value: 'Indoor Volleyball' },
           startsAt: { selector: '.start', transform: 'dateTime' },
           venueName: { selector: 'body', mode: 'literal', value: 'Example Sports Complex' },
         },
@@ -2304,6 +2311,144 @@ describe('affiliate import service', () => {
         teamSignup: false,
         teamSizeLimit: 1,
         price: 8000,
+      }),
+    });
+  });
+
+  it('resolves a timezone-less local event from venue coordinates before acceptance', async () => {
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_coordinate_timezone',
+      name: 'Coordinate Timezone Source',
+      activeMappingId: 'mapping_coordinate_timezone',
+      listUrl: 'https://example.com/events',
+      organizationId: 'org_coordinate_timezone',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_coordinate_timezone' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_coordinate_timezone',
+      sourceId: 'source_coordinate_timezone',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://example.com/events',
+        itemSelector: '.event',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
+          sportName: { selector: ':scope', mode: 'literal', value: 'Indoor Volleyball' },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: '.venue' },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_coordinate_timezone' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_coordinate_timezone', ...data }));
+    prismaMock.affiliateImportCandidates.findUnique.mockResolvedValue(null);
+    prismaMock.affiliateImportCandidates.create.mockImplementation(async ({ data }) => ({
+      id: 'candidate_coordinate_timezone',
+      ...data,
+    }));
+    prismaMock.affiliateImportCandidates.update.mockImplementation(async ({ where, data }) => ({ id: where.id, ...data }));
+    prismaMock.events.findFirst.mockResolvedValue(null);
+    prismaMock.events.create.mockImplementation(async ({ data }) => ({ id: 'event_coordinate_timezone', ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+
+    const result = await runAffiliateSourceScrape('source_coordinate_timezone', {
+      client: {
+        fetchPage: jest.fn(async () => ({
+          url: 'https://example.com/events',
+          finalUrl: 'https://example.com/events',
+          statusCode: 200,
+          fetchedAt: '2026-08-01T12:00:00.000Z',
+          body: `
+            <article class="event">
+              <h2 class="title">Coordinate-resolved event</h2>
+              <span class="start">August 10, 2099 9:30 PM</span>
+              <span class="venue">Rose City Courts</span>
+              <a href="/events/coordinate">Register</a>
+            </article>
+          `,
+        })),
+      },
+    });
+
+    expect(result.candidates).toHaveLength(1);
+    expect(prismaMock.affiliateImportCandidates.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        startsAt: new Date('2099-08-11T04:30:00.000Z'),
+        timeZone: 'America/Los_Angeles',
+        warnings: [],
+      }),
+    });
+    expect(prismaMock.events.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        start: new Date('2099-08-11T04:30:00.000Z'),
+        timeZone: 'America/Los_Angeles',
+      }),
+    });
+    expect(tryResolveTimeZoneFromCoordinatesMock).toHaveBeenCalledWith([-122.6765, 45.5231]);
+  });
+
+  it('records a timezone review issue when coordinates cannot resolve an event timezone', async () => {
+    tryResolveTimeZoneFromCoordinatesMock.mockReturnValue(null);
+    prismaMock.affiliateScrapeSources.findUnique.mockResolvedValue({
+      id: 'source_unknown_timezone',
+      name: 'Unknown Timezone Source',
+      activeMappingId: 'mapping_unknown_timezone',
+      listUrl: 'https://example.com/events',
+      organizationId: 'org_unknown_timezone',
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({ id: 'org_unknown_timezone' });
+    prismaMock.affiliateScrapeMappings.findUnique.mockResolvedValue({
+      id: 'mapping_unknown_timezone',
+      sourceId: 'source_unknown_timezone',
+      mapping: {
+        kind: 'EVENT',
+        listUrl: 'https://example.com/events',
+        itemSelector: '.event',
+        fields: {
+          title: { selector: '.title' },
+          officialActionUrl: { selector: 'a', mode: 'attribute', attribute: 'href', transform: 'absoluteUrl' },
+          startsAt: { selector: '.start', transform: 'dateTime' },
+          venueName: { selector: '.venue' },
+        },
+      },
+    });
+    prismaMock.affiliateScrapeRuns.create.mockResolvedValue({ id: 'run_unknown_timezone' });
+    prismaMock.affiliateScrapeRuns.update.mockImplementation(async ({ data }) => ({ id: 'run_unknown_timezone', ...data }));
+    prismaMock.affiliateScrapeSources.update.mockResolvedValue({});
+
+    const result = await runAffiliateSourceScrape('source_unknown_timezone', {
+      client: {
+        fetchPage: jest.fn(async () => ({
+          url: 'https://example.com/events',
+          finalUrl: 'https://example.com/events',
+          statusCode: 200,
+          fetchedAt: '2026-08-01T12:00:00.000Z',
+          body: `
+            <article class="event">
+              <h2 class="title">Unresolved timezone event</h2>
+              <span class="start">August 10, 2099 9:30 PM</span>
+              <span class="venue">Unknown Courts</span>
+              <a href="/events/unknown">Register</a>
+            </article>
+          `,
+        })),
+      },
+    });
+
+    expect(result.candidates).toHaveLength(0);
+    expect(prismaMock.affiliateImportCandidates.create).not.toHaveBeenCalled();
+    expect(prismaMock.events.create).not.toHaveBeenCalled();
+    expect(prismaMock.affiliateScrapeRuns.update).toHaveBeenLastCalledWith({
+      where: { id: 'run_unknown_timezone' },
+      data: expect.objectContaining({
+        logs: expect.objectContaining({
+          rejectionSummary: expect.objectContaining({ 'timeZone:MISSING_IANA_TIME_ZONE': 1 }),
+          rejectedCandidates: expect.arrayContaining([{
+            title: 'Unresolved timezone event',
+            reasons: ['timeZone:MISSING_IANA_TIME_ZONE', 'missing source start date'],
+          }]),
+        }),
       }),
     });
   });

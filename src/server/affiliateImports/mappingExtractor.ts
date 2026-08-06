@@ -358,7 +358,84 @@ const normalizeExtractedDateTimeFields = (params: {
 
   return {
     normalized,
+    dateTimeInputs: {
+      startsAt: startSource,
+      endsAt: rawEndsAt,
+      durationText: rawDurationText,
+      timeZone: rawTimeZone,
+      dateDisplayMode: fieldValues.dateDisplayMode ?? null,
+    },
   };
+};
+
+const isStaleMissingTimeZoneWarning = (warning: string): boolean => (
+  warning === 'timeZone:MISSING_IANA_TIME_ZONE'
+  || warning === 'start:MISSING_TIME_ZONE'
+  || warning === 'end:MISSING_TIME_ZONE'
+);
+
+const recordValue = (value: unknown): Record<string, unknown> => (
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
+
+const stringOrNull = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+);
+
+/**
+ * Re-run datetime normalization after the service resolves a candidate's
+ * venue or source-organization coordinates to an IANA timezone.
+ */
+export const normalizeAffiliateCandidateDateTime = (
+  candidate: AffiliateCandidateInput,
+  params: { timeZone: string; referenceDate: Date },
+): AffiliateCandidateInput => {
+  const rawPayload = recordValue(candidate.rawPayload);
+  const dateTimeInputs = recordValue(rawPayload.dateTimeInputs);
+  const rawExtractedFields = recordValue(rawPayload.rawExtractedFields);
+  const startsAt = stringOrNull(dateTimeInputs.startsAt ?? rawExtractedFields.startsAt);
+  const endsAt = stringOrNull(dateTimeInputs.endsAt ?? rawExtractedFields.endsAt);
+  const durationText = stringOrNull(dateTimeInputs.durationText ?? rawExtractedFields.durationText);
+  const dateDisplayMode = stringOrNull(dateTimeInputs.dateDisplayMode ?? candidate.dateDisplayMode);
+  const normalized = normalizeAffiliateEventDateTime({
+    startsAt,
+    endsAt,
+    durationText,
+    timeZone: params.timeZone,
+    timeZoneEvidence: 'COORDINATES',
+    dateDisplayMode,
+    referenceDate: params.referenceDate,
+  });
+  const nextCandidate: AffiliateCandidateInput = {
+    ...candidate,
+    timeZone: normalized.metadata.timeZone,
+    warnings: [
+      ...(candidate.warnings ?? []).filter((warning) => !isStaleMissingTimeZoneWarning(warning)),
+      ...normalized.metadata.warnings,
+    ],
+    rawPayload: {
+      ...rawPayload,
+      extractedFields: {
+        ...recordValue(rawPayload.extractedFields),
+        startsAt: normalized.startsAt,
+        endsAt: normalized.endsAt,
+        durationText,
+        timeZone: normalized.metadata.timeZone,
+        dateDisplayMode: normalized.dateDisplayMode,
+      },
+      normalizedImport: {
+        ...recordValue(rawPayload.normalizedImport),
+        dateTime: normalized.metadata,
+      },
+    },
+  };
+
+  if (startsAt != null) nextCandidate.startsAt = normalized.startsAt;
+  if (endsAt != null || normalized.endsAt != null) nextCandidate.endsAt = normalized.endsAt;
+  if (normalized.dateDisplayMode) nextCandidate.dateDisplayMode = normalized.dateDisplayMode;
+  return nextCandidate;
 };
 
 export const extractAffiliateCandidatesFromPage = (
@@ -379,6 +456,13 @@ export const extractAffiliateCandidatesFromPage = (
           sourceIndex: index,
           manualSummaryCandidate: true,
           extractedFields: manualCandidate,
+          dateTimeInputs: {
+            startsAt: manualCandidate.startsAt ?? null,
+            endsAt: manualCandidate.endsAt ?? null,
+            durationText: manualCandidate.durationText ?? null,
+            timeZone: manualCandidate.timeZone ?? null,
+            dateDisplayMode: manualCandidate.dateDisplayMode ?? null,
+          },
           tags: normalizeTagInputs(manualCandidate.tags ?? manualCandidate.tagText),
         },
         warnings: manualCandidate.warnings ?? [],
@@ -411,6 +495,13 @@ export const extractAffiliateCandidatesFromPage = (
       candidate.warnings = [...(candidate.warnings ?? []), ...normalizedDateTime.metadata.warnings];
       (candidate.rawPayload as Record<string, unknown>).normalizedImport = {
         dateTime: normalizedDateTime.metadata,
+      };
+      (candidate.rawPayload as Record<string, unknown>).dateTimeInputs = {
+        startsAt: manualCandidate.startsAt ?? null,
+        endsAt: manualCandidate.endsAt ?? null,
+        durationText: manualCandidate.durationText ?? null,
+        timeZone: manualCandidate.timeZone ?? null,
+        dateDisplayMode: manualCandidate.dateDisplayMode ?? null,
       };
 
       return candidate;
@@ -471,6 +562,7 @@ export const extractAffiliateCandidatesFromPage = (
           sourceIndex: index,
           extractedFields: fieldValues,
           rawExtractedFields: rawFieldValues,
+          dateTimeInputs: dateTimeResult.dateTimeInputs,
           normalizedImport: {
             dateTime: dateTimeResult.normalized.metadata,
           },
