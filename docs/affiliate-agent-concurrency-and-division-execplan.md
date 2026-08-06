@@ -35,9 +35,9 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-05 15:32Z) Drained and stopped 10 mapper containers, one two-reviewer container, and one coverage container without releasing active leases.
 - [x] (2026-08-05 17:31Z) Split the two reviewers into separate stopped containers with separate loop locks and Codex state directories.
 - [x] (2026-08-05 17:32Z) Added and verified CPU, memory, swap, and process limits for every mapper, reviewer, and coverage container.
-- [ ] Raise the mapper memory ceiling to 4 GiB after every mapper recorded child-process OOM kills at 3 GiB.
-- [ ] Make approval reconciliation safe when two reviewer loops start at the same time.
-- [ ] Classify the recent failed and human-review mapping jobs before any retry-state change.
+- [x] (2026-08-05 23:39Z) Raised all 10 live mapper memory and memory-swap ceilings to 4 GiB without restarting their containers or releasing leases.
+- [x] (2026-08-06 00:09Z) Made approval reconciliation safe when two reviewer loops start at the same time, then restarted the reviewers one at a time.
+- [x] (2026-08-06 00:12Z) Classified recent terminal mapping jobs and returned 31 concrete package defects to the mapper queue.
 
 ## Surprises & Discoveries
 
@@ -64,6 +64,9 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 - Observation: Two reviewer loops can race while reconciling the same missing approval subject.
   Evidence: Reviewer 2 received a unique constraint error for `subjectType` and `subjectKey` during simultaneous startup reconciliation, then recovered after its automatic restart.
+
+- Observation: One mapper can still reach the 4 GiB ceiling during the optional repository-wide TypeScript check.
+  Evidence: Mapper 4 recorded one additional child-process OOM kill while its mapping result still completed. Its logs identify the full `tsc` process as the memory-heavy step. The focused tests and source checks passed, and the host retained about 14 GiB available memory.
 
 ## Decision Log
 
@@ -103,31 +106,38 @@ reviewers and does not start a new pool until every active reviewer exits.
   Rationale: The host has sufficient available memory. The per-container 3 GiB ceiling, not host exhaustion, caused the recorded kills. An in-place Docker limit update preserves active leases.
   Date/Author: 2026-08-05 / Codex
 
-- Decision: Reconcile approval subjects with a database upsert on the existing compound unique key.
-  Rationale: The database must decide which reviewer creates a missing subject. A read-then-create loop cannot prevent a second reviewer from inserting between those operations.
+- Decision: Reconcile approval subjects with a conflict-tolerant bulk insert on the existing compound unique key.
+  Rationale: The database must decide which reviewer creates a missing subject. A read-then-create loop cannot prevent a second reviewer from inserting between those operations. `createMany` with `skipDuplicates` makes the losing insert a normal zero-row result.
   Date/Author: 2026-08-05 / Codex
 
 ## Outcomes & Retrospective
 
-The repository now contains the division gate and both pool controls. The main
-branch contains the implementation and restart-safe claim renewal. The live VM
-runs a Compose-managed fleet definition for 10 isolated mappers, two isolated
-reviewers, and one coverage worker. The fleet is intentionally stopped with
-restart policy `no`. A live database check showed zero active mapping,
-approval, and coverage leases before the stopped containers were replaced.
+The repository now contains the division gate, both pool controls, and
+race-safe approval reconciliation. The main branch contains the implementation
+and restart-safe claim renewal. The live VM runs a Compose-managed fleet of 10
+isolated mappers, two isolated reviewers, and one coverage worker. The fleet is
+running with restart policy `no`.
 Reviewer 1 uses loop lock `4201072131`. Reviewer 2 uses loop lock
 `4201072133`. Each reviewer has its own authenticated Codex state directory.
 
-Docker inspection confirmed 1.25 CPUs, 3 GiB memory, 3 GiB memory-swap, and a
+Docker inspection confirmed 1.25 CPUs, 4 GiB memory, 4 GiB memory-swap, and a
 512-process limit for every mapper. It confirmed 1 CPU, 2 GiB memory, 2 GiB
 memory-swap, and a 512-process limit for each reviewer and the coverage worker.
 The production application, PostgreSQL, Redis, Caddy, intake timer, and daily
 scraper timer remained healthy or active after this change.
 
-The focused live-checkout queue, goal, and pool run passed 28 tests. Its broad
-TypeScript check remains blocked by existing generated-package errors in the
-Denver, Next Generation Sports, CMSA, LA Flag Football, and NEAAU source files.
-The local main checkout passed TypeScript before deployment.
+The repair audit kept 55 recent terminal source failures unchanged because
+they were incomplete captures, unrelated sources, identity mismatches,
+ineligible businesses, duplicates, or a team-only source. It returned 31
+recent human-review jobs to the producer: 23 package-validation defects and 8
+candidate-count conflicts. Unsupported sports and genuinely inaccessible or
+contradictory evidence remain in human review. After the rolling reviewer
+restart, both reviewer containers were running and their logs contained no
+approval reconciliation unique-key error.
+
+The final focused validation passed five suites with 50 tests. The full local
+TypeScript check, Compose configuration check, diff check, and reviewer skill
+validation also passed. The live reviewer checkout runs the pushed commit.
 
 ## Context and Orientation
 
