@@ -565,6 +565,11 @@ export type EventRegistrations = Prisma.EventRegistrationsModel
  */
 export type AuthUser = Prisma.AuthUserModel
 /**
+ * Model FeedbackSubmissions
+ *
+ */
+export type FeedbackSubmissions = Prisma.FeedbackSubmissionsModel
+/**
  * Model File
  *
  */

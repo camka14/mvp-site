@@ -88,6 +88,9 @@ export default function PrivacyPolicyPage() {
                   When a deletion request is approved, authentication data is deleted and the account is cleaned up, including friend connections, templates, active subscriptions, invites, and active team membership.
                 </p>
                 <p>
+                  BracketIQ collects feedback text, the feedback type, an optional follow-up email, the related page path, and limited device or browser context when you use the feedback form. We use this information to answer feedback, fix problems, and plan improvements. We contact you only when you give permission. Feedback linked to an authenticated account is deleted with that account. A guest can request deletion of a guest feedback submission through the privacy contact method and should include its confirmation identifier.
+                </p>
+                <p>
                   Some records are retained because they are matters of public, billing, compliance, or historical record. These include the user&apos;s name, username, limited inactive user record, Stripe account association, signed documents, completed-event participation records, and refund workflows that must remain open until resolved.
                 </p>
                 <p>

@@ -709,3 +709,22 @@ export const AuthMfaChallengePurposeEnum = {
 } as const
 
 export type AuthMfaChallengePurposeEnum = (typeof AuthMfaChallengePurposeEnum)[keyof typeof AuthMfaChallengePurposeEnum]
+
+
+export const FeedbackSubmissionTypeEnum = {
+  BUG: 'BUG',
+  IDEA: 'IDEA',
+  GENERAL: 'GENERAL'
+} as const
+
+export type FeedbackSubmissionTypeEnum = (typeof FeedbackSubmissionTypeEnum)[keyof typeof FeedbackSubmissionTypeEnum]
+
+
+export const FeedbackSubmissionStatusEnum = {
+  NEW: 'NEW',
+  IN_REVIEW: 'IN_REVIEW',
+  PLANNED: 'PLANNED',
+  CLOSED: 'CLOSED'
+} as const
+
+export type FeedbackSubmissionStatusEnum = (typeof FeedbackSubmissionStatusEnum)[keyof typeof FeedbackSubmissionStatusEnum]

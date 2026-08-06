@@ -156,6 +156,7 @@ export const ModelName = {
   ParentChildLinks: 'ParentChildLinks',
   EventRegistrations: 'EventRegistrations',
   AuthUser: 'AuthUser',
+  FeedbackSubmissions: 'FeedbackSubmissions',
   File: 'File'
 } as const
 
@@ -2697,6 +2698,28 @@ export const AuthUserScalarFieldEnum = {
 } as const
 
 export type AuthUserScalarFieldEnum = (typeof AuthUserScalarFieldEnum)[keyof typeof AuthUserScalarFieldEnum]
+
+
+export const FeedbackSubmissionsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  type: 'type',
+  status: 'status',
+  message: 'message',
+  additionalContext: 'additionalContext',
+  submitterUserId: 'submitterUserId',
+  allowContact: 'allowContact',
+  contactEmail: 'contactEmail',
+  sourcePath: 'sourcePath',
+  userAgent: 'userAgent',
+  clientContext: 'clientContext',
+  reviewedAt: 'reviewedAt',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewNotes: 'reviewNotes'
+} as const
+
+export type FeedbackSubmissionsScalarFieldEnum = (typeof FeedbackSubmissionsScalarFieldEnum)[keyof typeof FeedbackSubmissionsScalarFieldEnum]
 
 
 export const FileScalarFieldEnum = {

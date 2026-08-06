@@ -1,6 +1,7 @@
 import posthog from 'posthog-js';
 import {
   capture,
+  analyticsEventNames,
   identifyUser,
   isPostHogEnabled,
   resetAnalytics,
@@ -58,5 +59,9 @@ describe('posthogClient', () => {
     identifyUser('   ', { platform: 'web' });
 
     expect(posthogMock.identify).not.toHaveBeenCalled();
+  });
+
+  it('allows the feedback event names', () => {
+    expect(analyticsEventNames).toEqual(expect.arrayContaining(['feedback opened', 'feedback submitted']));
   });
 });

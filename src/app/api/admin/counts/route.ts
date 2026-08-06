@@ -29,6 +29,7 @@ export async function GET(req: NextRequest) {
       users,
       chats,
       moderation,
+      feedback,
     ] = await Promise.all([
       prisma.events.count({ where: eventWhere }),
       prisma.organizations.count(),
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest) {
       prisma.userData.count(),
       prisma.chatGroup.count(),
       prisma.moderationReport.count(),
+      prisma.feedbackSubmissions.count({ where: { status: { in: ['NEW', 'IN_REVIEW'] } } }),
     ]);
 
     return NextResponse.json(
@@ -52,6 +54,7 @@ export async function GET(req: NextRequest) {
         users,
         chats,
         moderation,
+        feedback,
       },
       { status: 200 },
     );

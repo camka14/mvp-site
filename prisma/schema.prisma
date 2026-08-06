@@ -491,6 +491,19 @@ enum AuthMfaChallengePurposeEnum {
   ORGANIZATION_CLAIM
 }
 
+enum FeedbackSubmissionTypeEnum {
+  BUG
+  IDEA
+  GENERAL
+}
+
+enum FeedbackSubmissionStatusEnum {
+  NEW
+  IN_REVIEW
+  PLANNED
+  CLOSED
+}
+
 model AppReleases {
   id                 String                 @id
   platform           AppReleasePlatformEnum
@@ -3224,6 +3237,29 @@ model AuthUser {
 
   @@index([email])
   @@index([disabledAt])
+}
+
+model FeedbackSubmissions {
+  id                String                       @id
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  type              FeedbackSubmissionTypeEnum
+  status            FeedbackSubmissionStatusEnum @default(NEW)
+  message           String
+  additionalContext String?
+  submitterUserId   String?
+  allowContact      Boolean                      @default(false)
+  contactEmail      String?
+  sourcePath        String?
+  userAgent         String?
+  clientContext     Json                         @default("{}")
+  reviewedAt        DateTime?
+  reviewedByUserId  String?
+  reviewNotes       String?
+
+  @@index([status, createdAt])
+  @@index([type, status, createdAt])
+  @@index([submitterUserId, createdAt])
 }
 
 model File {

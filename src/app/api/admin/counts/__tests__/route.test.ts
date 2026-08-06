@@ -12,6 +12,7 @@ const prismaMock = {
   userData: { count: jest.fn() },
   chatGroup: { count: jest.fn() },
   moderationReport: { count: jest.fn() },
+  feedbackSubmissions: { count: jest.fn() },
 };
 
 jest.mock('@/server/razumlyAdmin', () => ({
@@ -49,6 +50,7 @@ describe('GET /api/admin/counts', () => {
     prismaMock.userData.count.mockResolvedValue(93);
     prismaMock.chatGroup.count.mockResolvedValue(18);
     prismaMock.moderationReport.count.mockResolvedValue(0);
+    prismaMock.feedbackSubmissions.count.mockResolvedValue(4);
 
     const res = await adminCountsGet(new NextRequest('http://localhost/api/admin/counts'));
     const json = await res.json();
@@ -64,9 +66,13 @@ describe('GET /api/admin/counts', () => {
       users: 93,
       chats: 18,
       moderation: 0,
+      feedback: 4,
     });
     expect(prismaMock.events.count).toHaveBeenCalledWith({ where: { NOT: { state: 'TEMPLATE' } } });
     expect(prismaMock.organizations.count).toHaveBeenNthCalledWith(1);
     expect(prismaMock.organizations.count).toHaveBeenNthCalledWith(2, expect.objectContaining({ where: expect.any(Object) }));
+    expect(prismaMock.feedbackSubmissions.count).toHaveBeenCalledWith({
+      where: { status: { in: ['NEW', 'IN_REVIEW'] } },
+    });
   });
 });

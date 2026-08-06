@@ -68,6 +68,19 @@ export type AdminOrganizationClaimNotification = {
   createdAt?: Date | string | null;
 };
 
+export type AdminFeedbackSubmissionNotification = {
+  id: string;
+  type: 'BUG' | 'IDEA' | 'GENERAL';
+  message: string;
+  additionalContext?: string | null;
+  submitterUserId?: string | null;
+  allowContact: boolean;
+  contactEmail?: string | null;
+  sourcePath?: string | null;
+  createdAt: Date | string;
+  baseUrl?: string | null;
+};
+
 const getAdminNotificationRecipient = (): string => (
   process.env.ADMIN_NOTIFICATION_EMAIL_TO?.trim() || DEFAULT_ADMIN_NOTIFICATION_RECIPIENT
 );
@@ -293,6 +306,32 @@ export const sendAdminOrganizationClaimNotification = async ({
       ['Issue reason', claim.issueReason],
       ['Requested outcome', claim.requestedOutcome],
       ['Created at', claim.createdAt],
+    ],
+  });
+};
+
+export const sendAdminFeedbackSubmissionNotification = async (
+  feedback: AdminFeedbackSubmissionNotification,
+): Promise<void> => {
+  const adminUrl = buildUrl(
+    feedback.baseUrl,
+    `/admin?tab=feedback&id=${encodeURIComponent(feedback.id)}`,
+  );
+
+  await sendAdminNotification({
+    subject: `[BracketIQ] New ${feedback.type.toLowerCase()} feedback`,
+    title: 'New BracketIQ feedback submission',
+    rows: [
+      ['Submission ID', feedback.id],
+      ['Admin review URL', adminUrl],
+      ['Type', feedback.type],
+      ['Message', feedback.message],
+      ['Additional context', feedback.additionalContext],
+      ['Contact permitted', feedback.allowContact],
+      ['Contact email', feedback.allowContact ? feedback.contactEmail : null],
+      ['Submitter user ID', feedback.submitterUserId],
+      ['Source path', feedback.sourcePath],
+      ['Created at', feedback.createdAt],
     ],
   });
 };

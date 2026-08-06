@@ -450,6 +450,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
             updatedAt: now,
           },
         }),
+        tx.feedbackSubmissions?.deleteMany?.({
+          where: { submitterUserId: userId },
+        }),
       ]);
 
       await tx.authUser.deleteMany({

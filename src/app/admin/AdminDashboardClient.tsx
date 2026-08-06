@@ -3,9 +3,10 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AdminAffiliateImportsPanel from './AdminAffiliateImportsPanel';
 import AdminBroadcastOverlaysPanel from './AdminBroadcastOverlaysPanel';
+import AdminFeedbackPanel from './AdminFeedbackPanel';
 import Navigation from '@/components/layout/Navigation';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
@@ -44,7 +45,7 @@ import {
 } from '@mantine/core';
 import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Search, Send, Trash2 } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'claims' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports' | 'broadcastOverlays';
+type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'claims' | 'fields' | 'users' | 'chats' | 'moderation' | 'notifications' | 'affiliateImports' | 'broadcastOverlays' | 'feedback';
 type AdminUserSortField = 'name' | 'username' | 'email' | 'status' | 'dateJoined' | 'lastSeen';
 type SortDirection = 'asc' | 'desc';
 type AdminUserSort = {
@@ -73,6 +74,26 @@ type AdminDashboardCounts = {
   users: number;
   chats: number;
   moderation: number;
+  feedback: number;
+};
+
+const parseAdminTab = (value: string | null): AdminTab => {
+  const knownTabs: AdminTab[] = [
+    'events',
+    'organizations',
+    'teams',
+    'verification',
+    'claims',
+    'fields',
+    'users',
+    'chats',
+    'moderation',
+    'notifications',
+    'affiliateImports',
+    'broadcastOverlays',
+    'feedback',
+  ];
+  return value && knownTabs.includes(value as AdminTab) ? value as AdminTab : 'events';
 };
 
 type AdminFieldRow = Field & {
@@ -262,7 +283,9 @@ type AdminDashboardClientProps = {
 
 export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboardClientProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<AdminTab>('events');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => parseAdminTab(searchParams.get('tab')));
+  const feedbackId = activeTab === 'feedback' ? searchParams.get('id') : null;
 
   const [eventsState, setEventsState] = useState<PageState<Event>>(() => initialPageState<Event>());
   const [organizationsState, setOrganizationsState] =
@@ -288,6 +311,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [affiliateRefreshKey, setAffiliateRefreshKey] = useState(0);
   const [broadcastOverlayRefreshKey, setBroadcastOverlayRefreshKey] = useState(0);
   const [claimsRefreshKey, setClaimsRefreshKey] = useState(0);
+  const [feedbackRefreshKey, setFeedbackRefreshKey] = useState(0);
   const [claimsTotal, setClaimsTotal] = useState<number | null>(null);
   const [dashboardCounts, setDashboardCounts] = useState<AdminDashboardCounts | null>(null);
   const [dashboardCountsLoading, setDashboardCountsLoading] = useState(false);
@@ -323,6 +347,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         users: Number(payload.users ?? 0),
         chats: Number(payload.chats ?? 0),
         moderation: Number(payload.moderation ?? 0),
+        feedback: Number(payload.feedback ?? 0),
       };
 
       setDashboardCounts(nextCounts);
@@ -971,6 +996,15 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     router.push(`/admin/users/${encodeURIComponent(userId)}`);
   }, [router]);
 
+  const handleTabChange = useCallback((value: string | null) => {
+    const nextTab = parseAdminTab(value);
+    setActiveTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set('tab', nextTab);
+    if (nextTab !== 'feedback') nextParams.delete('id');
+    router.replace(`/admin?${nextParams.toString()}`, { scroll: false });
+  }, [router, searchParams]);
+
   useEffect(() => {
     void loadDashboardCounts();
   }, [loadDashboardCounts]);
@@ -1085,8 +1119,20 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
         query: '',
       };
     }
+    if (activeTab === 'feedback') {
+      return {
+        items: [],
+        total: dashboardCounts?.feedback ?? 0,
+        limit: DEFAULT_LIMIT,
+        offset: 0,
+        loading: false,
+        loaded: true,
+        error: null,
+        query: '',
+      };
+    }
     return usersState;
-  }, [activeTab, chatsState, claimsTotal, eventsState, fieldsState, moderationState, notificationState, organizationsState, teamsState, verificationState, usersState]);
+  }, [activeTab, chatsState, claimsTotal, dashboardCounts?.feedback, eventsState, fieldsState, moderationState, notificationState, organizationsState, teamsState, verificationState, usersState]);
 
   const onRefreshActiveTab = useCallback(() => {
     if (activeTab === 'events') {
@@ -1111,6 +1157,8 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       setAffiliateRefreshKey((previous) => previous + 1);
     } else if (activeTab === 'broadcastOverlays') {
       setBroadcastOverlayRefreshKey((previous) => previous + 1);
+    } else if (activeTab === 'feedback') {
+      setFeedbackRefreshKey((previous) => previous + 1);
     } else {
       void loadUsers(usersState.offset, usersState.query);
     }
@@ -1258,7 +1306,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
               <Text size="xs" c="dimmed" mb="md">Updating dashboard counts…</Text>
             ) : null}
 
-            <Tabs value={activeTab} onChange={(value) => setActiveTab((value as AdminTab) || 'events')}>
+            <Tabs value={activeTab} onChange={handleTabChange}>
               <Tabs.List mb="md">
                 <Tabs.Tab value="events">Events ({eventsState.loaded ? eventsState.total : dashboardCounts?.events ?? '…'})</Tabs.Tab>
                 <Tabs.Tab value="organizations">Organizations ({organizationsState.loaded ? organizationsState.total : dashboardCounts?.organizations ?? '…'})</Tabs.Tab>
@@ -1272,6 +1320,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 <Tabs.Tab value="notifications">Notifications</Tabs.Tab>
                 <Tabs.Tab value="affiliateImports">Affiliate imports</Tabs.Tab>
                 <Tabs.Tab value="broadcastOverlays">Broadcast overlays</Tabs.Tab>
+                <Tabs.Tab value="feedback">Feedback ({dashboardCounts?.feedback ?? '…'})</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="events">
@@ -1413,6 +1462,18 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                   active={activeTab === 'broadcastOverlays'}
                   refreshKey={broadcastOverlayRefreshKey}
                 />
+              </Tabs.Panel>
+
+              <Tabs.Panel value="feedback">
+                {activeTab === 'feedback' ? (
+                  <AdminFeedbackPanel
+                    key={feedbackRefreshKey}
+                    active
+                    initialId={feedbackId}
+                    openCount={dashboardCounts?.feedback}
+                    onOpenCountChange={() => { void loadDashboardCounts(); }}
+                  />
+                ) : null}
               </Tabs.Panel>
 
               <Tabs.Panel value="teams">

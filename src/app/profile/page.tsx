@@ -119,6 +119,8 @@ import { formatDisplayDate, formatDisplayDateTime } from "@/lib/dateUtils";
 import { selectBillOwnerTeams } from "@/lib/profileBilling";
 import { resolveClientPublicOrigin } from "@/lib/clientPublicOrigin";
 import { withSelectedProfileImage } from "./profileImageSelection";
+import ProfileHeaderActions from "./ProfileHeaderActions";
+import { logoutProfileSession } from "./profileLogout";
 import DiscountManager from "@/components/discounts/DiscountManager";
 import { isManualRegistrationPaymentMode } from "@/lib/manualRegistrationPayments";
 import {
@@ -446,6 +448,7 @@ function ProfilePageContent() {
   const [editTab, setEditTab] = useState<ProfileEditTab>("general");
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notificationSettings, setNotificationSettings] =
     useState<NormalizedNotificationSettings>(() =>
@@ -826,6 +829,30 @@ function ProfilePageContent() {
     }
     setIsEditing(!isEditing);
     setError(null);
+  };
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    setError(null);
+    try {
+      await logoutProfileSession({
+        logout: () => authService.logout(),
+        setUser: (value) => setUser(value),
+        setAuthUser: (value) => setAuthUser(value),
+        replace: (path) => router.replace(path),
+        refresh: () => router.refresh(),
+      });
+    } catch (logoutError) {
+      const message = logoutError instanceof Error
+        ? logoutError.message
+        : 'Unable to log out right now. Please try again.';
+      setError(message);
+      notifications.show({ color: 'red', message });
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const handleSave = async () => {
@@ -5245,20 +5272,15 @@ function ProfilePageContent() {
                     </Text>
                   </div>
                 </div>
-                <Group gap="sm" justify="flex-end">
-                  {isEditing ? (
-                    <>
-                      <Button variant="default" onClick={handleEditToggle}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleSave} disabled={saving}>
-                        {saving ? "Saving..." : "Save changes"}
-                      </Button>
-                    </>
-                  ) : (
-                    <Button onClick={handleEditToggle}>Edit profile</Button>
-                  )}
-                </Group>
+                <ProfileHeaderActions
+                  isEditing={isEditing}
+                  saving={saving}
+                  loggingOut={loggingOut}
+                  onCancel={handleEditToggle}
+                  onEdit={handleEditToggle}
+                  onSave={() => { void handleSave(); }}
+                  onLogout={() => { void handleLogout(); }}
+                />
               </div>
             </Paper>
 

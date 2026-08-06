@@ -13,5 +13,8 @@ describe('PrivacyPolicyPage', () => {
       'mailto:support@bracket-iq.com',
     );
     expect(screen.getByText(/messages and files are retained for 90 days before deletion/i)).toBeInTheDocument();
+    expect(screen.getByText(/bracketiq collects feedback text/i)).toBeInTheDocument();
+    expect(screen.getByText(/we contact you only when you give permission/i)).toBeInTheDocument();
+    expect(screen.getByText(/confirmation identifier/i)).toBeInTheDocument();
   });
 });

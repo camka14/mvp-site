@@ -17,6 +17,8 @@ export const analyticsEventNames = [
   'team created',
   'checkout started',
   'payment completed',
+  'feedback opened',
+  'feedback submitted',
 ] as const;
 
 export type AnalyticsEventName = (typeof analyticsEventNames)[number];

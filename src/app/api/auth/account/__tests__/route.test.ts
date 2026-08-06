@@ -56,6 +56,9 @@ const prismaMock = {
   pushDeviceTarget: {
     deleteMany: jest.fn(),
   },
+  feedbackSubmissions: {
+    deleteMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -253,6 +256,7 @@ describe('DELETE /api/auth/account', () => {
       }),
     }));
     expect(prismaMock.authUser.deleteMany).toHaveBeenCalledWith({ where: { id: 'user_1' } });
+    expect(prismaMock.feedbackSubmissions.deleteMany).toHaveBeenCalledWith({ where: { submitterUserId: 'user_1' } });
     expect(prismaMock.sensitiveUserData.deleteMany).toHaveBeenCalled();
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(response, '');
   });

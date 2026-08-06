@@ -88,6 +88,9 @@ const prismaMock = {
   stripeAccounts: {
     updateMany: jest.fn(),
   },
+  feedbackSubmissions: {
+    deleteMany: jest.fn(),
+  },
   $transaction: transactionMock,
 };
 
@@ -152,6 +155,7 @@ describe('DELETE /api/admin/users/[id]', () => {
 
     expect(res.status).toBe(200);
     expect(prismaMock.authUser.deleteMany).toHaveBeenCalledWith({ where: { id: 'user_1' } });
+    expect(prismaMock.feedbackSubmissions.deleteMany).toHaveBeenCalledWith({ where: { submitterUserId: 'user_1' } });
     expect(prismaMock.sensitiveUserData.deleteMany).toHaveBeenCalledWith({
       where: {
         OR: [

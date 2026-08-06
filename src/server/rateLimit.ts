@@ -136,6 +136,12 @@ export const RATE_LIMIT_POLICIES = {
     windowSeconds: 60 * 60,
     message: 'Too many organization verification attempts. Please wait before trying again.',
   },
+  feedbackSubmission: {
+    name: 'feedback:submission',
+    limit: 10,
+    windowSeconds: 60 * 60,
+    message: 'Too many feedback submissions. Please wait before trying again.',
+  },
 } satisfies Record<string, RateLimitPolicy>;
 
 const normalizeLimit = (limit: number): number => (

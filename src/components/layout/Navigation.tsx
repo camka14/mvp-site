@@ -3,13 +3,13 @@
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { Bot, Smartphone } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Bot, MessageSquarePlus, Smartphone } from 'lucide-react';
 import { useApp } from '@/app/providers';
 import { useAgentContext } from '@/context/AgentContext';
-import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
 import { getUserFullName, NavItem } from '@/types';
+import FeedbackDrawer from '@/components/feedback/FeedbackDrawer';
 
 const baseNav: NavItem[] = [
   { label: 'Info', href: '/info' },
@@ -25,30 +25,16 @@ export default function Navigation() {
     user,
     authUser,
     loading: authLoading,
-    setUser,
-    setAuthUser,
     isGuest,
     isAuthenticated,
   } = useApp();
   const { openAssistant } = useAgentContext();
   const pathname = usePathname();
-  const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [feedbackOpened, setFeedbackOpened] = useState(false);
+  const [feedbackEntrySource, setFeedbackEntrySource] = useState<'desktop_header' | 'mobile_menu'>('desktop_header');
   const [isRazumlyAdmin, setIsRazumlyAdmin] = useState(false);
   const isPublicViewer = !authLoading && (isGuest || !isAuthenticated);
-
-  const handleLogout = async () => {
-    try {
-      await authService.logout();
-      setUser(null);
-      setAuthUser(null);
-      setIsMenuOpen(false);
-      router.replace('/login');
-      router.refresh();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -148,8 +134,12 @@ export default function Navigation() {
                 <Link href="/login" className="btn-ghost text-sm">Login / Signup</Link>
                 {/* Mobile Menu Button */}
                 <button
+                  type="button"
                   className="lg:hidden p-2"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                  aria-expanded={isMenuOpen}
+                  aria-controls="mobile-navigation-menu"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -188,6 +178,20 @@ export default function Navigation() {
 
                 <button
                   type="button"
+                  onClick={() => {
+                    setFeedbackEntrySource('desktop_header');
+                    setFeedbackOpened(true);
+                  }}
+                  className="hidden h-9 items-center gap-2 rounded-full border border-slate-300 px-3 text-slate-700 transition-colors hover:border-blue-400 hover:bg-blue-50 hover:text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 lg:inline-flex"
+                  aria-label="Send feedback"
+                  title="Send feedback"
+                >
+                  <MessageSquarePlus size={18} aria-hidden="true" />
+                  <span className="hidden xl:inline text-sm font-medium">Feedback</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={openAssistant}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   aria-label="Open AI assistant"
@@ -196,17 +200,14 @@ export default function Navigation() {
                   <Bot size={18} aria-hidden="true" />
                 </button>
 
-                <button
-                  onClick={handleLogout}
-                  className="btn-ghost text-sm"
-                >
-                  Logout
-                </button>
-
                 {/* Mobile Menu Button */}
                 <button
+                  type="button"
                   className="lg:hidden p-2"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
+                  aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                  aria-expanded={isMenuOpen}
+                  aria-controls="mobile-navigation-menu"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -219,7 +220,7 @@ export default function Navigation() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="lg:hidden border-t border-gray-200 py-2">
+          <div id="mobile-navigation-menu" className="lg:hidden border-t border-gray-200 py-2">
             {!isPublicViewer && (
               <Link
                 href="/profile"
@@ -253,6 +254,20 @@ export default function Navigation() {
               <Smartphone size={18} aria-hidden="true" />
               {mobileAppNavItem.label}
             </Link>
+            {!isPublicViewer && (
+              <button
+                type="button"
+                className="mx-4 mb-2 flex min-h-11 w-[calc(100%-2rem)] items-center gap-3 rounded-2xl bg-slate-100 px-4 py-3 text-left font-medium text-slate-800"
+                onClick={() => {
+                  setFeedbackEntrySource('mobile_menu');
+                  setIsMenuOpen(false);
+                  setFeedbackOpened(true);
+                }}
+              >
+                <MessageSquarePlus size={18} aria-hidden="true" />
+                Feedback
+              </button>
+            )}
             {items.map((item) => (
               <Link
                 key={item.href}
@@ -267,6 +282,14 @@ export default function Navigation() {
               </Link>
             ))}
           </div>
+        )}
+        {!isPublicViewer && (
+          <FeedbackDrawer
+            opened={feedbackOpened}
+            onClose={() => setFeedbackOpened(false)}
+            authenticatedEmail={authUser?.email}
+            entrySource={feedbackEntrySource}
+          />
         )}
       </div>
     </nav>

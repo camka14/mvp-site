@@ -489,6 +489,7 @@ export const ModelName = {
   ParentChildLinks: 'ParentChildLinks',
   EventRegistrations: 'EventRegistrations',
   AuthUser: 'AuthUser',
+  FeedbackSubmissions: 'FeedbackSubmissions',
   File: 'File'
 } as const
 
@@ -505,7 +506,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateCoverageAgentJobs" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateApprovalJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "organizationDomains" | "organizationClaims" | "organizationClaimEvidence" | "organizationClaimEvents" | "organizationReviewResponses" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "facilities" | "matches" | "matchSegments" | "broadcastOverlays" | "broadcastOverlayStates" | "broadcastOverlayActions" | "broadcastOverlayAccessTokens" | "matchIncidents" | "matchOperationReceipts" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "staffScheduleAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teamCheckIns" | "matchRosterEntries" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "billPaymentProofs" | "rentalBookings" | "rentalBookingItems" | "affiliateScrapeSources" | "affiliateScrapeMappings" | "affiliateScrapeRuns" | "affiliateSourceIntakes" | "affiliateSourceIntakePages" | "affiliateSourceIntakeRuns" | "affiliateSourceIntakeArtifacts" | "affiliateSourceDiscoveryCampaigns" | "affiliateCoverageAgentJobs" | "affiliateSourceDiscoveryRuns" | "affiliateSourceDiscoveryResults" | "affiliateSourceDomainPolicies" | "affiliateSourceMappingJobs" | "affiliateApprovalJobs" | "affiliateImportCandidates" | "eventTags" | "eventTagAssignments" | "organizationTags" | "organizationTagAssignments" | "refundRequests" | "discounts" | "discountCodes" | "discountCodeRedemptions" | "discountCodeReservations" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "organizationReviews" | "organizationDomains" | "organizationClaims" | "organizationClaimEvidence" | "organizationClaimEvents" | "organizationReviewResponses" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "eventTemplates" | "eventTemplateResources" | "eventTemplateTimeSlots" | "eventTemplateRentalResourceHints" | "eventTemplateLeagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "feedbackSubmissions" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -8279,6 +8280,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    FeedbackSubmissions: {
+      payload: Prisma.$FeedbackSubmissionsPayload<ExtArgs>
+      fields: Prisma.FeedbackSubmissionsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.FeedbackSubmissionsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.FeedbackSubmissionsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>
+        }
+        findFirst: {
+          args: Prisma.FeedbackSubmissionsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.FeedbackSubmissionsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>
+        }
+        findMany: {
+          args: Prisma.FeedbackSubmissionsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>[]
+        }
+        create: {
+          args: Prisma.FeedbackSubmissionsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>
+        }
+        createMany: {
+          args: Prisma.FeedbackSubmissionsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.FeedbackSubmissionsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>[]
+        }
+        delete: {
+          args: Prisma.FeedbackSubmissionsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>
+        }
+        update: {
+          args: Prisma.FeedbackSubmissionsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>
+        }
+        deleteMany: {
+          args: Prisma.FeedbackSubmissionsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.FeedbackSubmissionsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.FeedbackSubmissionsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>[]
+        }
+        upsert: {
+          args: Prisma.FeedbackSubmissionsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FeedbackSubmissionsPayload>
+        }
+        aggregate: {
+          args: Prisma.FeedbackSubmissionsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFeedbackSubmissions>
+        }
+        groupBy: {
+          args: Prisma.FeedbackSubmissionsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FeedbackSubmissionsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.FeedbackSubmissionsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FeedbackSubmissionsCountAggregateOutputType> | number
+        }
+      }
+    }
     File: {
       payload: Prisma.$FilePayload<ExtArgs>
       fields: Prisma.FileFieldRefs
@@ -10916,6 +10991,28 @@ export const AuthUserScalarFieldEnum = {
 export type AuthUserScalarFieldEnum = (typeof AuthUserScalarFieldEnum)[keyof typeof AuthUserScalarFieldEnum]
 
 
+export const FeedbackSubmissionsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  type: 'type',
+  status: 'status',
+  message: 'message',
+  additionalContext: 'additionalContext',
+  submitterUserId: 'submitterUserId',
+  allowContact: 'allowContact',
+  contactEmail: 'contactEmail',
+  sourcePath: 'sourcePath',
+  userAgent: 'userAgent',
+  clientContext: 'clientContext',
+  reviewedAt: 'reviewedAt',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewNotes: 'reviewNotes'
+} as const
+
+export type FeedbackSubmissionsScalarFieldEnum = (typeof FeedbackSubmissionsScalarFieldEnum)[keyof typeof FeedbackSubmissionsScalarFieldEnum]
+
+
 export const FileScalarFieldEnum = {
   id: 'id',
   uploaderId: 'uploaderId',
@@ -12084,6 +12181,34 @@ export type EnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel> = FieldR
 export type ListEnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsStatusEnum[]'>
 
 
+
+/**
+ * Reference to a field of type 'FeedbackSubmissionTypeEnum'
+ */
+export type EnumFeedbackSubmissionTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FeedbackSubmissionTypeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'FeedbackSubmissionTypeEnum[]'
+ */
+export type ListEnumFeedbackSubmissionTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FeedbackSubmissionTypeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'FeedbackSubmissionStatusEnum'
+ */
+export type EnumFeedbackSubmissionStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FeedbackSubmissionStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'FeedbackSubmissionStatusEnum[]'
+ */
+export type ListEnumFeedbackSubmissionStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FeedbackSubmissionStatusEnum[]'>
+
+
 /**
  * Batch Payload for updateMany & deleteMany & createMany
  */
@@ -12299,6 +12424,7 @@ export type GlobalOmitConfig = {
   parentChildLinks?: Prisma.ParentChildLinksOmit
   eventRegistrations?: Prisma.EventRegistrationsOmit
   authUser?: Prisma.AuthUserOmit
+  feedbackSubmissions?: Prisma.FeedbackSubmissionsOmit
   file?: Prisma.FileOmit
 }
 

@@ -30,6 +30,9 @@ export default function SiteFooter() {
           <Link href="/privacy-policy" className="transition hover:text-slate-900">
             Privacy Policy
           </Link>
+          <Link href="/feedback" className="transition hover:text-slate-900">
+            Feedback
+          </Link>
           <Link href="/terms" className="transition hover:text-slate-900">
             Terms & EULA
           </Link>
