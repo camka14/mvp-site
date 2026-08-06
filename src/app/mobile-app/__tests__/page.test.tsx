@@ -6,8 +6,11 @@ jest.mock('next/image', () => ({
   __esModule: true,
   default: ({
     priority: _priority,
+    unoptimized: _unoptimized,
     ...props
-  }: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean }) => <img {...props} alt={props.alt ?? ''} />,
+  }: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean; unoptimized?: boolean }) => (
+    <img {...props} data-unoptimized={_unoptimized ? 'true' : 'false'} alt={props.alt ?? ''} />
+  ),
 }));
 
 jest.mock('@/components/marketing/MarketingHeader', () => ({
@@ -33,6 +36,7 @@ describe('MobileAppPage', () => {
       'src',
       '/landing/discover_screen_mobile.png',
     );
+    expect(screen.getByAltText('BracketIQ mobile app discover page screenshot')).toHaveAttribute('data-unoptimized', 'true');
   });
 
   it('sets canonical mobile app metadata', () => {

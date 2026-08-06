@@ -106,9 +106,10 @@ export default function MobileAppPage() {
                 <Image
                   src="/landing/discover_screen_mobile.png"
                   alt="BracketIQ mobile app discover page screenshot"
-                  width={1344}
-                  height={2992}
+                  width={1280}
+                  height={2856}
                   className="landing-phone-image"
+                  unoptimized
                   priority
                 />
               </div>
