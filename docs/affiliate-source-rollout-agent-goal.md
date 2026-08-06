@@ -68,6 +68,11 @@ The goal agent must follow `$ingest-affiliate-intakes` and the affiliate source 
 - Run the scrape twice and prove the second run does not create duplicate candidates or published targets.
 - Configure the documented daily, weekly, or monthly cadence, but leave new recurring scraping disabled until coordinator review succeeds.
 - Add focused fixtures/tests and run the required checks from the skill and repository instructions.
+- For a source-only package, run source-specific Jest, targeted ESLint for the
+  authored TypeScript, both disposable setup/scrape runs, and scoped diff
+  checks. Do not run the repository-wide `npx tsc --noEmit` command. Reserve a
+  full-project TypeScript check for an explicitly authorized change to shared
+  importer contracts, route contracts, or public application code.
 
 The goal agent must follow the skill's organization-logo workflow. It must find an official logo or official rendered brand mark and never invent one. It must run `npm run affiliate:logo-fit -- --organization-id=<exact-organization-id> --output=<unique-logo-fit-directory>` for only the current organization, inspect all card/detail/icon/marker surfaces, and make the setup script reproduce the approved asset. It must dry-run and then apply `npm run affiliate:logo-fit:cleanup -- --path=<exact-directory>` after it records the fit result. It must never use `--all` for a mapping job or retain generated preview copies. Image tools may normalize or crop official evidence but must not generate a new brand identity. If no official logo is supportable, record `MANUAL_REVIEW` and keep the organization unpublishable.
 
@@ -101,7 +106,8 @@ The coordinator may mark a source complete only when:
 - divisions are grouped to the correct parent event and each division retains its own source price and capacity, with event-level price/range derived without cross-division leakage;
 - rerunning is duplicate-safe;
 - cadence and automation state are correct;
-- focused tests, TypeScript, and diff checks pass;
+- source-specific tests, targeted ESLint, disposable setup/scrape validation,
+  duplicate-safety evidence, and scoped diff checks pass;
 - the registry records status, source key, mapping version, organization/logo notes, cadence, limitations, validation date, and candidate results.
 - the setup script, source metadata, and registry record the live intake source key/run and capture provenance used to derive the source.
 - exactly two review scrapes have stable candidate counts and normalized candidate hashes;

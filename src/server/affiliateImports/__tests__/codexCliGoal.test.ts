@@ -81,6 +81,9 @@ describe('Codex affiliate intake goal', () => {
     expect(goal).toContain('organization setup');
     expect(goal).toContain('official URLs and logo disposition');
     expect(goal).toContain('two duplicate-safe review scrapes');
+    expect(goal).toContain('run focused Jest, targeted ESLint');
+    expect(goal).toContain('Never run full-project npx tsc --noEmit');
+    expect(goal).toContain('explicitly authorized shared importer or app changes');
     expect(goal).toContain('Use exact current Sports.name values');
     expect(goal).toContain('Never infer a volleyball or soccer surface');
     expect(goal).toContain('unsupported source sport labels');

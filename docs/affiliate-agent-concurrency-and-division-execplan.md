@@ -38,6 +38,7 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-05 23:39Z) Raised all 10 live mapper memory and memory-swap ceilings to 4 GiB without restarting their containers or releasing leases.
 - [x] (2026-08-06 00:09Z) Made approval reconciliation safe when two reviewer loops start at the same time, then restarted the reviewers one at a time.
 - [x] (2026-08-06 00:12Z) Classified recent terminal mapping jobs and returned 31 concrete package defects to the mapper queue.
+- [x] (2026-08-06 00:28Z) Removed the full-project TypeScript check from the source-only mapper workflow and made the source-scoped validation gate explicit.
 
 ## Surprises & Discoveries
 
@@ -109,6 +110,10 @@ reviewers and does not start a new pool until every active reviewer exits.
 - Decision: Reconcile approval subjects with a conflict-tolerant bulk insert on the existing compound unique key.
   Rationale: The database must decide which reviewer creates a missing subject. A read-then-create loop cannot prevent a second reviewer from inserting between those operations. `createMany` with `skipDuplicates` makes the losing insert a normal zero-row result.
   Date/Author: 2026-08-05 / Codex
+
+- Decision: Do not run the full-project TypeScript check for source-only mapping jobs.
+  Rationale: A mapper changes a bounded source package. Focused Jest, targeted ESLint, two disposable setup/scrape runs, duplicate-safety evidence, and scoped diff checks validate that package without spending mapper memory on unrelated application code.
+  Date/Author: 2026-08-06 / Codex
 
 ## Outcomes & Retrospective
 

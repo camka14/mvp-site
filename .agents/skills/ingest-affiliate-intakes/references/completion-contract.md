@@ -28,6 +28,13 @@ Every successful checkpoint must contain:
 8. A source registry note and a source-scoped commit.
 9. A compact result JSON suitable for `affiliate:mapping:complete`.
 
+For a source-only package, validation means focused source tests, targeted
+ESLint for authored TypeScript, two successful disposable review scrapes,
+duplicate-safety evidence, and scoped diff checks. Do not run the full-project
+`npx tsc --noEmit` command. Require that command only when an explicitly
+authorized change touches a shared importer contract, route contract, or public
+application code outside the source package.
+
 ## Candidate checks
 
 Inspect at least five candidates when five exist, plus every produced kind. Check title, official URL, schedule/date display, sport, tags, divisions, price, venue, address, city, and coordinates or geocoding inputs.

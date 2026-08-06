@@ -87,6 +87,16 @@ Create or repair everything needed for review:
 - two duplicate-safe review scrapes against a disposable database;
 - a compact result JSON and a source-scoped commit.
 
+Validate a source-only package with its focused Jest regression tests, targeted
+ESLint for the authored TypeScript files, both disposable setup/scrape runs,
+the duplicate-safety evidence, and scoped diff checks. Do not run the
+repository-wide `npx tsc --noEmit` command for a source-only mapping job. The
+mapping agent changes only the source setup, mapping or extractor, fixtures,
+focused tests, package command, source registry note, and its own generalized
+ingestion rule when required. Run a full-project TypeScript check only when an
+explicitly authorized task changes a shared importer contract, route contract,
+or public application code outside that source package.
+
 Use the exact sport `name` from the current BracketIQ `Sports` catalog whenever
 the stored evidence supports that sport. Treat surface and format variants as
 different sports when the catalog does. Generic `Volleyball` is not a safe
