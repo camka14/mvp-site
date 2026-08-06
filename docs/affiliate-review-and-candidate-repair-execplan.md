@@ -157,15 +157,16 @@ database now has 42 discovered CLUB candidates, 108 CLUB candidates still in
 NEEDS_REVIEW, and 878 published CLUB candidates. Twelve CLUB rows still use a
 noncanonical or missing sport label because the stored evidence does not
 support a safe replacement. The admin UI now exposes those rows through an
-explicit NEEDS_REVIEW view, but that UI change is not live until deployment.
+explicit NEEDS_REVIEW view. The change is live in production in image
+`0bb05855ec2739fd643c19bf0e9de2bf49bce723`, deployed after the protected CI and
+image-publish gates passed.
 
 The focused validation passed 62 tests across the service, full-review,
 source-queue, and Albion packages. The repair-classifier suite passed 18 tests.
 TypeScript and `git diff --check` passed. Commits `3c687e1f7`, `cb52ff1c6`, and
-`8e7701f05` are on `origin/main`. Production deployment remains a separate
-operator action. The live data repair is already applied, but the canonical
-CLUB publication and missing-handoff code paths require the new image before
-the live application uses them.
+`8e7701f05` are on `origin/main`. The live data repair is already applied, and
+the canonical CLUB publication and missing-handoff code paths are now running
+in production.
 
 ## Context and Orientation
 
