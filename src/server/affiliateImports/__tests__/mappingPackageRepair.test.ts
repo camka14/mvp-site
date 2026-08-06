@@ -247,6 +247,63 @@ describe('affiliate mapping producer repair eligibility', () => {
     }));
   });
 
+  it('returns a human-routed generated-path evidence failure to the producer', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'DEFERRED',
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      mappingErrorMessage: 'INSUFFICIENT_STORED_EVIDENCE: a declared generated directory is absent from the producer commit.',
+      approvalDecision: {},
+      resultSummary: {
+        ...reviewResult('OFFICIAL_ASSET'),
+        humanReviewRequired: { reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'] },
+      },
+    })).toEqual(expect.objectContaining({
+      disposition: 'PRODUCER_REPAIR',
+      repairReason: 'PACKAGE_VALIDATION_FAILED',
+    }));
+  });
+
+  it('returns a human-routed candidate-count conflict to the producer', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'DEFERRED',
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      mappingErrorMessage: 'INSUFFICIENT_STORED_EVIDENCE: current candidate count 2 conflicts with the package candidate count 1.',
+      approvalDecision: {},
+      resultSummary: {
+        ...reviewResult('OFFICIAL_ASSET'),
+        humanReviewRequired: { reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'] },
+      },
+    })).toEqual(expect.objectContaining({
+      disposition: 'PRODUCER_REPAIR',
+      repairReason: 'DUPLICATE_SAFETY_INVALID',
+    }));
+  });
+
+  it('keeps inaccessible logo evidence and unsupported sports in human review', () => {
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'DEFERRED',
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      mappingErrorMessage: 'INSUFFICIENT_STORED_EVIDENCE: the official site is inaccessible with HTTP 403.',
+      approvalDecision: {},
+      resultSummary: {
+        ...reviewResult('MANUAL_REVIEW'),
+        humanReviewRequired: { reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'] },
+      },
+    })).toEqual(expect.objectContaining({ disposition: 'HUMAN_REVIEW_REQUIRED' }));
+    expect(affiliateMappingProducerRepairEligibility({
+      approvalStatus: 'REJECTED',
+      mappingStatus: 'HUMAN_REVIEW_REQUIRED',
+      mappingErrorMessage: 'The sport and package evidence both need review.',
+      approvalDecision: {},
+      resultSummary: {
+        ...reviewResult('OFFICIAL_ASSET'),
+        humanReviewRequired: {
+          reasonCodes: ['SPORT_NOT_IN_CATALOG', 'INSUFFICIENT_STORED_EVIDENCE'],
+        },
+      },
+    })).toEqual(expect.objectContaining({ disposition: 'HUMAN_REVIEW_REQUIRED' }));
+  });
+
   it('leaves old producer-handoff failures for the evidence-verified reviewer retry', () => {
     expect(affiliateMappingProducerRepairEligibility({
       ...base,

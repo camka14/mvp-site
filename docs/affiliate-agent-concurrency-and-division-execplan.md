@@ -35,6 +35,9 @@ reviewers and does not start a new pool until every active reviewer exits.
 - [x] (2026-08-05 15:32Z) Drained and stopped 10 mapper containers, one two-reviewer container, and one coverage container without releasing active leases.
 - [x] (2026-08-05 17:31Z) Split the two reviewers into separate stopped containers with separate loop locks and Codex state directories.
 - [x] (2026-08-05 17:32Z) Added and verified CPU, memory, swap, and process limits for every mapper, reviewer, and coverage container.
+- [ ] Raise the mapper memory ceiling to 4 GiB after every mapper recorded child-process OOM kills at 3 GiB.
+- [ ] Make approval reconciliation safe when two reviewer loops start at the same time.
+- [ ] Classify the recent failed and human-review mapping jobs before any retry-state change.
 
 ## Surprises & Discoveries
 
@@ -55,6 +58,12 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 - Observation: The live agent containers had no Docker resource limits.
   Evidence: Docker inspection reported zero memory, memory-swap, and NanoCPU limits, with no process limit, on mapper, reviewer, and coverage containers.
+
+- Observation: The 3 GiB mapper ceiling was too small for peak mapping work.
+  Evidence: All 10 mapper cgroups recorded OOM kills. They recorded 30 child-process kills in total while the host still had about 14 GiB available memory.
+
+- Observation: Two reviewer loops can race while reconciling the same missing approval subject.
+  Evidence: Reviewer 2 received a unique constraint error for `subjectType` and `subjectKey` during simultaneous startup reconciliation, then recovered after its automatic restart.
 
 ## Decision Log
 
@@ -88,6 +97,14 @@ reviewers and does not start a new pool until every active reviewer exits.
 
 - Decision: Limit each mapper to 1.25 CPUs and 3 GiB, and limit each reviewer and coverage worker to 1 CPU and 2 GiB.
   Rationale: Recent mapper peaks approached 2.4 GiB. These limits leave headroom for normal jobs and prevent one process from consuming the upgraded host. Equal memory and memory-swap limits prevent new agent swap growth.
+  Date/Author: 2026-08-05 / Codex
+
+- Decision: Raise only the mapper hard memory and memory-swap ceilings to 4 GiB.
+  Rationale: The host has sufficient available memory. The per-container 3 GiB ceiling, not host exhaustion, caused the recorded kills. An in-place Docker limit update preserves active leases.
+  Date/Author: 2026-08-05 / Codex
+
+- Decision: Reconcile approval subjects with a database upsert on the existing compound unique key.
+  Rationale: The database must decide which reviewer creates a missing subject. A read-then-create loop cannot prevent a second reviewer from inserting between those operations.
   Date/Author: 2026-08-05 / Codex
 
 ## Outcomes & Retrospective

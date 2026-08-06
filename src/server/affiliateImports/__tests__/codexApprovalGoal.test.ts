@@ -108,8 +108,10 @@ describe('Codex affiliate approval goal', () => {
     expect(goal).toContain('preview only the claimed organization, never --all, then clean it');
     expect(goal).toContain('Every non-approved mapping result needs mappingDisposition');
     expect(goal).toContain('PRODUCER_REPAIR');
+    expect(goal).toContain('Missing paths or scrape rows are PACKAGE_VALIDATION_FAILED');
+    expect(goal).toContain('conflicts are DUPLICATE_SAFETY_INVALID');
     expect(goal).toContain('use HUMAN_REVIEW_REQUIRED for an unsupported');
-    expect(goal).toContain('DEFER only for missing, inaccessible, or conflicting evidence');
+    expect(goal).toContain('DEFER only genuinely inaccessible or conflicting evidence');
     expect(goal).toContain('Do not edit producer packages, publish');
     expect(goal).toContain('progress/codex-luna-approval-vm-1.jsonl');
   });

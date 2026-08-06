@@ -7,7 +7,10 @@ import {
 import { codexAffiliateIngestionResultSchema } from './codexIngestionResult';
 import { applyAffiliateSourceDomainPolicy } from './sourceDiscovery';
 import { findAffiliateIntakeIdsForPolicyKey } from './sourcePolicyIntakes';
-import { MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS } from './mappingPackageRepair';
+import {
+  affiliateMappingEvidenceProducerRepairReason,
+  MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS,
+} from './mappingPackageRepair';
 
 const DEFAULT_LEASE_MS = 2 * 60 * 60 * 1000;
 
@@ -74,31 +77,20 @@ export const reconcileAffiliateApprovalQueue = async (): Promise<{
     ...policyRows.map((row: any) => ({ subjectType: 'DOMAIN_POLICY', subjectKey: row.policyKey })),
     ...mappingRows.map((row: any) => ({ subjectType: 'MAPPING_PACKAGE', subjectKey: row.id })),
   ];
-  const existingRows = subjects.length
-    ? await approvals.findMany({
-      where: { OR: subjects },
-      select: { subjectType: true, subjectKey: true },
-    })
-    : [];
-  const existingSubjects = new Set(existingRows.map((row: any) => (
-    `${row.subjectType}:${row.subjectKey}`
-  )));
-  let created = 0;
-  for (const subject of subjects) {
-    if (existingSubjects.has(`${subject.subjectType}:${subject.subjectKey}`)) continue;
-    await approvals.create({
-      data: {
+  const createResult = subjects.length
+    ? await approvals.createMany({
+      data: subjects.map((subject) => ({
         id: createId(),
         ...subject,
         status: 'QUEUED',
-      },
-    });
-    created += 1;
-  }
+      })),
+      skipDuplicates: true,
+    })
+    : { count: 0 };
   return {
     domainPolicies: policyRows.length,
     mappingPackages: mappingRows.length,
-    created,
+    created: createResult.count,
   };
 };
 
@@ -437,16 +429,23 @@ export const completeAffiliateApproval = async (
       }
       const mappingDisposition = result.mappingDisposition!;
       const repairHistory = recordArray(envelope.mappingRepairHistory);
+      const evidenceRepairReason = affiliateMappingEvidenceProducerRepairReason({
+        reasonCodes: mappingDisposition.reasonCodes,
+        evidence: [result.rationale, result.blockingIssues],
+      });
+      const requestedNextAction = evidenceRepairReason
+        ? 'PRODUCER_REPAIR'
+        : mappingDisposition.nextAction;
       const retryLimitExceeded = (
-        mappingDisposition.nextAction === 'PRODUCER_REPAIR'
+        requestedNextAction === 'PRODUCER_REPAIR'
         && automaticRepairCountForCurrentReviewCycle(envelope)
           >= MAX_AUTOMATIC_AFFILIATE_MAPPING_REPAIRS
       );
       const effectiveNextAction = retryLimitExceeded
         ? 'HUMAN_REVIEW_REQUIRED'
-        : mappingDisposition.nextAction;
+        : requestedNextAction;
       const effectiveReasonCodes = Array.from(new Set([
-        ...mappingDisposition.reasonCodes,
+        ...(evidenceRepairReason ? [evidenceRepairReason] : mappingDisposition.reasonCodes),
         ...(retryLimitExceeded ? ['RETRY_LIMIT_EXCEEDED'] : []),
       ]));
       const reviewedAt = new Date();

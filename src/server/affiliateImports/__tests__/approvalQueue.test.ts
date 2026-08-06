@@ -33,9 +33,27 @@ const prismaMock = {
         || (row.status === 'CLAIMED' && row.leaseExpiresAt && row.leaseExpiresAt < where.OR[1].leaseExpiresAt.lt);
     }) ?? null),
     create: jest.fn(async ({ data }: any) => {
+      if (approvalRows.some((row) => (
+        row.subjectType === data.subjectType && row.subjectKey === data.subjectKey
+      ))) {
+        throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+      }
       const row = { ...data, createdAt: new Date(), leaseExpiresAt: null };
       approvalRows.push(row);
       return row;
+    }),
+    createMany: jest.fn(async ({ data, skipDuplicates }: any) => {
+      let count = 0;
+      for (const input of data) {
+        const exists = approvalRows.some((row) => (
+          row.subjectType === input.subjectType && row.subjectKey === input.subjectKey
+        ));
+        if (exists && skipDuplicates) continue;
+        if (exists) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+        approvalRows.push({ ...input, createdAt: new Date(), leaseExpiresAt: null });
+        count += 1;
+      }
+      return { count };
     }),
     updateMany: jest.fn(async ({ where, data }: any) => {
       const row = approvalRows.find((candidate) => candidate.id === where.id);
@@ -213,6 +231,17 @@ describe('affiliate approval queue', () => {
       created: 0,
     });
     expect(approvalRows).toHaveLength(2);
+  });
+
+  it('reconciles the same subjects concurrently without a unique-key failure', async () => {
+    const results = await Promise.all([
+      reconcileAffiliateApprovalQueue(),
+      reconcileAffiliateApprovalQueue(),
+    ]);
+
+    expect(results.map((result) => result.created).sort()).toEqual([0, 2]);
+    expect(approvalRows).toHaveLength(2);
+    expect(new Set(approvalRows.map((row) => `${row.subjectType}:${row.subjectKey}`)).size).toBe(2);
   });
 
   it('recovers an expired claim through an atomic conditional update', async () => {
@@ -518,6 +547,39 @@ describe('affiliate approval queue', () => {
       }),
     }));
     expect(intakeRows[0].status).toBe('REVIEW_REQUIRED');
+    expect(completed.status).toBe('DEFERRED');
+  });
+
+  it('returns a concrete package-evidence deferral to the producer', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+
+    const completed = await completeAffiliateApproval({
+      ...mappingApprovalResult(),
+      decision: 'DEFER',
+      rationale: 'The declared generated fixture directory is absent from the producer commit.',
+      blockingIssues: ['The package evidence command cannot verify the generated path.'],
+      mappingDisposition: {
+        nextAction: 'HUMAN_REVIEW_REQUIRED',
+        reasonCodes: ['INSUFFICIENT_STORED_EVIDENCE'],
+      },
+    });
+
+    expect(mappingRows[0]).toEqual(expect.objectContaining({
+      status: 'QUEUED',
+      resultSummary: expect.objectContaining({
+        mappingRepairHistory: [expect.objectContaining({
+          repairReason: 'PACKAGE_VALIDATION_FAILED',
+          repairReasons: ['PACKAGE_VALIDATION_FAILED'],
+        })],
+      }),
+    }));
+    expect(intakeRows[0].status).toBe('READY_FOR_MAPPING');
     expect(completed.status).toBe('DEFERRED');
   });
 

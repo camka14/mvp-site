@@ -60,6 +60,15 @@ mapping `DEFER`. Three automatic producer repair passes are allowed; a later
 rejection is escalated to human review even if the reviewer requested repair.
 Mapping `APPROVE` results and all domain-policy results must omit this field.
 
+A generated path that is absent from the producer commit, a missing claimed
+disposable review-scrape row, or an inconsistent generated-path manifest uses
+`PACKAGE_VALIDATION_FAILED` with `PRODUCER_REPAIR`. A conflict between the
+current disposable candidate count and the claimed package count uses
+`DUPLICATE_SAFETY_INVALID` with `PRODUCER_REPAIR`. These are reproducible
+producer defects, not `INSUFFICIENT_STORED_EVIDENCE`. Keep human review for
+source evidence that is genuinely unavailable or contradictory after the
+package itself is valid.
+
 Producer-repair reason codes are `LIVE_SETUP_UNSUPPORTED`,
 `EVENT_LOCATION_INVALID`, `ORGANIZATION_LOCATION_INVALID`,
 `SPORT_NAME_INVALID`,

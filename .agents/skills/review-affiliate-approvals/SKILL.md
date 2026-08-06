@@ -201,6 +201,12 @@ Generated preview PNG files are not approval evidence and must not remain in
   validation, or duplicate-safety defect that stored or governed supplemental
   evidence lets the producer fix. Include every applicable reason code and
   blocking issue.
+- Treat a missing or inconsistent declared generated path as
+  `PACKAGE_VALIDATION_FAILED`. Treat missing claimed disposable review-scrape
+  rows as `PACKAGE_VALIDATION_FAILED`. Treat a current-versus-claimed candidate
+  count conflict as `DUPLICATE_SAFETY_INVALID`. These are concrete producer
+  defects. Use `REJECT` with `PRODUCER_REPAIR`; do not defer them as
+  `INSUFFICIENT_STORED_EVIDENCE`.
 - `DEFER` with `mappingDisposition.nextAction = HUMAN_REVIEW_REQUIRED` when
   evidence is incomplete, contradictory, or needs a human. Do not defer a
   concrete producer defect.

@@ -87,6 +87,35 @@ const ignored = (reason: string): AffiliateMappingProducerRepairEligibility => (
   reasonCodes: [],
 });
 
+export const affiliateMappingEvidenceProducerRepairReason = (input: {
+  reasonCodes: string[];
+  evidence: unknown;
+}): AffiliateMappingProducerRepairReason | null => {
+  if (
+    input.reasonCodes.length === 0
+    || input.reasonCodes.some((reasonCode) => reasonCode !== 'INSUFFICIENT_STORED_EVIDENCE')
+  ) {
+    return null;
+  }
+  const evidence = JSON.stringify(input.evidence ?? '');
+  const candidateMismatch = (
+    /(?:candidate count|current candidates?|disposable source).{0,220}(?:conflict|mismatch|reports?|expects?|\bis\s+\d+\s+but\b)/i.test(evidence)
+    || /(?:producer|package).{0,160}(?:reports?|expects?).{0,80}(?:one|\d+)\s+candidate.{0,160}(?:current|disposable|validation).{0,80}(?:two|\d+)\s+candidate/i.test(evidence)
+  );
+  if (candidateMismatch) return 'DUPLICATE_SAFETY_INVALID';
+
+  const generatedScopeFailure = (
+    /(?:generated|declared).{0,120}(?:path|directory|file).{0,220}(?:not part of|absent from|missing from|inconsistent with).{0,140}(?:commit|producer)/i.test(evidence)
+    || /producer generated path set.{0,160}inconsistent with commit/i.test(evidence)
+  );
+  const missingReviewScrapes = (
+    /(?:disposable|validation).{0,180}(?:contains?\s+0|contains?\s+neither|neither claimed|both claimed).{0,180}(?:review[- ]?scrapes?|scrape rows?|claimed review)/i.test(evidence)
+    || /(?:review[- ]?scrapes?|scrape rows?).{0,180}(?:absent|missing|not present)/i.test(evidence)
+  );
+  if (generatedScopeFailure || missingReviewScrapes) return 'PACKAGE_VALIDATION_FAILED';
+  return null;
+};
+
 const structuredRepairReason = (reasonCodes: string[]): AffiliateMappingProducerRepairReason => {
   if (reasonCodes.includes('LIVE_SETUP_UNSUPPORTED')) return 'LIVE_SETUP_UNSUPPORTED';
   if (reasonCodes.includes('EVENT_LOCATION_INVALID')) return 'EVENT_LOCATION_PACKAGE_REJECTION';
@@ -129,6 +158,15 @@ export const affiliateMappingProducerRepairEligibility = (input: {
     ) {
       return reviewerRetry('logo-absence-policy-changed');
     }
+    const evidenceRepairReason = affiliateMappingEvidenceProducerRepairReason({
+      reasonCodes,
+      evidence: [
+        input.mappingErrorMessage,
+        humanReviewRequired,
+        input.approvalDecision,
+      ],
+    });
+    if (evidenceRepairReason) return producerRepair(evidenceRepairReason);
     return humanReview(
       'already-human-review-required',
       reasonCodes.length ? reasonCodes : ['UNCLASSIFIED_TERMINAL_FAILURE'],

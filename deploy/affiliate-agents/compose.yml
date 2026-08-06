@@ -21,9 +21,9 @@ x-common: &common
 x-mapper: &mapper
   <<: *common
   cpus: ${AFFILIATE_MAPPER_CPU_LIMIT:-1.25}
-  mem_limit: ${AFFILIATE_MAPPER_MEMORY_LIMIT:-3g}
+  mem_limit: ${AFFILIATE_MAPPER_MEMORY_LIMIT:-4g}
   mem_reservation: ${AFFILIATE_MAPPER_MEMORY_RESERVATION:-768m}
-  memswap_limit: ${AFFILIATE_MAPPER_MEMORY_SWAP_LIMIT:-3g}
+  memswap_limit: ${AFFILIATE_MAPPER_MEMORY_SWAP_LIMIT:-4g}
   pids_limit: ${AFFILIATE_MAPPER_PIDS_LIMIT:-512}
 
 x-reviewer: &reviewer
