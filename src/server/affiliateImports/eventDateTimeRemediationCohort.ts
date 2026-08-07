@@ -18,6 +18,7 @@ type DisplayMode = (typeof DISPLAY_MODES)[number];
 type ModeCounts = Record<DisplayMode, number> & { UNKNOWN: number };
 type JsonRecord = Record<string, unknown>;
 const SUCCESSFUL_INTAKE_RUN_STATUSES = new Set(['SUCCEEDED', 'PARTIAL']);
+const SUCCESSFUL_SCRAPE_RUN_STATUSES = new Set(['SUCCEEDED']);
 const CURRENT_CANDIDATE_STATUSES = new Set(['DISCOVERED', 'NEEDS_REVIEW', 'PUBLISHED']);
 
 const recordValue = (value: unknown): JsonRecord => (
@@ -119,19 +120,17 @@ const customExtractorEventSignal = (value: unknown): boolean => {
 
 const sourceEventSignals = (input: {
   source: JsonRecord;
-  mappings: JsonRecord[];
-  intakes: JsonRecord[];
-  mappingJobs: JsonRecord[];
+  mapping: JsonRecord | null;
+  intake: JsonRecord | null;
+  mappingJob: JsonRecord | null;
   candidates: JsonRecord[];
 }): string[] => {
   const signals: string[] = [];
   if (normalizedKind(input.source.targetKind) === 'EVENT') signals.push('SOURCE_TARGET_KIND');
-  for (const mapping of input.mappings) {
-    signals.push(...mappingEventSignals(recordValue(mapping.mapping)));
-  }
-  if (input.intakes.some((intake) => (
-    stringValues(intake.targetKindHints).some((kind) => normalizedKind(kind) === 'EVENT')
-  ))) {
+  if (input.mapping) signals.push(...mappingEventSignals(recordValue(input.mapping.mapping)));
+  if (input.intake && stringValues(input.intake.targetKindHints).some(
+    (kind) => normalizedKind(kind) === 'EVENT',
+  )) {
     signals.push('INTAKE_TARGET_KIND_HINT');
   }
   if (input.candidates.some((candidate) => normalizedKind(candidate.listingKind) === 'EVENT')) {
@@ -139,8 +138,8 @@ const sourceEventSignals = (input: {
   }
   if (
     customExtractorEventSignal(input.source.metadata)
-    || input.mappings.some((mapping) => customExtractorEventSignal(mapping.mapping))
-    || input.mappingJobs.some((job) => customExtractorEventSignal(job.resultSummary))
+    || (input.mapping ? customExtractorEventSignal(input.mapping.mapping) : false)
+    || (input.mappingJob ? customExtractorEventSignal(input.mappingJob.resultSummary) : false)
   ) {
     signals.push('CUSTOM_EXTRACTOR_REGISTRY');
   }
@@ -218,7 +217,8 @@ const cohortDb = (client: any = prisma as any) => ({
   sources: client.affiliateScrapeSources,
   mappings: client.affiliateScrapeMappings,
   intakes: client.affiliateSourceIntakes,
-  runs: client.affiliateScrapeRuns,
+  scrapeRuns: client.affiliateScrapeRuns,
+  captureRuns: client.affiliateSourceIntakeRuns,
   mappingJobs: client.affiliateSourceMappingJobs,
   mappingApprovals: client.affiliateApprovalJobs,
   candidates: client.affiliateImportCandidates,
@@ -235,7 +235,7 @@ const loadQueueState = async (
   const [intakes, mappingJobs, captureRuns, approvalRows] = await Promise.all([
     db.intakes.findMany({ select: { id: true, status: true, complianceStatus: true } }),
     db.mappingJobs.findMany({ select: { id: true, intakeId: true, status: true, leaseExpiresAt: true } }),
-    client.affiliateSourceIntakeRuns.findMany({
+    db.captureRuns.findMany({
       where: { status: { in: ['QUEUED', 'RUNNING'] } },
       select: { id: true, intakeId: true, status: true },
     }),
@@ -274,11 +274,11 @@ const sourceEvidenceRunId = (source: JsonRecord): string | null => (
 const selectEvidenceRun = (input: {
   source: JsonRecord;
   intake: JsonRecord | null;
-  runs: JsonRecord[];
+  captureRuns: JsonRecord[];
 }): JsonRecord | null => {
   const intakeId = stringValue(input.intake?.id);
   if (!intakeId) return null;
-  const intakeRuns = input.runs.filter((run) => stringValue(run.intakeId) === intakeId);
+  const intakeRuns = input.captureRuns.filter((run) => stringValue(run.intakeId) === intakeId);
   const citedRunId = sourceEvidenceRunId(input.source);
   if (citedRunId) return intakeRuns.find((run) => run.id === citedRunId) ?? null;
   const lastRunId = stringValue(input.intake?.lastRunId);
@@ -296,7 +296,7 @@ const buildInventory = async (input: {
   queue: AffiliateEventDateTimeRemediationQueueState;
 }): Promise<AffiliateEventDateTimeRemediationInventory> => {
   const db = cohortDb(input.client);
-  const [sources, mappings, intakes, runs, mappingJobs, approvals, candidates, pages, artifacts] = await Promise.all([
+  const [sources, mappings, intakes, scrapeRuns, captureRuns, mappingJobs, approvals, candidates, pages, artifacts] = await Promise.all([
     db.sources.findMany({
       select: {
         id: true,
@@ -321,11 +321,19 @@ const buildInventory = async (input: {
         lastRunId: true,
       },
     }),
-    db.runs.findMany({
+    db.scrapeRuns.findMany({
       select: {
         id: true,
         sourceId: true,
         mappingId: true,
+        status: true,
+        createdAt: true,
+        finishedAt: true,
+      },
+    }),
+    db.captureRuns.findMany({
+      select: {
+        id: true,
         intakeId: true,
         status: true,
         createdAt: true,
@@ -456,10 +464,10 @@ const buildInventory = async (input: {
       : latestByCreatedAt(sourceIntakes);
     const currentMappingId = stringValue(mapping?.id);
     const latestSuccessfulRun = currentMappingId
-      ? latestByCreatedAt((runs as JsonRecord[]).filter((run) => (
+      ? latestByCreatedAt((scrapeRuns as JsonRecord[]).filter((run) => (
           stringValue(run.sourceId) === sourceId
           && stringValue(run.mappingId) === currentMappingId
-          && SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(run.status))
+          && SUCCESSFUL_SCRAPE_RUN_STATUSES.has(normalizedKind(run.status))
           && run.createdAt instanceof Date
           && run.createdAt.getTime() <= input.now.getTime()
         )))
@@ -473,9 +481,9 @@ const buildInventory = async (input: {
       : [];
     const signals = sourceEventSignals({
       source,
-      mappings: sourceMappings,
-      intakes: sourceIntakes,
-      mappingJobs: intakeJobs,
+      mapping,
+      intake,
+      mappingJob: approvedMappingJob,
       candidates: recentCandidates,
     });
     const mappingApproval = approvedMappingJob
@@ -498,7 +506,7 @@ const buildInventory = async (input: {
     const selectedEvidenceRun = selectEvidenceRun({
       source,
       intake,
-      runs: runs as JsonRecord[],
+      captureRuns: captureRuns as JsonRecord[],
     });
     const selectedRunId = stringValue(selectedEvidenceRun?.id);
     const selectedRunStatus = stringValue(selectedEvidenceRun?.status);

@@ -1077,6 +1077,15 @@ the latest successful selected-mapping run and active statuses, and recognizes
 event-capable custom-extractor registry descriptors. No live queue, data,
 process, deployment, or mobile action was performed.
 
+Revision note, 2026-08-06: Corrected the Milestone 3 inventory joins and package
+scope. Scrape candidates now use `AffiliateScrapeRuns`, while page evidence and
+queue capture state use `AffiliateSourceIntakeRuns`; the two row shapes are not
+combined. Event signals now use only the selected mapping, intake, approved
+mapping job, and latest selected-run candidates, so inactive historical
+mappings and failed historical extractor attempts cannot qualify the current
+package. No live queue, data, process, deployment, or mobile action was
+performed.
+
 ## Interfaces and Dependencies
 
 The implementation must preserve these queue interfaces:

@@ -96,6 +96,14 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       isActive: true,
       mapping: { kind: 'CLUB', manualCandidates: [] },
     },
+    {
+      id: 'mapping_club_old_event',
+      sourceId: 'source_club',
+      createdAt: new Date('2026-06-20T00:00:00.000Z'),
+      version: 0,
+      isActive: false,
+      mapping: { kind: 'EVENT', manualCandidates: [] },
+    },
   ];
   const intakes: any[] = [
     {
@@ -104,7 +112,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       affiliateSourceId: 'source_event',
       status: 'PROMOTED',
       targetKindHints: [],
-      lastRunId: 'run_event',
+      lastRunId: 'capture_event',
     },
     {
       id: 'intake_no_evidence',
@@ -120,7 +128,15 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       affiliateSourceId: 'source_club',
       status: 'PROMOTED',
       targetKindHints: [],
-      lastRunId: 'run_club',
+      lastRunId: 'capture_club',
+    },
+    {
+      id: 'intake_club_old_event',
+      sourceKey: 'club-source',
+      affiliateSourceId: 'source_club',
+      status: 'PROMOTED',
+      targetKindHints: ['EVENT'],
+      lastRunId: null,
     },
   ];
   const mappingJobs: any[] = [
@@ -156,6 +172,17 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       leaseExpiresAt: null,
       resultSummary: {},
     },
+    {
+      id: 'job_club_old_event',
+      intakeId: 'intake_club_old_event',
+      status: 'FAILED',
+      createdAt: new Date('2026-06-21T00:00:00.000Z'),
+      claimedAt: null,
+      leaseExpiresAt: null,
+      resultSummary: {
+        customExtractorRegistry: { targetKind: 'EVENT' },
+      },
+    },
   ];
   const approvals: any[] = [
     {
@@ -189,7 +216,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
   const candidates: any[] = [
     {
       sourceId: 'source_event',
-      runId: 'run_event',
+      runId: 'scrape_event',
       mappingId: 'mapping_event',
       listingKind: 'EVENT',
       dateDisplayMode: 'SCHEDULED',
@@ -198,7 +225,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     },
     {
       sourceId: 'source_event',
-      runId: 'run_event',
+      runId: 'scrape_event',
       mappingId: 'mapping_event',
       listingKind: 'EVENT',
       dateDisplayMode: 'DATE_ONLY',
@@ -207,7 +234,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     },
     {
       sourceId: 'source_event',
-      runId: 'run_event',
+      runId: 'scrape_event',
       mappingId: 'mapping_event',
       listingKind: 'EVENT',
       dateDisplayMode: 'NO_FIXED_DATE',
@@ -216,7 +243,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     },
     {
       sourceId: 'source_event',
-      runId: 'run_event',
+      runId: 'scrape_event',
       mappingId: 'mapping_event',
       listingKind: 'EVENT',
       dateDisplayMode: 'ONGOING',
@@ -225,7 +252,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     },
     {
       sourceId: 'source_event',
-      runId: 'run_old_event',
+      runId: 'scrape_old_event',
       mappingId: 'mapping_event_old',
       listingKind: 'EVENT',
       dateDisplayMode: 'SCHEDULED',
@@ -233,30 +260,50 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       status: 'PUBLISHED',
     },
   ];
-  const runs: any[] = [
+  const scrapeRuns: any[] = [
     {
-      id: 'run_event',
+      id: 'scrape_event',
       sourceId: 'source_event',
       mappingId: 'mapping_event',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-07-25T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-25T01:00:00.000Z'),
+    },
+    {
+      id: 'scrape_old_event',
+      sourceId: 'source_event',
+      mappingId: 'mapping_event_old',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-06-25T00:00:00.000Z'),
+      finishedAt: new Date('2026-06-25T01:00:00.000Z'),
+    },
+    {
+      id: 'scrape_no_evidence',
+      sourceId: 'source_no_evidence',
+      mappingId: 'mapping_no_evidence',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-07-25T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-25T01:00:00.000Z'),
+    },
+  ];
+  const captureRuns: any[] = [
+    {
+      id: 'capture_event',
       intakeId: 'intake_event',
       status: 'SUCCEEDED',
       createdAt: new Date('2026-07-25T00:00:00.000Z'),
       finishedAt: new Date('2026-07-25T01:00:00.000Z'),
     },
     {
-      id: 'run_old_event',
-      sourceId: 'source_event',
-      mappingId: 'mapping_event_old',
-      intakeId: 'intake_event',
-      status: 'SUCCEEDED',
-      createdAt: new Date('2026-06-25T00:00:00.000Z'),
-      finishedAt: new Date('2026-06-25T01:00:00.000Z'),
+      id: 'capture_no_evidence',
+      intakeId: 'intake_no_evidence',
+      status: 'FAILED',
+      createdAt: new Date('2026-07-25T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-25T01:00:00.000Z'),
     },
     {
-      id: 'run_no_evidence',
-      sourceId: 'source_no_evidence',
-      mappingId: 'mapping_no_evidence',
-      intakeId: 'intake_no_evidence',
+      id: 'capture_club',
+      intakeId: 'intake_club',
       status: 'FAILED',
       createdAt: new Date('2026-07-25T00:00:00.000Z'),
       finishedAt: new Date('2026-07-25T01:00:00.000Z'),
@@ -270,14 +317,14 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     {
       id: 'artifact_event',
       intakeId: 'intake_event',
-      runId: 'run_event',
+      runId: 'capture_event',
       kind: 'PAGE_HTML',
       fileId: 'file_event',
     },
     {
       id: 'artifact_failed_policy',
       intakeId: 'intake_no_evidence',
-      runId: 'run_no_evidence',
+      runId: 'capture_no_evidence',
       kind: 'POLICY_NOTE',
       fileId: 'file_policy',
     },
@@ -311,7 +358,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       affiliateSourceId: 'source_custom',
       status: 'PROMOTED',
       targetKindHints: [],
-      lastRunId: 'run_custom',
+      lastRunId: 'capture_custom',
     });
     mappingJobs.push({
       id: 'job_custom',
@@ -331,10 +378,16 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       leaseExpiresAt: null,
       decision: { decision: 'APPROVE' },
     });
-    runs.push({
-      id: 'run_custom',
+    scrapeRuns.push({
+      id: 'scrape_custom',
       sourceId: 'source_custom',
       mappingId: 'mapping_custom',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-07-25T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-25T01:00:00.000Z'),
+    });
+    captureRuns.push({
+      id: 'capture_custom',
       intakeId: 'intake_custom',
       status: 'SUCCEEDED',
       createdAt: new Date('2026-07-25T00:00:00.000Z'),
@@ -343,7 +396,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     artifacts.push({
       id: 'artifact_custom',
       intakeId: 'intake_custom',
-      runId: 'run_custom',
+      runId: 'capture_custom',
       kind: 'PAGE_MARKDOWN',
       fileId: 'file_custom',
     });
@@ -383,7 +436,8 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     }),
     affiliateScrapeSources: { findMany: jest.fn(async () => sources) },
     affiliateScrapeMappings: { findMany: jest.fn(async () => mappings) },
-    affiliateScrapeRuns: { findMany: jest.fn(async () => runs) },
+    affiliateScrapeRuns: { findMany: jest.fn(async () => scrapeRuns) },
+    affiliateSourceIntakeRuns: { findMany: jest.fn(async () => captureRuns) },
     affiliateSourceIntakes: {
       findMany: jest.fn(async () => intakes),
       findUnique: jest.fn(async ({ where }: any) => intakes.find((row) => row.id === where.id) ?? null),
@@ -443,7 +497,8 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     mappingJobs,
     approvals,
     controls,
-    runs,
+    scrapeRuns,
+    captureRuns,
     files,
     setFailApprovalUpdate: (value: boolean) => { failApprovalUpdate = value; },
   };
@@ -476,8 +531,9 @@ describe('affiliate event datetime remediation cohort', () => {
     }));
     expect(result.packages.find((row) => row.sourceId === 'source_no_evidence')?.exclusionReasons)
       .toContain('MISSING_SUCCESSFUL_PAGE_EVIDENCE');
-    expect(result.packages.find((row) => row.sourceId === 'source_club')?.exclusionReasons)
-      .toContain('NOT_EVENT_PRODUCING');
+    const clubPackage = result.packages.find((row) => row.sourceId === 'source_club');
+    expect(clubPackage?.exclusionReasons).toContain('NOT_EVENT_PRODUCING');
+    expect(clubPackage?.targetSignals).toEqual([]);
   });
 
   it('includes an event-capable custom extractor registry signal', async () => {
