@@ -9,11 +9,15 @@ export type AffiliateMappingApprovalJob = {
   intakeId: string;
   status: string;
   resultSummary: unknown;
+  sourceId?: string | null;
+  mappingId?: string | null;
 };
 
 export type AffiliateMappingLiveApprovalCandidate = {
   jobId: string;
   intakeId: string;
+  sourceId: string | null;
+  mappingId: string | null;
   setupScript: string;
   result: CodexAffiliateIngestionResult;
   resultEnvelope: Record<string, unknown>;
@@ -59,6 +63,8 @@ export const selectAffiliateMappingLiveApprovalCandidates = (
     const candidate = {
       jobId: job.id,
       intakeId: job.intakeId,
+      sourceId: job.sourceId ?? null,
+      mappingId: job.mappingId ?? null,
       setupScript: setupPaths[0],
       result,
       resultEnvelope,

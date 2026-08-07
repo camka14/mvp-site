@@ -111,6 +111,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       sourceKey: 'event-source',
       affiliateSourceId: 'source_event',
       status: 'PROMOTED',
+      complianceStatus: 'ALLOWED',
       targetKindHints: [],
       lastRunId: 'capture_event',
     },
@@ -119,6 +120,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       sourceKey: 'event-without-evidence',
       affiliateSourceId: 'source_no_evidence',
       status: 'PROMOTED',
+      complianceStatus: 'ALLOWED',
       targetKindHints: [],
       lastRunId: null,
     },
@@ -127,6 +129,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       sourceKey: 'club-source',
       affiliateSourceId: 'source_club',
       status: 'PROMOTED',
+      complianceStatus: 'ALLOWED',
       targetKindHints: [],
       lastRunId: 'capture_club',
     },
@@ -143,6 +146,8 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     {
       id: 'job_event',
       intakeId: 'intake_event',
+      sourceId: 'source_event',
+      mappingId: 'mapping_event',
       status: 'APPROVED',
       createdAt: new Date('2026-07-21T00:00:00.000Z'),
       claimedAt: null,
@@ -157,6 +162,8 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     {
       id: 'job_no_evidence',
       intakeId: 'intake_no_evidence',
+      sourceId: 'source_no_evidence',
+      mappingId: 'mapping_no_evidence',
       status: 'APPROVED',
       createdAt: new Date('2026-07-21T00:00:00.000Z'),
       claimedAt: null,
@@ -166,6 +173,8 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     {
       id: 'job_club',
       intakeId: 'intake_club',
+      sourceId: 'source_club',
+      mappingId: 'mapping_club',
       status: 'APPROVED',
       createdAt: new Date('2026-07-21T00:00:00.000Z'),
       claimedAt: null,
@@ -357,12 +366,15 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
       sourceKey: 'custom-event-source',
       affiliateSourceId: 'source_custom',
       status: 'PROMOTED',
+      complianceStatus: 'ALLOWED',
       targetKindHints: [],
       lastRunId: 'capture_custom',
     });
     mappingJobs.push({
       id: 'job_custom',
       intakeId: 'intake_custom',
+      sourceId: 'source_custom',
+      mappingId: 'mapping_custom',
       status: 'APPROVED',
       createdAt: new Date('2026-07-21T00:00:00.000Z'),
       claimedAt: null,
@@ -451,6 +463,7 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     affiliateSourceMappingJobs: {
       findMany: jest.fn(async ({ where }: any = {}) => mappingJobs.filter((row) => (
         (!where.createdAt || row.createdAt <= where.createdAt.lte)
+        && (!where.status || row.status === where.status)
       ))),
       findUnique: jest.fn(async ({ where }: any) => mappingJobs.find((row) => row.id === where.id) ?? null),
       updateMany: jest.fn(async ({ where, data }: any) => {
@@ -499,6 +512,8 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
     controls,
     scrapeRuns,
     captureRuns,
+    candidates,
+    artifacts,
     files,
     setFailApprovalUpdate: (value: boolean) => { failApprovalUpdate = value; },
   };
@@ -506,6 +521,14 @@ const makeClient = (options: { includeCustomExtractor?: boolean } = {}) => {
 
 const queueLoader = (queue: AffiliateEventDateTimeRemediationQueueState = clearQueue) => (
   jest.fn(async () => queue)
+);
+
+const previewInventory = async (state: ReturnType<typeof makeClient>) => (
+  previewAffiliateEventDateTimeRemediationCohort({
+    cohortKey: 'event-datetime-v1',
+    mappingCutoff: CUTOFF,
+    now: NOW,
+  }, { client: state.client, loadQueueState: queueLoader() })
 );
 
 describe('affiliate event datetime remediation cohort', () => {
@@ -536,7 +559,7 @@ describe('affiliate event datetime remediation cohort', () => {
     expect(clubPackage?.targetSignals).toEqual([]);
   });
 
-  it('includes an event-capable custom extractor registry signal', async () => {
+  it('does not treat arbitrary metadata as a custom extractor registry entry', async () => {
     const state = makeClient({ includeCustomExtractor: true });
     const result = await previewAffiliateEventDateTimeRemediationCohort({
       cohortKey: 'event-datetime-v1',
@@ -544,11 +567,306 @@ describe('affiliate event datetime remediation cohort', () => {
       now: NOW,
     }, { client: state.client, loadQueueState: queueLoader() });
 
-    expect(result.eligibleCount).toBe(2);
+    expect(result.eligibleCount).toBe(1);
     expect(result.packages.find((row) => row.sourceId === 'source_custom')).toEqual(expect.objectContaining({
-      eligible: true,
-      targetSignals: expect.arrayContaining(['CUSTOM_EXTRACTOR_REGISTRY']),
+      eligible: false,
+      targetSignals: [],
+      exclusionReasons: expect.arrayContaining(['NOT_EVENT_PRODUCING']),
     }));
+  });
+
+  it('selects the latest approved package for one mapping and marks older jobs superseded', async () => {
+    const state = makeClient();
+    state.mappingJobs.push({
+      id: 'job_event_new',
+      intakeId: 'intake_event',
+      sourceId: 'source_event',
+      mappingId: 'mapping_event',
+      status: 'APPROVED',
+      createdAt: new Date('2026-07-30T00:00:00.000Z'),
+      claimedAt: null,
+      leaseExpiresAt: null,
+      resultSummary: {},
+      errorMessage: null,
+      finishedAt: new Date('2026-07-31T00:00:00.000Z'),
+    });
+    state.approvals.push({
+      id: 'approval_event_new',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'job_event_new',
+      status: 'APPROVED',
+      leaseExpiresAt: null,
+      decision: { decision: 'APPROVE' },
+    });
+
+    const result = await previewInventory(state);
+    expect(result.packages.find((row) => row.mappingJobId === 'job_event')).toEqual(expect.objectContaining({
+      eligible: false,
+      exclusionReasons: expect.arrayContaining(['SUPERSEDED_APPROVED_PACKAGE']),
+    }));
+    expect(result.packages.find((row) => row.mappingJobId === 'job_event_new')).toEqual(expect.objectContaining({
+      eligible: true,
+    }));
+    expect(result.candidateCount).toBe(4);
+    expect(result.eventCandidateCount).toBe(4);
+  });
+
+  it('reports an active event mapping without an approved mapping job as an orphan gap', async () => {
+    const state = makeClient();
+    state.sources.push({
+      id: 'source_event_orphan',
+      sourceKey: 'event-orphan-source',
+      status: 'ACTIVE',
+      targetKind: 'CLUB',
+    });
+    state.mappings.push({
+      id: 'mapping_event_orphan',
+      sourceId: 'source_event_orphan',
+      createdAt: new Date('2026-07-23T00:00:00.000Z'),
+      version: 1,
+      isActive: true,
+      mapping: { kind: 'EVENT' },
+    });
+
+    const result = await previewInventory(state);
+    expect(result.packages.find((row) => row.mappingId === 'mapping_event_orphan')).toEqual(expect.objectContaining({
+      coverageKind: 'ORPHAN_MAPPING',
+      mappingJobId: null,
+      eligible: false,
+      exclusionReasons: expect.arrayContaining(['MISSING_APPROVED_MAPPING_JOB', 'MISSING_INTAKE']),
+    }));
+  });
+
+  it('uses orphan candidates and retained evidence when evaluating the coverage gap', async () => {
+    const state = makeClient();
+    state.mappings.push({
+      id: 'mapping_no_evidence_orphan',
+      sourceId: 'source_no_evidence',
+      createdAt: new Date('2026-07-23T00:00:00.000Z'),
+      version: 1,
+      isActive: true,
+      mapping: { kind: 'EVENT' },
+    });
+    state.scrapeRuns.push({
+      id: 'scrape_no_evidence_orphan',
+      sourceId: 'source_no_evidence',
+      mappingId: 'mapping_no_evidence_orphan',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-07-26T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-26T01:00:00.000Z'),
+    });
+    state.candidates.push({
+      id: 'candidate_no_evidence_orphan',
+      sourceId: 'source_no_evidence',
+      runId: 'scrape_no_evidence_orphan',
+      mappingId: 'mapping_no_evidence_orphan',
+      listingKind: 'EVENT',
+      dateDisplayMode: 'SCHEDULED',
+      startsAt: new Date('2026-08-02T20:00:00.000Z'),
+      status: 'DISCOVERED',
+    });
+
+    const result = await previewInventory(state);
+    expect(result.packages.find((row) => row.mappingId === 'mapping_no_evidence_orphan')).toEqual(expect.objectContaining({
+      coverageKind: 'ORPHAN_MAPPING',
+      candidateCount: 1,
+      eventCandidateCount: 1,
+      storedEvidence: expect.objectContaining({
+        candidateRunId: 'scrape_no_evidence_orphan',
+        pageHtmlCount: 0,
+        pageMarkdownCount: 0,
+      }),
+      exclusionReasons: expect.arrayContaining([
+        'MISSING_APPROVED_MAPPING_JOB',
+        'MISSING_SUCCESSFUL_PAGE_EVIDENCE',
+      ]),
+    }));
+  });
+
+  it('preserves event signals from all matching intakes while reporting ambiguity', async () => {
+    const state = makeClient();
+    state.sources.push({
+      id: 'source_ambiguous_intakes',
+      sourceKey: 'ambiguous-intake-source',
+      status: 'ACTIVE',
+      targetKind: 'CLUB',
+    });
+    state.mappings.push({
+      id: 'mapping_ambiguous_intakes',
+      sourceId: 'source_ambiguous_intakes',
+      createdAt: new Date('2026-07-23T00:00:00.000Z'),
+      version: 1,
+      isActive: true,
+      mapping: { kind: 'CLUB' },
+    });
+    state.intakes.push(
+      {
+        id: 'intake_ambiguous_one',
+        sourceKey: 'ambiguous-intake-source',
+        affiliateSourceId: 'source_ambiguous_intakes',
+        status: 'PROMOTED',
+        complianceStatus: 'ALLOWED',
+        targetKindHints: ['EVENT'],
+        lastRunId: null,
+      },
+      {
+        id: 'intake_ambiguous_two',
+        sourceKey: 'ambiguous-intake-source',
+        affiliateSourceId: 'source_ambiguous_intakes',
+        status: 'PROMOTED',
+        complianceStatus: 'ALLOWED',
+        targetKindHints: ['EVENT'],
+        lastRunId: null,
+      },
+    );
+
+    const result = await previewInventory(state);
+    expect(result.packages.find((row) => row.mappingId === 'mapping_ambiguous_intakes')).toEqual(expect.objectContaining({
+      coverageKind: 'ORPHAN_MAPPING',
+      targetSignals: expect.arrayContaining(['INTAKE_TARGET_KIND_HINT']),
+      exclusionReasons: expect.arrayContaining(['AMBIGUOUS_INTAKE_ASSOCIATION']),
+    }));
+  });
+
+  it('does not associate a legacy job with a mapping created after the job', async () => {
+    const state = makeClient();
+    state.mappings.push({
+      id: 'mapping_event_legacy',
+      sourceId: 'source_event',
+      createdAt: new Date('2026-07-22T00:00:00.000Z'),
+      version: 1,
+      isActive: false,
+      mapping: { kind: 'EVENT' },
+    });
+    delete state.mappingJobs[0].sourceId;
+    delete state.mappingJobs[0].mappingId;
+
+    const result = await previewInventory(state);
+    expect(result.packages.find((row) => row.mappingJobId === 'job_event')).toEqual(expect.objectContaining({
+      eligible: false,
+      mappingId: null,
+      exclusionReasons: expect.arrayContaining(['AMBIGUOUS_MAPPING_JOB_ASSOCIATION']),
+    }));
+  });
+
+  it('does not fall back to sourceKey when an explicit legacy source ID is unresolved', async () => {
+    const state = makeClient();
+    delete state.mappingJobs[0].sourceId;
+    delete state.mappingJobs[0].mappingId;
+    const intake = state.intakes.find((row: any) => row.id === 'intake_event');
+    intake.affiliateSourceId = 'source_recreated_elsewhere';
+
+    const result = await previewInventory(state);
+    expect(result.packages.find((row) => row.mappingJobId === 'job_event')).toEqual(expect.objectContaining({
+      sourceId: null,
+      mappingId: null,
+      exclusionReasons: expect.arrayContaining(['MISSING_SOURCE_ASSOCIATION']),
+    }));
+  });
+
+  it('binds inventory identity to the selected scrape run and candidate fingerprint', async () => {
+    const state = makeClient();
+    const before = await previewInventory(state);
+    state.scrapeRuns.push({
+      id: 'scrape_event_new',
+      sourceId: 'source_event',
+      mappingId: 'mapping_event',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-07-26T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-26T01:00:00.000Z'),
+    });
+    state.candidates.push({
+      id: 'candidate_event_new',
+      sourceId: 'source_event',
+      runId: 'scrape_event_new',
+      mappingId: 'mapping_event',
+      listingKind: 'EVENT',
+      dateDisplayMode: 'SCHEDULED',
+      startsAt: new Date('2026-08-01T20:00:00.000Z'),
+      status: 'DISCOVERED',
+    });
+
+    const after = await previewInventory(state);
+    const eventPackage = after.packages.find((row) => row.mappingJobId === 'job_event');
+    expect(eventPackage?.storedEvidence.candidateRunId).toBe('scrape_event_new');
+    expect(eventPackage?.storedEvidence.candidateFingerprint).not.toBe(
+      before.packages.find((row) => row.mappingJobId === 'job_event')?.storedEvidence.candidateFingerprint,
+    );
+    expect(after.inventoryHash).not.toBe(before.inventoryHash);
+  });
+
+  it('fingerprints the datetime fields that remediation can change', async () => {
+    const state = makeClient();
+    const before = await previewInventory(state);
+    Object.assign(state.candidates[0], {
+      endsAt: new Date('2026-08-01T22:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      scheduleText: 'Every Saturday at 3 PM',
+      updatedAt: new Date('2026-07-30T00:00:00.000Z'),
+    });
+
+    const after = await previewInventory(state);
+    expect(after.inventoryHash).not.toBe(before.inventoryHash);
+    expect(after.packages.find((row) => row.mappingJobId === 'job_event')?.storedEvidence.candidateFingerprint)
+      .not.toBe(before.packages.find((row) => row.mappingJobId === 'job_event')?.storedEvidence.candidateFingerprint);
+  });
+
+  it('binds apply to evidence-run identity through the inventory hash', async () => {
+    const state = makeClient();
+    const preview = await previewInventory(state);
+    state.captureRuns.push({
+      id: 'capture_event_new',
+      intakeId: 'intake_event',
+      status: 'SUCCEEDED',
+      createdAt: new Date('2026-07-29T00:00:00.000Z'),
+      finishedAt: new Date('2026-07-29T01:00:00.000Z'),
+    });
+    state.intakes[0].lastRunId = 'capture_event_new';
+    state.artifacts.push({
+      id: 'artifact_event_new',
+      intakeId: 'intake_event',
+      runId: 'capture_event_new',
+      kind: 'PAGE_HTML',
+      fileId: 'file_event_new',
+    });
+    state.files.push({ id: 'file_event_new' });
+
+    await expect(applyAffiliateEventDateTimeRemediationCohort({
+      cohortKey: 'event-datetime-v1',
+      mappingCutoff: CUTOFF,
+      expectedEligibleCount: 1,
+      expectedExcludedCount: 2,
+      expectedEligibleMappingJobIds: ['job_event'],
+      expectedInventoryHash: preview.inventoryHash,
+      operatorIdentity: 'operator@example.test',
+      now: NOW,
+    }, { client: state.client, loadQueueState: queueLoader() })).rejects.toThrow('inventory changed');
+  });
+
+  it('aborts apply when the selected scrape candidates change after preview', async () => {
+    const state = makeClient();
+    const preview = await previewInventory(state);
+    state.candidates.push({
+      id: 'candidate_event_changed',
+      sourceId: 'source_event',
+      runId: 'scrape_event',
+      mappingId: 'mapping_event',
+      listingKind: 'EVENT',
+      dateDisplayMode: 'SCHEDULED',
+      startsAt: new Date('2026-08-02T20:00:00.000Z'),
+      status: 'DISCOVERED',
+    });
+
+    await expect(applyAffiliateEventDateTimeRemediationCohort({
+      cohortKey: 'event-datetime-v1',
+      mappingCutoff: CUTOFF,
+      expectedEligibleCount: 1,
+      expectedExcludedCount: 2,
+      expectedEligibleMappingJobIds: ['job_event'],
+      expectedInventoryHash: preview.inventoryHash,
+      operatorIdentity: 'operator@example.test',
+      now: NOW,
+    }, { client: state.client, loadQueueState: queueLoader() })).rejects.toThrow('inventory changed');
   });
 
   it('reports queue blockers without writing during preview', async () => {
@@ -576,6 +894,7 @@ describe('affiliate event datetime remediation cohort', () => {
       expectedEligibleCount: 2,
       expectedExcludedCount: 1,
       expectedEligibleMappingJobIds: ['job_other'],
+      expectedInventoryHash: '0'.repeat(64),
       operatorIdentity: 'operator@example.test',
       now: NOW,
     }, { client: state.client, loadQueueState: queueLoader() })).rejects.toThrow('counts changed');
@@ -585,12 +904,14 @@ describe('affiliate event datetime remediation cohort', () => {
 
   it('aborts apply when the previewed eligible mapping job IDs changed', async () => {
     const state = makeClient();
+    const preview = await previewInventory(state);
     await expect(applyAffiliateEventDateTimeRemediationCohort({
       cohortKey: 'event-datetime-v1',
       mappingCutoff: CUTOFF,
       expectedEligibleCount: 1,
       expectedExcludedCount: 2,
       expectedEligibleMappingJobIds: ['job_other'],
+      expectedInventoryHash: preview.inventoryHash,
       operatorIdentity: 'operator@example.test',
       now: NOW,
     }, { client: state.client, loadQueueState: queueLoader() })).rejects.toThrow('mapping job IDs changed');
@@ -600,12 +921,14 @@ describe('affiliate event datetime remediation cohort', () => {
 
   it('enqueues the approved producer package once and preserves repair history', async () => {
     const state = makeClient();
+    const preview = await previewInventory(state);
     const result = await applyAffiliateEventDateTimeRemediationCohort({
       cohortKey: 'event-datetime-v1',
       mappingCutoff: CUTOFF,
       expectedEligibleCount: 1,
       expectedExcludedCount: 2,
       expectedEligibleMappingJobIds: ['job_event'],
+      expectedInventoryHash: preview.inventoryHash,
       operatorIdentity: 'operator@example.test',
       now: NOW,
     }, { client: state.client, loadQueueState: queueLoader() });
@@ -650,6 +973,7 @@ describe('affiliate event datetime remediation cohort', () => {
       expectedEligibleCount: 999,
       expectedExcludedCount: 999,
       expectedEligibleMappingJobIds: ['job_other'],
+      expectedInventoryHash: '0'.repeat(64),
       operatorIdentity: 'another-operator@example.test',
       now: new Date('2026-08-07T20:00:00.000Z'),
     }, { client: state.client, loadQueueState: queueLoader() });
@@ -661,6 +985,7 @@ describe('affiliate event datetime remediation cohort', () => {
   it('rolls back all cohort writes when a later row update fails', async () => {
     const state = makeClient();
     state.setFailApprovalUpdate(true);
+    const preview = await previewInventory(state);
 
     await expect(applyAffiliateEventDateTimeRemediationCohort({
       cohortKey: 'event-datetime-v1',
@@ -668,6 +993,7 @@ describe('affiliate event datetime remediation cohort', () => {
       expectedEligibleCount: 1,
       expectedExcludedCount: 2,
       expectedEligibleMappingJobIds: ['job_event'],
+      expectedInventoryHash: preview.inventoryHash,
       operatorIdentity: 'operator@example.test',
       now: NOW,
     }, { client: state.client, loadQueueState: queueLoader() })).rejects.toThrow(

@@ -406,6 +406,20 @@ export const completeAffiliateApproval = async (
       if (!ingestionResult.success || ingestionResult.data.status !== 'REVIEW_REQUIRED') {
         throw new Error('Mapping approval requires a valid review-required Codex ingestion result.');
       }
+      const storedSourceId = stringValue(mappingJob.sourceId);
+      const storedMappingId = stringValue(mappingJob.mappingId);
+      if (Boolean(storedSourceId) !== Boolean(storedMappingId)) {
+        throw new Error('Mapping approval requires both source and mapping package identity fields.');
+      }
+      if (
+        !storedSourceId
+        && !storedMappingId
+        && mappingJob.legacyIdentityMigrationEligible !== true
+      ) {
+        throw new Error(
+          'Identity-less mapping approval requires the explicit legacy identity migration marker.',
+        );
+      }
       if (ingestionResult.data.logoDisposition === 'MANUAL_REVIEW') {
         if (result.checks.officialLogoVerified || !result.checks.logoAbsenceAccepted) {
           throw new Error('Manual-logo mapping approval requires an explicit accepted logo absence.');
@@ -420,8 +434,14 @@ export const completeAffiliateApproval = async (
         await dependencies.applyMappingPackage(mappingJob.id, result.reviewerId, result);
       }
       const applied = await mappingJobs.findUnique({ where: { id: mappingJob.id } });
-      if (applied?.status !== 'APPROVED') {
-        throw new Error('Mapping package application did not mark the mapping job approved.');
+      if (
+        applied?.status !== 'APPROVED'
+        || !stringValue(applied.sourceId)
+        || !stringValue(applied.mappingId)
+      ) {
+        throw new Error(
+          'Mapping package application did not mark the mapping job approved with durable source and mapping package identity.',
+        );
       }
     } else {
       if (mappingJob.status !== 'REVIEW_REQUIRED') {

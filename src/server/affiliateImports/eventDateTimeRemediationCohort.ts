@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createId } from '@/lib/id';
 import { prisma } from '@/lib/prisma';
 import type { AffiliateApprovalQueueStatus } from './approvalQueue';
@@ -5,6 +6,7 @@ import { summarizeAffiliateApprovalQueue } from './approvalQueue';
 import type { AffiliateMappingQueueStatus } from './sourceMappingQueueStatus';
 import { summarizeAffiliateMappingQueue } from './sourceMappingQueueStatus';
 import { AFFILIATE_EVENT_DATETIME_REMEDIATION_CONTEXT } from './codexIngestionResult';
+import { findCustomExtractorBySourceKey } from './customExtractorRegistry';
 
 export const AFFILIATE_EVENT_DATETIME_REMEDIATION_COHORT_SUBJECT_TYPE =
   'MAPPING_PRODUCER_REMEDIATION_COHORT';
@@ -70,6 +72,12 @@ const sortedMappingJobIds = (value: string[]): string[] => {
   return normalized.sort();
 };
 
+const validInventoryHash = (value: string): string => {
+  const hash = value.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(hash)) throw new Error('Expected remediation inventory hash is invalid.');
+  return hash;
+};
+
 const emptyModeCounts = (): ModeCounts => ({
   SCHEDULED: 0,
   DATE_ONLY: 0,
@@ -97,6 +105,32 @@ const countCandidateModes = (candidates: JsonRecord[]): ModeCounts => {
   return counts;
 };
 
+const candidateTimestamp = (value: unknown): string | null => (
+  value instanceof Date
+    ? value.toISOString()
+    : stringValue(value)
+);
+
+const candidateFingerprint = (candidates: JsonRecord[]): string => {
+  const snapshot = candidates
+    .map((candidate) => ({
+      id: stringValue(candidate.id),
+      sourceId: stringValue(candidate.sourceId),
+      runId: stringValue(candidate.runId),
+      mappingId: stringValue(candidate.mappingId),
+      listingKind: stringValue(candidate.listingKind),
+      dateDisplayMode: stringValue(candidate.dateDisplayMode),
+      startsAt: candidateTimestamp(candidate.startsAt),
+      endsAt: candidateTimestamp(candidate.endsAt),
+      timeZone: stringValue(candidate.timeZone),
+      scheduleText: stringValue(candidate.scheduleText),
+      updatedAt: candidateTimestamp(candidate.updatedAt),
+      status: stringValue(candidate.status),
+    }))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+};
+
 const mappingEventSignals = (mapping: JsonRecord): string[] => {
   const signals: string[] = [];
   const mappingKind = normalizedKind(mapping.kind);
@@ -112,34 +146,34 @@ const mappingEventSignals = (mapping: JsonRecord): string[] => {
   return signals;
 };
 
-const customExtractorEventSignal = (value: unknown): boolean => {
-  const serialized = JSON.stringify(value);
-  if (!serialized || !/custom[_ -]?extractor|extractorregistry/i.test(serialized)) return false;
-  return /"(?:kind|targetKind|listingKind|customExtractorTargetKind)"\s*:\s*"EVENT"/i.test(serialized);
-};
-
 const sourceEventSignals = (input: {
-  source: JsonRecord;
+  source: JsonRecord | null;
   mapping: JsonRecord | null;
   intake: JsonRecord | null;
+  intakes?: JsonRecord[];
   mappingJob: JsonRecord | null;
   candidates: JsonRecord[];
 }): string[] => {
   const signals: string[] = [];
-  if (normalizedKind(input.source.targetKind) === 'EVENT') signals.push('SOURCE_TARGET_KIND');
+  if (input.source && normalizedKind(input.source.targetKind) === 'EVENT') {
+    signals.push('SOURCE_TARGET_KIND');
+  }
   if (input.mapping) signals.push(...mappingEventSignals(recordValue(input.mapping.mapping)));
-  if (input.intake && stringValues(input.intake.targetKindHints).some(
+  const intakes = [
+    ...(input.intake ? [input.intake] : []),
+    ...(input.intakes ?? []),
+  ];
+  if (intakes.some((intake) => stringValues(intake.targetKindHints).some(
     (kind) => normalizedKind(kind) === 'EVENT',
-  )) {
+  ))) {
     signals.push('INTAKE_TARGET_KIND_HINT');
   }
   if (input.candidates.some((candidate) => normalizedKind(candidate.listingKind) === 'EVENT')) {
     signals.push('RECENT_EVENT_CANDIDATE');
   }
   if (
-    customExtractorEventSignal(input.source.metadata)
-    || (input.mapping ? customExtractorEventSignal(input.mapping.mapping) : false)
-    || (input.mappingJob ? customExtractorEventSignal(input.mappingJob.resultSummary) : false)
+    findCustomExtractorBySourceKey(stringValue(input.source?.sourceKey) ?? stringValue(input.intake?.sourceKey))
+      ?.targetKinds.includes('EVENT') === true
   ) {
     signals.push('CUSTOM_EXTRACTOR_REGISTRY');
   }
@@ -155,8 +189,9 @@ const latestByCreatedAt = (rows: JsonRecord[]): JsonRecord | null => rows
   })[0] ?? null;
 
 export type AffiliateEventDateTimeRemediationPackage = {
-  sourceId: string;
-  sourceKey: string;
+  coverageKind: 'MAPPING_JOB' | 'ORPHAN_MAPPING';
+  sourceId: string | null;
+  sourceKey: string | null;
   sourceStatus: string;
   mappingId: string | null;
   mappingJobId: string | null;
@@ -172,6 +207,8 @@ export type AffiliateEventDateTimeRemediationPackage = {
     intakeLastRunId: string | null;
     selectedRunId: string | null;
     selectedRunStatus: string | null;
+    candidateRunId: string | null;
+    candidateFingerprint: string;
     pageCount: number;
     artifactCount: number;
     pageHtmlCount: number;
@@ -199,6 +236,7 @@ export type AffiliateEventDateTimeRemediationInventory = {
   excludedCount: number;
   candidateCount: number;
   eventCandidateCount: number;
+  inventoryHash: string;
   modeCounts: ModeCounts;
   eligibleMappingJobIds: string[];
   packages: AffiliateEventDateTimeRemediationPackage[];
@@ -272,20 +310,196 @@ const sourceEvidenceRunId = (source: JsonRecord): string | null => (
 );
 
 const selectEvidenceRun = (input: {
-  source: JsonRecord;
+  source: JsonRecord | null;
   intake: JsonRecord | null;
   captureRuns: JsonRecord[];
 }): JsonRecord | null => {
   const intakeId = stringValue(input.intake?.id);
   if (!intakeId) return null;
   const intakeRuns = input.captureRuns.filter((run) => stringValue(run.intakeId) === intakeId);
-  const citedRunId = sourceEvidenceRunId(input.source);
+  const citedRunId = input.source ? sourceEvidenceRunId(input.source) : null;
   if (citedRunId) return intakeRuns.find((run) => run.id === citedRunId) ?? null;
   const lastRunId = stringValue(input.intake?.lastRunId);
-  if (lastRunId) return intakeRuns.find((run) => run.id === lastRunId) ?? null;
-  return latestByCreatedAt(
-    intakeRuns.filter((run) => SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(run.status))),
-  );
+  const lastRun = lastRunId ? intakeRuns.find((run) => run.id === lastRunId) ?? null : null;
+  if (lastRun && SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(lastRun.status))) return lastRun;
+  return latestByCreatedAt(intakeRuns.filter((run) => (
+    SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(run.status))
+  )));
+};
+
+const inventoryHashForPackages = (packages: AffiliateEventDateTimeRemediationPackage[]): string => {
+  const snapshot = packages
+    .map((packageRow) => ({
+      coverageKind: packageRow.coverageKind,
+      mappingJobId: packageRow.mappingJobId,
+      intakeId: packageRow.intakeId,
+      sourceId: packageRow.sourceId,
+      mappingId: packageRow.mappingId,
+      approvalJobId: packageRow.approvalJobId,
+      evidenceRunId: packageRow.storedEvidence.selectedRunId,
+      candidateRunId: packageRow.storedEvidence.candidateRunId,
+      candidateFingerprint: packageRow.storedEvidence.candidateFingerprint,
+    }))
+    .sort((left, right) => (
+      `${left.coverageKind}:${left.mappingJobId ?? ''}:${left.mappingId ?? ''}`
+        .localeCompare(`${right.coverageKind}:${right.mappingJobId ?? ''}:${right.mappingId ?? ''}`)
+    ));
+  return createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+};
+
+const packageIdentityFromResultSummary = (job: JsonRecord): {
+  sourceId: string | null;
+  mappingId: string | null;
+} => {
+  const envelope = recordValue(job.resultSummary);
+  const candidates = [
+    recordValue(envelope.packageIdentity),
+    recordValue(envelope.liveApproval),
+  ];
+  for (const candidate of candidates) {
+    const sourceId = stringValue(candidate.sourceId);
+    const mappingId = stringValue(candidate.mappingId);
+    if (sourceId && mappingId) return { sourceId, mappingId };
+  }
+  return { sourceId: null, mappingId: null };
+};
+
+type ResolvedPackageAssociation = {
+  source: JsonRecord | null;
+  mapping: JsonRecord | null;
+  reason: string | null;
+};
+
+const resolvePackageAssociation = (input: {
+  job: JsonRecord;
+  intake: JsonRecord | null;
+  sourcesById: Map<string, JsonRecord>;
+  sourcesByKey: Map<string, JsonRecord>;
+  mappingsBySource: Map<string, JsonRecord[]>;
+  mappingsById: Map<string, JsonRecord>;
+}): ResolvedPackageAssociation => {
+  const storedSourceId = stringValue(input.job.sourceId);
+  const storedMappingId = stringValue(input.job.mappingId);
+  if (Boolean(storedSourceId) !== Boolean(storedMappingId)) {
+    return { source: null, mapping: null, reason: 'INVALID_MAPPING_JOB_ASSOCIATION' };
+  }
+  if (storedSourceId && storedMappingId) {
+    const source = input.sourcesById.get(storedSourceId) ?? null;
+    const mapping = input.mappingsById.get(storedMappingId) ?? null;
+    if (!source || !mapping || stringValue(mapping.sourceId) !== storedSourceId) {
+      return { source, mapping, reason: 'INVALID_MAPPING_JOB_ASSOCIATION' };
+    }
+    if (
+      input.intake
+      && stringValue(input.intake.affiliateSourceId)
+      && stringValue(input.intake.affiliateSourceId) !== storedSourceId
+    ) {
+      return { source, mapping, reason: 'INVALID_MAPPING_JOB_ASSOCIATION' };
+    }
+    return { source, mapping, reason: null };
+  }
+
+  const intakeSourceId = stringValue(input.intake?.affiliateSourceId);
+  const intakeSourceKey = stringValue(input.intake?.sourceKey);
+  const source = intakeSourceId
+    ? input.sourcesById.get(intakeSourceId) ?? null
+    : (intakeSourceKey ? input.sourcesByKey.get(intakeSourceKey) : null) ?? null;
+  if (!source) return { source: null, mapping: null, reason: 'MISSING_SOURCE_ASSOCIATION' };
+  const sourceId = stringValue(source.id);
+  if (!sourceId) return { source, mapping: null, reason: 'MISSING_SOURCE_ASSOCIATION' };
+
+  const summaryIdentity = packageIdentityFromResultSummary(input.job);
+  if (summaryIdentity.sourceId && summaryIdentity.sourceId !== sourceId) {
+    return { source, mapping: null, reason: 'INVALID_MAPPING_JOB_ASSOCIATION' };
+  }
+  if (summaryIdentity.mappingId) {
+    const mapping = input.mappingsById.get(summaryIdentity.mappingId) ?? null;
+    if (mapping && stringValue(mapping.sourceId) === sourceId) return { source, mapping, reason: null };
+    return { source, mapping, reason: 'INVALID_MAPPING_JOB_ASSOCIATION' };
+  }
+
+  const sourceMappings = input.mappingsBySource.get(sourceId) ?? [];
+  if (sourceMappings.length === 1) return { source, mapping: sourceMappings[0], reason: null };
+  return { source, mapping: null, reason: 'AMBIGUOUS_MAPPING_JOB_ASSOCIATION' };
+};
+
+type PackageEvaluationInput = {
+  job: JsonRecord;
+  intake: JsonRecord | null;
+  source: JsonRecord | null;
+  mapping: JsonRecord | null;
+  mappingApproval: JsonRecord | null;
+  associationReason: string | null;
+  targetSignals: string[];
+  selectedEvidenceRun: JsonRecord | null;
+  selectedRunStatus: string | null;
+  pageHtmlCount: number;
+  pageMarkdownCount: number;
+  mappingCutoff: Date;
+  now: Date;
+  additionalReasons?: string[];
+};
+
+export const evaluateRemediationPackage = (input: PackageEvaluationInput): {
+  eligible: boolean;
+  exclusionReasons: string[];
+} => {
+  const exclusionReasons = [...(input.additionalReasons ?? [])];
+  if (input.job.status !== 'APPROVED') exclusionReasons.push('MAPPING_JOB_NOT_APPROVED');
+  if (
+    input.job.leaseExpiresAt instanceof Date
+    && input.job.leaseExpiresAt.getTime() >= input.now.getTime()
+  ) {
+    exclusionReasons.push('MAPPING_JOB_ACTIVE_LEASE');
+  }
+  if (
+    input.job.createdAt instanceof Date
+    && input.job.createdAt.getTime() > input.mappingCutoff.getTime()
+  ) {
+    exclusionReasons.push('MAPPING_JOB_AFTER_CUTOFF');
+  }
+  if (!input.intake) {
+    exclusionReasons.push('MISSING_INTAKE');
+  } else {
+    if (input.intake.status !== 'PROMOTED') exclusionReasons.push('INTAKE_NOT_PROMOTED');
+    if (input.intake.complianceStatus !== 'ALLOWED') {
+      exclusionReasons.push('INTAKE_COMPLIANCE_NOT_ALLOWED');
+    }
+  }
+  if (input.associationReason) exclusionReasons.push(input.associationReason);
+  if (!input.source) exclusionReasons.push('MISSING_SOURCE_ASSOCIATION');
+  if (!input.mapping) exclusionReasons.push('MISSING_MAPPING_DEFINITION');
+  if (
+    input.mapping?.createdAt instanceof Date
+    && input.mapping.createdAt.getTime() > input.mappingCutoff.getTime()
+  ) {
+    exclusionReasons.push('MAPPING_AFTER_CUTOFF');
+  }
+  if (!input.mappingApproval) {
+    exclusionReasons.push('MISSING_MAPPING_APPROVAL');
+  } else {
+    if (input.mappingApproval.status !== 'APPROVED') {
+      exclusionReasons.push('MAPPING_APPROVAL_NOT_APPROVED');
+    }
+    if (
+      input.mappingApproval.leaseExpiresAt instanceof Date
+      && input.mappingApproval.leaseExpiresAt.getTime() >= input.now.getTime()
+    ) {
+      exclusionReasons.push('MAPPING_APPROVAL_ACTIVE_LEASE');
+    }
+  }
+  if (!input.targetSignals.length) exclusionReasons.push('NOT_EVENT_PRODUCING');
+  if (
+    !input.selectedEvidenceRun
+    || !SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(input.selectedRunStatus))
+    || input.pageHtmlCount + input.pageMarkdownCount === 0
+  ) {
+    exclusionReasons.push('MISSING_SUCCESSFUL_PAGE_EVIDENCE');
+  }
+  return {
+    eligible: exclusionReasons.length === 0,
+    exclusionReasons: Array.from(new Set(exclusionReasons)),
+  };
 };
 
 const buildInventory = async (input: {
@@ -303,20 +517,27 @@ const buildInventory = async (input: {
         sourceKey: true,
         status: true,
         targetKind: true,
-        activeMappingId: true,
         metadata: true,
       },
     }),
     db.mappings.findMany({
-      select: { id: true, sourceId: true, createdAt: true, version: true, isActive: true, mapping: true },
+      select: {
+        id: true,
+        sourceId: true,
+        createdAt: true,
+        updatedAt: true,
+        version: true,
+        isActive: true,
+        mapping: true,
+      },
     }),
     db.intakes.findMany({
       select: {
         id: true,
-        createdAt: true,
         sourceKey: true,
         affiliateSourceId: true,
         status: true,
+        complianceStatus: true,
         targetKindHints: true,
         lastRunId: true,
       },
@@ -341,30 +562,48 @@ const buildInventory = async (input: {
       },
     }),
     db.mappingJobs.findMany({
-      where: { createdAt: { lte: input.mappingCutoff } },
+      where: {
+        status: 'APPROVED',
+        createdAt: { lte: input.mappingCutoff },
+      },
       select: {
         id: true,
         intakeId: true,
+        sourceId: true,
+        mappingId: true,
         status: true,
         createdAt: true,
         claimedAt: true,
         leaseExpiresAt: true,
         resultSummary: true,
         errorMessage: true,
+        finishedAt: true,
       },
     }),
     db.mappingApprovals.findMany({
       where: { subjectType: 'MAPPING_PACKAGE' },
-      select: { id: true, subjectType: true, subjectKey: true, status: true, decision: true },
+      select: {
+        id: true,
+        subjectType: true,
+        subjectKey: true,
+        status: true,
+        leaseExpiresAt: true,
+        decision: true,
+      },
     }),
     db.candidates.findMany({
       select: {
+        id: true,
         sourceId: true,
         runId: true,
         mappingId: true,
         listingKind: true,
         dateDisplayMode: true,
         startsAt: true,
+        endsAt: true,
+        timeZone: true,
+        scheduleText: true,
+        updatedAt: true,
         status: true,
       },
     }),
@@ -373,6 +612,7 @@ const buildInventory = async (input: {
       select: { id: true, intakeId: true, runId: true, kind: true, fileId: true },
     }),
   ]);
+
   const artifactFileIds = Array.from(new Set(
     (artifacts as JsonRecord[])
       .map((artifact) => stringValue(artifact.fileId))
@@ -388,6 +628,25 @@ const buildInventory = async (input: {
     (files as JsonRecord[]).map((file) => stringValue(file.id)).filter((id): id is string => Boolean(id)),
   );
 
+  const sourcesById = new Map<string, JsonRecord>();
+  const sourcesByKey = new Map<string, JsonRecord>();
+  for (const source of sources as JsonRecord[]) {
+    const sourceId = stringValue(source.id);
+    const sourceKey = stringValue(source.sourceKey);
+    if (sourceId) sourcesById.set(sourceId, source);
+    if (sourceKey) sourcesByKey.set(sourceKey, source);
+  }
+  const mappingsById = new Map<string, JsonRecord>();
+  const mappingsBySource = new Map<string, JsonRecord[]>();
+  for (const mapping of mappings as JsonRecord[]) {
+    const mappingId = stringValue(mapping.id);
+    const sourceId = stringValue(mapping.sourceId);
+    if (mappingId) mappingsById.set(mappingId, mapping);
+    if (sourceId) mappingsBySource.set(sourceId, [
+      ...(mappingsBySource.get(sourceId) ?? []),
+      mapping,
+    ]);
+  }
   const intakesById = new Map<string, JsonRecord>();
   const intakesBySourceId = new Map<string, JsonRecord[]>();
   const intakesBySourceKey = new Map<string, JsonRecord[]>();
@@ -396,36 +655,22 @@ const buildInventory = async (input: {
     const sourceId = stringValue(intake.affiliateSourceId);
     const sourceKey = stringValue(intake.sourceKey);
     if (intakeId) intakesById.set(intakeId, intake);
-    if (sourceId) {
-      intakesBySourceId.set(sourceId, [
-        ...(intakesBySourceId.get(sourceId) ?? []),
-        intake,
-      ]);
-    }
-    if (sourceKey) {
-      intakesBySourceKey.set(sourceKey, [
-        ...(intakesBySourceKey.get(sourceKey) ?? []),
-        intake,
-      ]);
-    }
-  }
-  const mappingsBySource = new Map<string, JsonRecord[]>();
-  for (const mapping of mappings as JsonRecord[]) {
-    const sourceId = stringValue(mapping.sourceId);
-    if (!sourceId) continue;
-    mappingsBySource.set(sourceId, [...(mappingsBySource.get(sourceId) ?? []), mapping]);
+    if (sourceId) intakesBySourceId.set(sourceId, [
+      ...(intakesBySourceId.get(sourceId) ?? []),
+      intake,
+    ]);
+    if (sourceKey) intakesBySourceKey.set(sourceKey, [
+      ...(intakesBySourceKey.get(sourceKey) ?? []),
+      intake,
+    ]);
   }
   const candidatesBySource = new Map<string, JsonRecord[]>();
   for (const candidate of candidates as JsonRecord[]) {
     const sourceId = stringValue(candidate.sourceId);
-    if (!sourceId) continue;
-    candidatesBySource.set(sourceId, [...(candidatesBySource.get(sourceId) ?? []), candidate]);
-  }
-  const jobsByIntake = new Map<string, JsonRecord[]>();
-  for (const job of mappingJobs as JsonRecord[]) {
-    const intakeId = stringValue(job.intakeId);
-    if (!intakeId) continue;
-    jobsByIntake.set(intakeId, [...(jobsByIntake.get(intakeId) ?? []), job]);
+    if (sourceId) candidatesBySource.set(sourceId, [
+      ...(candidatesBySource.get(sourceId) ?? []),
+      candidate,
+    ]);
   }
   const pagesByIntake = new Map<string, number>();
   for (const page of pages as JsonRecord[]) {
@@ -438,71 +683,57 @@ const buildInventory = async (input: {
     if (intakeId) artifactsByIntake.set(intakeId, (artifactsByIntake.get(intakeId) ?? 0) + 1);
   }
 
-  const packages: AffiliateEventDateTimeRemediationPackage[] = [];
-  for (const source of sources as JsonRecord[]) {
-    const sourceId = stringValue(source.id);
-    const sourceKey = stringValue(source.sourceKey);
-    if (!sourceId || !sourceKey) continue;
-    const sourceMappings = mappingsBySource.get(sourceId) ?? [];
-    const sourceCandidates = candidatesBySource.get(sourceId) ?? [];
-    const sourceIntakes = Array.from(new Map([
-      ...(intakesBySourceId.get(sourceId) ?? []),
-      ...(intakesBySourceKey.get(sourceKey) ?? []),
-    ].map((intake) => [stringValue(intake.id) ?? '', intake])).values())
-      .filter((intake) => Boolean(stringValue(intake.id)));
-    const mapping = sourceMappings.find((candidate) => candidate.id === source.activeMappingId)
-      ?? sourceMappings.find((candidate) => candidate.isActive === true)
-      ?? latestByCreatedAt(sourceMappings);
-    const intakeJobs = sourceIntakes.flatMap((intake) => (
-      jobsByIntake.get(stringValue(intake.id) ?? '') ?? []
-    ));
-    const approvedMappingJob = latestByCreatedAt(
-      intakeJobs.filter((job) => job.status === 'APPROVED'),
-    );
-    const intake = approvedMappingJob
-      ? intakesById.get(stringValue(approvedMappingJob.intakeId) ?? '') ?? null
-      : latestByCreatedAt(sourceIntakes);
-    const currentMappingId = stringValue(mapping?.id);
-    const latestSuccessfulRun = currentMappingId
+  const packageContexts: Array<{
+    job: JsonRecord;
+    mappingId: string | null;
+    packageRow: AffiliateEventDateTimeRemediationPackage;
+    evaluationInput: PackageEvaluationInput;
+  }> = [];
+  for (const job of mappingJobs as JsonRecord[]) {
+    const mappingJobId = stringValue(job.id);
+    const intakeId = stringValue(job.intakeId);
+    if (!mappingJobId || !intakeId) continue;
+    const intake = intakesById.get(intakeId) ?? null;
+    const association = resolvePackageAssociation({
+      job,
+      intake,
+      sourcesById,
+      sourcesByKey,
+      mappingsBySource,
+      mappingsById,
+    });
+    const source = association.source;
+    const mapping = association.mapping;
+    const sourceId = stringValue(source?.id);
+    const mappingId = stringValue(mapping?.id);
+    const sourceCandidates = sourceId ? candidatesBySource.get(sourceId) ?? [] : [];
+    const latestSuccessfulRun = sourceId && mappingId
       ? latestByCreatedAt((scrapeRuns as JsonRecord[]).filter((run) => (
           stringValue(run.sourceId) === sourceId
-          && stringValue(run.mappingId) === currentMappingId
+          && stringValue(run.mappingId) === mappingId
           && SUCCESSFUL_SCRAPE_RUN_STATUSES.has(normalizedKind(run.status))
           && run.createdAt instanceof Date
           && run.createdAt.getTime() <= input.now.getTime()
         )))
       : null;
-    const recentCandidates = latestSuccessfulRun && currentMappingId
+    const recentCandidates = latestSuccessfulRun && mappingId
       ? sourceCandidates.filter((candidate) => (
           stringValue(candidate.runId) === stringValue(latestSuccessfulRun.id)
-          && stringValue(candidate.mappingId) === currentMappingId
+          && stringValue(candidate.mappingId) === mappingId
           && CURRENT_CANDIDATE_STATUSES.has(normalizedKind(candidate.status))
         ))
       : [];
+    const candidateRunId = stringValue(latestSuccessfulRun?.id);
+    const currentCandidateFingerprint = candidateFingerprint(recentCandidates);
     const signals = sourceEventSignals({
       source,
       mapping,
       intake,
-      mappingJob: approvedMappingJob,
+      intakes: intake ? [intake] : [],
+      mappingJob: job,
       candidates: recentCandidates,
     });
-    const mappingApproval = approvedMappingJob
-      ? findApprovalForMapping(approvals as JsonRecord[], stringValue(approvedMappingJob.id) ?? '')
-      : null;
-    const modeCounts = countCandidateModes(recentCandidates);
-    const exclusionReasons: string[] = [];
-    if (!signals.length) exclusionReasons.push('NOT_EVENT_PRODUCING');
-    if (!mapping) exclusionReasons.push('MISSING_MAPPING_DEFINITION');
-    if (!intake) exclusionReasons.push('MISSING_INTAKE');
-    if (!approvedMappingJob) exclusionReasons.push('MISSING_APPROVED_MAPPING_JOB');
-    if (approvedMappingJob && !mappingApproval) exclusionReasons.push('MISSING_MAPPING_APPROVAL');
-    if (mappingApproval && mappingApproval.status !== 'APPROVED') {
-      exclusionReasons.push('MAPPING_APPROVAL_NOT_APPROVED');
-    }
-    const intakeId = stringValue(intake?.id);
-    const pageCount = intakeId ? pagesByIntake.get(intakeId) ?? 0 : 0;
-    const artifactCount = intakeId ? artifactsByIntake.get(intakeId) ?? 0 : 0;
-    const intakeLastRunId = stringValue(intake?.lastRunId);
+    const mappingApproval = findApprovalForMapping(approvals as JsonRecord[], mappingJobId);
     const selectedEvidenceRun = selectEvidenceRun({
       source,
       intake,
@@ -510,7 +741,7 @@ const buildInventory = async (input: {
     });
     const selectedRunId = stringValue(selectedEvidenceRun?.id);
     const selectedRunStatus = stringValue(selectedEvidenceRun?.status);
-    const selectedRunArtifacts = selectedRunId && intakeId
+    const selectedRunArtifacts = selectedRunId
       ? (artifacts as JsonRecord[]).filter((artifact) => (
           stringValue(artifact.intakeId) === intakeId
           && stringValue(artifact.runId) === selectedRunId
@@ -524,20 +755,15 @@ const buildInventory = async (input: {
     const pageMarkdownCount = selectedRunArtifacts.filter(
       (artifact) => normalizedKind(artifact.kind) === 'PAGE_MARKDOWN',
     ).length;
-    if (intake && (
-      !selectedEvidenceRun
-      || !SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(selectedRunStatus))
-      || pageHtmlCount + pageMarkdownCount === 0
-    )) {
-      exclusionReasons.push('MISSING_SUCCESSFUL_PAGE_EVIDENCE');
-    }
+    const modeCounts = countCandidateModes(recentCandidates);
     const packageRow: AffiliateEventDateTimeRemediationPackage = {
+      coverageKind: 'MAPPING_JOB',
       sourceId,
-      sourceKey,
-      sourceStatus: stringValue(source.status) ?? 'UNKNOWN',
-      mappingId: stringValue(mapping?.id),
-      mappingJobId: stringValue(approvedMappingJob?.id),
-      mappingJobStatus: stringValue(approvedMappingJob?.status),
+      sourceKey: stringValue(source?.sourceKey) ?? stringValue(intake?.sourceKey),
+      sourceStatus: stringValue(source?.status) ?? 'UNKNOWN',
+      mappingId,
+      mappingJobId,
+      mappingJobStatus: stringValue(job.status),
       intakeId,
       approvalJobId: stringValue(mappingApproval?.id),
       candidateCount: recentCandidates.length,
@@ -548,23 +774,201 @@ const buildInventory = async (input: {
       evergreenCandidateCount: modeCounts.NO_FIXED_DATE + modeCounts.ONGOING,
       targetSignals: signals,
       storedEvidence: {
-        intakeLastRunId,
+        intakeLastRunId: stringValue(intake?.lastRunId),
         selectedRunId,
         selectedRunStatus,
-        pageCount,
-        artifactCount,
+        candidateRunId,
+        candidateFingerprint: currentCandidateFingerprint,
+        pageCount: pagesByIntake.get(intakeId) ?? 0,
+        artifactCount: artifactsByIntake.get(intakeId) ?? 0,
         pageHtmlCount,
         pageMarkdownCount,
       },
-      eligible: exclusionReasons.length === 0,
-      exclusionReasons,
+      eligible: false,
+      exclusionReasons: [],
     };
-    packages.push(packageRow);
+    const evaluationInput: PackageEvaluationInput = {
+      job,
+      intake,
+      source,
+      mapping,
+      mappingApproval,
+      associationReason: association.reason,
+      targetSignals: signals,
+      selectedEvidenceRun,
+      selectedRunStatus,
+      pageHtmlCount,
+      pageMarkdownCount,
+      mappingCutoff: input.mappingCutoff,
+      now: input.now,
+    };
+    const evaluation = evaluateRemediationPackage(evaluationInput);
+    packageRow.eligible = evaluation.eligible;
+    packageRow.exclusionReasons = evaluation.exclusionReasons;
+    packageContexts.push({ job, mappingId, packageRow, evaluationInput });
   }
 
+  const latestJobByMapping = new Map<string, JsonRecord>();
+  for (const context of packageContexts) {
+    if (!context.mappingId) continue;
+    const current = latestJobByMapping.get(context.mappingId);
+    if (!current || latestByCreatedAt([current, context.job])?.id === context.job.id) {
+      latestJobByMapping.set(context.mappingId, context.job);
+    }
+  }
+  for (const context of packageContexts) {
+    if (!context.mappingId) continue;
+    const latestJob = latestJobByMapping.get(context.mappingId);
+    if (latestJob?.id === context.job.id) continue;
+    const evaluation = evaluateRemediationPackage({
+      ...context.evaluationInput,
+      additionalReasons: ['SUPERSEDED_APPROVED_PACKAGE'],
+    });
+    context.packageRow.eligible = evaluation.eligible;
+    context.packageRow.exclusionReasons = evaluation.exclusionReasons;
+  }
+
+  const representedMappingIds = new Set(
+    packageContexts
+      .map((context) => context.mappingId)
+      .filter((mappingId): mappingId is string => Boolean(mappingId)),
+  );
+  const orphanPackages: AffiliateEventDateTimeRemediationPackage[] = [];
+  for (const mapping of mappings as JsonRecord[]) {
+    const mappingId = stringValue(mapping.id);
+    if (!mappingId || mapping.isActive !== true || representedMappingIds.has(mappingId)) continue;
+    if (
+      mapping.createdAt instanceof Date
+      && mapping.createdAt.getTime() > input.mappingCutoff.getTime()
+    ) {
+      continue;
+    }
+    const sourceId = stringValue(mapping.sourceId);
+    const source = sourceId ? sourcesById.get(sourceId) ?? null : null;
+    const sourceKey = stringValue(source?.sourceKey);
+    const sourceIntakes = Array.from(new Map([
+      ...(sourceId ? intakesBySourceId.get(sourceId) ?? [] : []),
+      ...(sourceKey ? intakesBySourceKey.get(sourceKey) ?? [] : []),
+    ].map((intake) => [stringValue(intake.id) ?? '', intake])).values())
+      .filter((intake) => Boolean(stringValue(intake.id)));
+    const coverageIntake = sourceIntakes.length === 1 ? sourceIntakes[0] : null;
+    const sourceCandidates = sourceId ? candidatesBySource.get(sourceId) ?? [] : [];
+    const latestSuccessfulRun = sourceId
+      ? latestByCreatedAt((scrapeRuns as JsonRecord[]).filter((run) => (
+          stringValue(run.sourceId) === sourceId
+          && stringValue(run.mappingId) === mappingId
+          && SUCCESSFUL_SCRAPE_RUN_STATUSES.has(normalizedKind(run.status))
+          && run.createdAt instanceof Date
+          && run.createdAt.getTime() <= input.now.getTime()
+        )))
+      : null;
+    const recentCandidates = latestSuccessfulRun
+      ? sourceCandidates.filter((candidate) => (
+          stringValue(candidate.runId) === stringValue(latestSuccessfulRun.id)
+          && stringValue(candidate.mappingId) === mappingId
+          && CURRENT_CANDIDATE_STATUSES.has(normalizedKind(candidate.status))
+        ))
+      : [];
+    const candidateRunId = stringValue(latestSuccessfulRun?.id);
+    const currentCandidateFingerprint = candidateFingerprint(recentCandidates);
+    const selectedEvidenceRun = selectEvidenceRun({
+      source,
+      intake: coverageIntake,
+      captureRuns: captureRuns as JsonRecord[],
+    });
+    const selectedRunId = stringValue(selectedEvidenceRun?.id);
+    const selectedRunStatus = stringValue(selectedEvidenceRun?.status);
+    const selectedRunArtifacts = selectedRunId && coverageIntake
+      ? (artifacts as JsonRecord[]).filter((artifact) => (
+          stringValue(artifact.intakeId) === stringValue(coverageIntake.id)
+          && stringValue(artifact.runId) === selectedRunId
+          && retainedFileIds.has(stringValue(artifact.fileId) ?? '')
+          && ['PAGE_HTML', 'PAGE_MARKDOWN'].includes(normalizedKind(artifact.kind))
+        ))
+      : [];
+    const pageHtmlCount = selectedRunArtifacts.filter(
+      (artifact) => normalizedKind(artifact.kind) === 'PAGE_HTML',
+    ).length;
+    const pageMarkdownCount = selectedRunArtifacts.filter(
+      (artifact) => normalizedKind(artifact.kind) === 'PAGE_MARKDOWN',
+    ).length;
+    const targetSignals = sourceEventSignals({
+      source,
+      mapping,
+      intake: coverageIntake,
+      intakes: sourceIntakes,
+      mappingJob: null,
+      candidates: recentCandidates,
+    });
+    if (!targetSignals.length) continue;
+    const exclusionReasons = ['MISSING_APPROVED_MAPPING_JOB'];
+    if (!source) exclusionReasons.push('MISSING_SOURCE_ASSOCIATION');
+    if (sourceIntakes.length === 0) exclusionReasons.push('MISSING_INTAKE');
+    if (sourceIntakes.length > 1) exclusionReasons.push('AMBIGUOUS_INTAKE_ASSOCIATION');
+    if (coverageIntake && coverageIntake.status !== 'PROMOTED') {
+      exclusionReasons.push('INTAKE_NOT_PROMOTED');
+    }
+    if (coverageIntake && coverageIntake.complianceStatus !== 'ALLOWED') {
+      exclusionReasons.push('INTAKE_COMPLIANCE_NOT_ALLOWED');
+    }
+    if (
+      !selectedEvidenceRun
+      || !SUCCESSFUL_INTAKE_RUN_STATUSES.has(normalizedKind(selectedRunStatus))
+      || pageHtmlCount + pageMarkdownCount === 0
+    ) {
+      exclusionReasons.push('MISSING_SUCCESSFUL_PAGE_EVIDENCE');
+    }
+    const intakeId = stringValue(coverageIntake?.id);
+    const modeCounts = countCandidateModes(recentCandidates);
+    orphanPackages.push({
+      coverageKind: 'ORPHAN_MAPPING',
+      sourceId,
+      sourceKey,
+      sourceStatus: stringValue(source?.status) ?? 'UNKNOWN',
+      mappingId,
+      mappingJobId: null,
+      mappingJobStatus: null,
+      intakeId,
+      approvalJobId: null,
+      candidateCount: recentCandidates.length,
+      candidateModeCounts: modeCounts,
+      eventCandidateCount: recentCandidates.filter(
+        (candidate) => normalizedKind(candidate.listingKind) === 'EVENT',
+      ).length,
+      evergreenCandidateCount: modeCounts.NO_FIXED_DATE + modeCounts.ONGOING,
+      targetSignals,
+      storedEvidence: {
+        intakeLastRunId: stringValue(coverageIntake?.lastRunId),
+        selectedRunId,
+        selectedRunStatus,
+        candidateRunId,
+        candidateFingerprint: currentCandidateFingerprint,
+        pageCount: intakeId ? pagesByIntake.get(intakeId) ?? 0 : 0,
+        artifactCount: intakeId ? artifactsByIntake.get(intakeId) ?? 0 : 0,
+        pageHtmlCount,
+        pageMarkdownCount,
+      },
+      eligible: false,
+      exclusionReasons: Array.from(new Set(exclusionReasons)),
+    });
+  }
+
+  const packages = [
+    ...packageContexts.map((context) => context.packageRow),
+    ...orphanPackages,
+  ];
+  const canonicalPackages = [
+    ...packageContexts
+      .filter((context) => (
+        !context.mappingId
+        || latestJobByMapping.get(context.mappingId)?.id === context.job.id
+      ))
+      .map((context) => context.packageRow),
+    ...orphanPackages,
+  ];
   const eligible = packages.filter((item) => item.eligible);
   const modeCounts = emptyModeCounts();
-  for (const packageRow of packages) addModeCounts(modeCounts, packageRow.candidateModeCounts);
+  for (const packageRow of canonicalPackages) addModeCounts(modeCounts, packageRow.candidateModeCounts);
   return {
     schemaVersion: 1,
     cohortKey: input.cohortKey,
@@ -575,12 +979,13 @@ const buildInventory = async (input: {
     queue: input.queue,
     eligibleCount: eligible.length,
     excludedCount: packages.length - eligible.length,
-    candidateCount: packages.reduce((total, item) => total + item.candidateCount, 0),
-    eventCandidateCount: packages.reduce((total, item) => total + item.eventCandidateCount, 0),
+    candidateCount: canonicalPackages.reduce((total, item) => total + item.candidateCount, 0),
+    eventCandidateCount: canonicalPackages.reduce((total, item) => total + item.eventCandidateCount, 0),
+    inventoryHash: inventoryHashForPackages(packages),
     modeCounts,
     eligibleMappingJobIds: eligible
       .map((item) => item.mappingJobId)
-      .filter((id): id is string => Boolean(id))
+      .filter((mappingJobId): mappingJobId is string => Boolean(mappingJobId))
       .sort(),
     packages,
   };
@@ -598,6 +1003,7 @@ const storedInventory = (cohort: JsonRecord, decision: JsonRecord): AffiliateEve
   excludedCount: Number(decision.excludedCount ?? 0),
   candidateCount: Number(decision.candidateCount ?? 0),
   eventCandidateCount: Number(decision.eventCandidateCount ?? 0),
+  inventoryHash: stringValue(decision.inventoryHash) ?? '',
   modeCounts: {
     ...emptyModeCounts(),
     ...recordValue(decision.modeCounts),
@@ -636,12 +1042,14 @@ export const applyAffiliateEventDateTimeRemediationCohort = async (input: {
   expectedEligibleCount: number;
   expectedExcludedCount: number;
   expectedEligibleMappingJobIds: string[];
+  expectedInventoryHash: string;
   operatorIdentity: string;
   now?: Date;
 }, dependencies: CohortDependencies = {}) => {
   const cohortKey = validCohortKey(input.cohortKey);
   const mappingCutoff = validCutoff(input.mappingCutoff);
   const expectedEligibleMappingJobIds = sortedMappingJobIds(input.expectedEligibleMappingJobIds);
+  const expectedInventoryHash = validInventoryHash(input.expectedInventoryHash);
   const operatorIdentity = input.operatorIdentity.trim();
   if (!operatorIdentity) throw new Error('Affiliate event-datetime remediation operator identity is required.');
   if (!Number.isInteger(input.expectedEligibleCount) || input.expectedEligibleCount < 0) {
@@ -680,6 +1088,11 @@ export const applyAffiliateEventDateTimeRemediationCohort = async (input: {
         `Affiliate event-datetime remediation cohort counts changed. Expected ${input.expectedEligibleCount} eligible and ${input.expectedExcludedCount} excluded, received ${inventory.eligibleCount} eligible and ${inventory.excludedCount} excluded.`,
       );
     }
+    if (inventory.inventoryHash !== expectedInventoryHash) {
+      throw new Error(
+        `Affiliate event-datetime remediation inventory changed. Expected ${expectedInventoryHash}, received ${inventory.inventoryHash}.`,
+      );
+    }
     if (JSON.stringify(inventory.eligibleMappingJobIds) !== JSON.stringify(expectedEligibleMappingJobIds)) {
       throw new Error(
         `Affiliate event-datetime remediation cohort mapping job IDs changed. Expected [${expectedEligibleMappingJobIds.join(', ')}], received [${inventory.eligibleMappingJobIds.join(', ')}].`,
@@ -703,12 +1116,21 @@ export const applyAffiliateEventDateTimeRemediationCohort = async (input: {
     });
 
     for (const packageRow of inventory.packages.filter((item) => item.eligible)) {
+      if (
+        packageRow.coverageKind !== 'MAPPING_JOB'
+        || !packageRow.mappingJobId
+        || !packageRow.intakeId
+      ) {
+        throw new Error('Only durable mapping-job packages can enter the remediation cohort.');
+      }
       const mappingJob = await db.mappingJobs.findUnique({ where: { id: packageRow.mappingJobId } });
       if (
         !mappingJob
         || mappingJob.status !== 'APPROVED'
         || mappingJob.leaseExpiresAt !== null
         || mappingJob.createdAt > mappingCutoff
+        || (stringValue(mappingJob.sourceId) && mappingJob.sourceId !== packageRow.sourceId)
+        || (stringValue(mappingJob.mappingId) && mappingJob.mappingId !== packageRow.mappingId)
       ) {
         throw new Error(`Affiliate mapping job ${packageRow.mappingJobId} changed before cohort enqueue.`);
       }
@@ -724,7 +1146,7 @@ export const applyAffiliateEventDateTimeRemediationCohort = async (input: {
         throw new Error(`Affiliate mapping approval ${packageRow.approvalJobId} changed before cohort enqueue.`);
       }
       const intake = await db.intakes.findUnique({ where: { id: packageRow.intakeId } });
-      if (!intake || intake.status !== 'PROMOTED') {
+      if (!intake || intake.status !== 'PROMOTED' || intake.complianceStatus !== 'ALLOWED') {
         throw new Error(`Affiliate source intake ${packageRow.intakeId} changed before cohort enqueue.`);
       }
       const envelope = recordValue(mappingJob.resultSummary);
@@ -734,6 +1156,8 @@ export const applyAffiliateEventDateTimeRemediationCohort = async (input: {
       const updateResult = await db.mappingJobs.updateMany({
         where: { id: mappingJob.id, status: 'APPROVED', leaseExpiresAt: null },
         data: {
+          sourceId: packageRow.sourceId,
+          mappingId: packageRow.mappingId,
           status: 'QUEUED',
           claimedAt: null,
           leaseExpiresAt: null,
@@ -822,6 +1246,7 @@ export const applyAffiliateEventDateTimeRemediationCohort = async (input: {
       excludedCount: inventory.excludedCount,
       candidateCount: inventory.candidateCount,
       eventCandidateCount: inventory.eventCandidateCount,
+      inventoryHash: inventory.inventoryHash,
       targetKind: 'EVENT',
       finalEnqueueCount: inventory.eligibleCount,
       modeCounts: inventory.modeCounts,

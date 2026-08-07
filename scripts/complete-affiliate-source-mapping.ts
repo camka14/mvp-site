@@ -55,6 +55,7 @@ const main = async () => {
   const { finishAffiliateSourceMappingClaim } = await import(
     '../src/server/affiliateImports/sourceMappingQueue'
   );
+  let packageIdentity: { sourceId: string; mappingId: string } | null = null;
   try {
     const job = await (prisma as any).affiliateSourceMappingJobs.findUnique({
       where: { id: jobId },
@@ -87,6 +88,13 @@ const main = async () => {
           queryable: disposable,
           result,
         });
+        if (!reviewEvidence.mappingId) {
+          throw new Error('REVIEW_REQUIRED mapping results must identify one exact mapping.');
+        }
+        packageIdentity = {
+          sourceId: reviewEvidence.sourceId,
+          mappingId: reviewEvidence.mappingId,
+        };
         const divisionQuality = await inspectAffiliateEventDivisionQuality({
           queryable: disposable,
           sourceId: reviewEvidence.sourceId,
@@ -145,6 +153,8 @@ const main = async () => {
     const updated = await finishAffiliateSourceMappingClaim({
       jobId,
       status: result.status,
+      sourceId: packageIdentity?.sourceId,
+      mappingId: packageIdentity?.mappingId,
       branch: result.branch,
       commit: result.commit,
       resultSummary: {

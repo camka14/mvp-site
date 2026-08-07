@@ -2096,6 +2096,9 @@ model AffiliateSourceMappingJobs {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   intakeId       String
+  sourceId       String?
+  mappingId      String?
+  legacyIdentityMigrationEligible Boolean @default(false)
   status         String    @default("QUEUED")
   claimedAt      DateTime?
   leaseExpiresAt DateTime?
@@ -2111,6 +2114,7 @@ model AffiliateSourceMappingJobs {
   // Prisma schema syntax cannot express a partial unique constraint.
   @@index([status, createdAt])
   @@index([intakeId, createdAt])
+  @@index([sourceId, mappingId, createdAt])
   @@index([leaseExpiresAt])
 }
 

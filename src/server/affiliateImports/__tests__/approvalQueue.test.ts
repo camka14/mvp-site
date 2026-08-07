@@ -213,6 +213,8 @@ describe('affiliate approval queue', () => {
     mappingRows = [{
       id: 'mapping_1',
       intakeId: 'intake_1',
+      sourceId: 'source_1',
+      mappingId: 'mapping_definition_1',
       status: 'REVIEW_REQUIRED',
       resultSummary: { result: ingestionResult() },
       createdAt: new Date('2026-07-31T10:01:00Z'),
@@ -409,6 +411,70 @@ describe('affiliate approval queue', () => {
       mappingApprovalResult('codex-luna-vm-1'),
       { applyMappingPackage: jest.fn() },
     )).rejects.toThrow('cannot be approved or reviewed by their producer identity');
+  });
+
+  it('lets the live application boundary populate identity for a legacy review job', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    delete mappingRows[0].sourceId;
+    delete mappingRows[0].mappingId;
+    mappingRows[0].legacyIdentityMigrationEligible = true;
+
+    const applyMappingPackage = jest.fn(async () => {
+      mappingRows[0].sourceId = 'source_legacy';
+      mappingRows[0].mappingId = 'mapping_legacy';
+      mappingRows[0].status = 'APPROVED';
+    });
+    await expect(completeAffiliateApproval(
+      mappingApprovalResult(),
+      { applyMappingPackage },
+    )).resolves.toEqual(expect.objectContaining({ status: 'APPROVED' }));
+    expect(applyMappingPackage).toHaveBeenCalled();
+  });
+
+  it('rejects identity-less approval without the explicit legacy migration marker', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    delete mappingRows[0].sourceId;
+    delete mappingRows[0].mappingId;
+
+    const applyMappingPackage = jest.fn();
+    await expect(completeAffiliateApproval(
+      mappingApprovalResult(),
+      { applyMappingPackage },
+    )).rejects.toThrow('explicit legacy identity migration marker');
+    expect(applyMappingPackage).not.toHaveBeenCalled();
+  });
+
+  it('rejects approval when live application does not populate legacy identity', async () => {
+    approvalRows = [{
+      id: 'approval_1',
+      subjectType: 'MAPPING_PACKAGE',
+      subjectKey: 'mapping_1',
+      status: 'CLAIMED',
+      reviewerId: 'codex-luna-approval-vm-1',
+    }];
+    delete mappingRows[0].sourceId;
+    delete mappingRows[0].mappingId;
+    mappingRows[0].legacyIdentityMigrationEligible = true;
+    const applyMappingPackage = jest.fn(async () => {
+      mappingRows[0].status = 'APPROVED';
+    });
+
+    await expect(completeAffiliateApproval(
+      mappingApprovalResult(),
+      { applyMappingPackage },
+    )).rejects.toThrow('approved with durable source and mapping package identity');
   });
 
   it('applies an independently reviewed mapping package through the guarded callback', async () => {

@@ -329,8 +329,9 @@ describe('affiliate source mapping queue', () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1',
       intakeId: 'intake_1',
-    status: 'CLAIMED',
-    resultSummary: {
+      legacyIdentityMigrationEligible: true,
+      status: 'CLAIMED',
+      resultSummary: {
         mappingRepairHistory: [{ cohortKey: 'event-datetime-v1' }],
       },
     });
@@ -347,6 +348,7 @@ describe('affiliate source mapping queue', () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1',
       intakeId: 'intake_1',
+      legacyIdentityMigrationEligible: true,
       status: 'CLAIMED',
       resultSummary: {
         mappingFullReviewHistory: [{ remediationContexts: ['event-datetime-v1'] }],
@@ -372,10 +374,110 @@ describe('affiliate source mapping queue', () => {
     })).resolves.toEqual(expect.objectContaining({ status: 'REVIEW_REQUIRED' }));
   });
 
+  it('persists the exact source and mapping package identity at completion', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      sourceId: null,
+      mappingId: null,
+      status: 'CLAIMED',
+      resultSummary: {},
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      sourceId: 'source_1',
+      mappingId: 'mapping_1',
+      status: 'REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValueOnce({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      sourceId: null,
+      mappingId: null,
+      status: 'CLAIMED',
+      resultSummary: {},
+    });
+    prismaMock.affiliateApprovalJobs.findUnique.mockResolvedValue(null);
+
+    await finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      sourceId: 'source_1',
+      mappingId: 'mapping_1',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    });
+
+    expect(prismaMock.affiliateSourceMappingJobs.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ sourceId: 'source_1', mappingId: 'mapping_1' }),
+    }));
+  });
+
+  it('does not allow completion to replace an existing package identity', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      sourceId: 'source_original',
+      mappingId: 'mapping_original',
+      status: 'CLAIMED',
+      resultSummary: {},
+    });
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      sourceId: 'source_replacement',
+      mappingId: 'mapping_replacement',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    })).rejects.toThrow('cannot be replaced');
+    expect(prismaMock.affiliateSourceMappingJobs.update).not.toHaveBeenCalled();
+  });
+
+  it('requires identity for a new review completion without the legacy marker', async () => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'CLAIMED',
+      resultSummary: {},
+    });
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    })).rejects.toThrow('unless explicit legacy identity migration is enabled');
+    expect(prismaMock.affiliateSourceMappingJobs.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['QUEUED', 'CLAIMED'])('allows a marked pre-migration %s job to complete without identity', async (status) => {
+    prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      legacyIdentityMigrationEligible: true,
+      status,
+      resultSummary: {},
+    });
+    prismaMock.affiliateSourceMappingJobs.update.mockResolvedValue({
+      id: 'job_1',
+      intakeId: 'intake_1',
+      status: 'REVIEW_REQUIRED',
+    });
+    prismaMock.affiliateSourceIntakes.update.mockResolvedValue({});
+    prismaMock.affiliateApprovalJobs.findUnique.mockResolvedValue(null);
+
+    await expect(finishAffiliateSourceMappingClaim({
+      jobId: 'job_1',
+      status: 'REVIEW_REQUIRED',
+      resultSummary: { result: { status: 'REVIEW_REQUIRED' } },
+    })).resolves.toEqual(expect.objectContaining({ status: 'REVIEW_REQUIRED' }));
+  });
+
   it('preserves datetime remediation context after completion', async () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1',
       intakeId: 'intake_1',
+      legacyIdentityMigrationEligible: true,
       status: 'CLAIMED',
       resultSummary: {
         mappingFullReviewHistory: [{ cohortKey: 'event-datetime-v1' }],
@@ -415,6 +517,7 @@ describe('affiliate source mapping queue', () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1',
       intakeId: 'intake_1',
+      legacyIdentityMigrationEligible: true,
       status: 'CLAIMED',
       resultSummary: {
         mappingRepairHistory: [{ repairReason: 'EVENT_LOCATION_PACKAGE_REJECTION' }],
@@ -468,6 +571,7 @@ describe('affiliate source mapping queue', () => {
     prismaMock.affiliateSourceMappingJobs.findUnique.mockResolvedValue({
       id: 'job_1',
       intakeId: 'intake_1',
+      legacyIdentityMigrationEligible: true,
       status: 'CLAIMED',
       resultSummary: {
         mappingRepairHistory: [{

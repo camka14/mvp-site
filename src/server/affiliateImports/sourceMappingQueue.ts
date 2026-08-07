@@ -282,6 +282,8 @@ export const releaseAffiliateSourceMappingClaim = async (
 export const finishAffiliateSourceMappingClaim = async (input: {
   jobId: string;
   status: 'REVIEW_REQUIRED' | 'EXPANDED' | 'APPROVED' | 'FAILED' | 'HUMAN_REVIEW_REQUIRED';
+  sourceId?: string | null;
+  mappingId?: string | null;
   branch?: string | null;
   commit?: string | null;
   resultSummary?: Record<string, unknown> | null;
@@ -290,6 +292,39 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   const { intakes, jobs, approvals } = mappingDb();
   const job = await jobs.findUnique({ where: { id: input.jobId } });
   if (!job) throw new Error('Affiliate source mapping job not found.');
+  const storedSourceId = stringValue(job.sourceId);
+  const storedMappingId = stringValue(job.mappingId);
+  if (Boolean(storedSourceId) !== Boolean(storedMappingId)) {
+    throw new Error('Affiliate mapping job package identity requires both sourceId and mappingId.');
+  }
+  const suppliedSourceId = stringValue(input.sourceId);
+  const suppliedMappingId = stringValue(input.mappingId);
+  if (Boolean(suppliedSourceId) !== Boolean(suppliedMappingId)) {
+    throw new Error('Affiliate mapping job package identity requires both sourceId and mappingId.');
+  }
+  if (
+    storedSourceId
+    && storedMappingId
+    && ((suppliedSourceId && suppliedSourceId !== storedSourceId)
+      || (suppliedMappingId && suppliedMappingId !== storedMappingId))
+  ) {
+    throw new Error('Affiliate mapping job package identity cannot be replaced.');
+  }
+  const sourceId = storedSourceId ?? suppliedSourceId;
+  const mappingId = storedMappingId ?? suppliedMappingId;
+  if (Boolean(sourceId) !== Boolean(mappingId)) {
+    throw new Error('Affiliate mapping job package identity requires both sourceId and mappingId.');
+  }
+  const packageIdentityRequired = input.status === 'REVIEW_REQUIRED' || input.status === 'APPROVED';
+  const isExplicitLegacyIdentityMigration = (
+    input.status === 'REVIEW_REQUIRED'
+    && job.legacyIdentityMigrationEligible === true
+  );
+  if (packageIdentityRequired && (!sourceId || !mappingId) && !isExplicitLegacyIdentityMigration) {
+    throw new Error(
+      'Affiliate mapping job completion requires sourceId and mappingId unless explicit legacy identity migration is enabled.',
+    );
+  }
   const previousEnvelope = recordValue(job.resultSummary);
   const repairHistory = Array.isArray(previousEnvelope.mappingRepairHistory)
     ? previousEnvelope.mappingRepairHistory
@@ -328,6 +363,7 @@ export const finishAffiliateSourceMappingClaim = async (input: {
   const updated = await jobs.update({
     where: { id: job.id },
     data: {
+      ...(sourceId && mappingId ? { sourceId, mappingId } : {}),
       status: input.status,
       branch: input.branch?.trim() || null,
       commit: input.commit?.trim() || null,

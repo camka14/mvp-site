@@ -57,6 +57,8 @@ const main = async () => {
       select: {
         id: true,
         intakeId: true,
+        sourceId: true,
+        mappingId: true,
         status: true,
         resultSummary: true,
         finishedAt: true,
@@ -175,6 +177,11 @@ const main = async () => {
         );
       }
       const source = matchedSources[0];
+      if (candidate.sourceId && candidate.sourceId !== source.id) {
+        throw new Error(
+          `Mapping job ${candidate.jobId} package source changed from ${candidate.sourceId} to ${source.id}.`,
+        );
+      }
       if (!source.organizationId || !source.activeMappingId) {
         throw new Error(`Live source ${source.id} is missing its organization or active mapping.`);
       }
@@ -213,6 +220,11 @@ const main = async () => {
       if (!mapping || mapping.sourceId !== source.id || !mapping.isActive || mapping.validatedAt) {
         throw new Error(`Live mapping ${source.activeMappingId} failed its disabled-review checks.`);
       }
+      if (candidate.mappingId && candidate.mappingId !== mapping.id) {
+        throw new Error(
+          `Mapping job ${candidate.jobId} package mapping changed from ${candidate.mappingId} to ${mapping.id}.`,
+        );
+      }
       if (!latestRun || latestRun.status !== 'SUCCEEDED') {
         throw new Error(`Live review scrape did not succeed for source ${source.id}.`);
       }
@@ -231,6 +243,8 @@ const main = async () => {
           where: { id: candidate.jobId, status: 'REVIEW_REQUIRED' },
           data: {
             status: 'APPROVED',
+            sourceId: source.id,
+            mappingId: mapping.id,
             finishedAt: approvedAt,
             resultSummary: {
               ...candidate.resultEnvelope,

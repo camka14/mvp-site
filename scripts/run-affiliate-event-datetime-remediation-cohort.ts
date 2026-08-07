@@ -40,6 +40,7 @@ Apply (requires all guards):
     --cohort-key event-datetime-v1 \\
     --mapping-cutoff 2026-08-01T00:00:00.000Z \\
     --expected-job-ids job_1,job_2 \\
+    --expected-inventory-hash <sha256> \\
     --expected-eligible 0 --expected-excluded 0 \\
     --operator operator@example.com`);
   process.exit(0);
@@ -63,6 +64,9 @@ const main = async () => {
     if (!hasOption('--expected-job-ids')) {
       throw new Error('--apply requires --expected-job-ids from the sorted preview inventory.');
     }
+    if (!hasOption('--expected-inventory-hash')) {
+      throw new Error('--apply requires --expected-inventory-hash from the preview inventory.');
+    }
     if (!hasOption('--operator')) throw new Error('--apply requires --operator.');
   }
 
@@ -82,6 +86,7 @@ const main = async () => {
             .split(',')
             .map((id) => id.trim())
             .filter(Boolean),
+          expectedInventoryHash: readOption('--expected-inventory-hash') ?? '',
           expectedEligibleCount: parseCount(readOption('--expected-eligible'), '--expected-eligible'),
           expectedExcludedCount: parseCount(readOption('--expected-excluded'), '--expected-excluded'),
           operatorIdentity: readOption('--operator') ?? '',

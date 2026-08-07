@@ -283,7 +283,7 @@ export const inspectAffiliateDisposableReviewScrapes = async (input: {
   });
   const sourceIds = new Set(runs.map((row) => row.sourceId));
   const mappingIds = new Set(runs.map((row) => row.mappingId));
-  if (sourceIds.size !== 1 || mappingIds.size !== 1) {
+  if (sourceIds.size !== 1 || mappingIds.size !== 1 || !runs[0].mappingId) {
     throw new Error('Disposable review scrapes do not use one stable source and mapping.');
   }
   for (const row of runs) {
@@ -300,8 +300,9 @@ export const inspectAffiliateDisposableReviewScrapes = async (input: {
   const candidateResult = await input.queryable.query<{ count: string | number }>(
     `SELECT count(*)::text AS count
        FROM "AffiliateImportCandidates"
-      WHERE "sourceId" = $1`,
-    [sourceId],
+       WHERE "sourceId" = $1
+         AND "mappingId" = $2`,
+    [sourceId, runs[0].mappingId],
   );
   const currentCandidateCount = Number(candidateResult.rows[0]?.count ?? 0);
   if (currentCandidateCount !== input.result.candidateCount) {

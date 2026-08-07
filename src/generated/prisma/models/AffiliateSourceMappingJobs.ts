@@ -39,6 +39,9 @@ export type AffiliateSourceMappingJobsMinAggregateOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   intakeId: string | null
+  sourceId: string | null
+  mappingId: string | null
+  legacyIdentityMigrationEligible: boolean | null
   status: string | null
   claimedAt: Date | null
   leaseExpiresAt: Date | null
@@ -55,6 +58,9 @@ export type AffiliateSourceMappingJobsMaxAggregateOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   intakeId: string | null
+  sourceId: string | null
+  mappingId: string | null
+  legacyIdentityMigrationEligible: boolean | null
   status: string | null
   claimedAt: Date | null
   leaseExpiresAt: Date | null
@@ -71,6 +77,9 @@ export type AffiliateSourceMappingJobsCountAggregateOutputType = {
   createdAt: number
   updatedAt: number
   intakeId: number
+  sourceId: number
+  mappingId: number
+  legacyIdentityMigrationEligible: number
   status: number
   claimedAt: number
   leaseExpiresAt: number
@@ -98,6 +107,9 @@ export type AffiliateSourceMappingJobsMinAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   intakeId?: true
+  sourceId?: true
+  mappingId?: true
+  legacyIdentityMigrationEligible?: true
   status?: true
   claimedAt?: true
   leaseExpiresAt?: true
@@ -114,6 +126,9 @@ export type AffiliateSourceMappingJobsMaxAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   intakeId?: true
+  sourceId?: true
+  mappingId?: true
+  legacyIdentityMigrationEligible?: true
   status?: true
   claimedAt?: true
   leaseExpiresAt?: true
@@ -130,6 +145,9 @@ export type AffiliateSourceMappingJobsCountAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   intakeId?: true
+  sourceId?: true
+  mappingId?: true
+  legacyIdentityMigrationEligible?: true
   status?: true
   claimedAt?: true
   leaseExpiresAt?: true
@@ -234,6 +252,9 @@ export type AffiliateSourceMappingJobsGroupByOutputType = {
   createdAt: Date
   updatedAt: Date
   intakeId: string
+  sourceId: string | null
+  mappingId: string | null
+  legacyIdentityMigrationEligible: boolean
   status: string
   claimedAt: Date | null
   leaseExpiresAt: Date | null
@@ -274,6 +295,9 @@ export type AffiliateSourceMappingJobsWhereInput = {
   createdAt?: Prisma.DateTimeFilter<"AffiliateSourceMappingJobs"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"AffiliateSourceMappingJobs"> | Date | string
   intakeId?: Prisma.StringFilter<"AffiliateSourceMappingJobs"> | string
+  sourceId?: Prisma.StringNullableFilter<"AffiliateSourceMappingJobs"> | string | null
+  mappingId?: Prisma.StringNullableFilter<"AffiliateSourceMappingJobs"> | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolFilter<"AffiliateSourceMappingJobs"> | boolean
   status?: Prisma.StringFilter<"AffiliateSourceMappingJobs"> | string
   claimedAt?: Prisma.DateTimeNullableFilter<"AffiliateSourceMappingJobs"> | Date | string | null
   leaseExpiresAt?: Prisma.DateTimeNullableFilter<"AffiliateSourceMappingJobs"> | Date | string | null
@@ -291,6 +315,9 @@ export type AffiliateSourceMappingJobsOrderByWithRelationInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   intakeId?: Prisma.SortOrder
+  sourceId?: Prisma.SortOrderInput | Prisma.SortOrder
+  mappingId?: Prisma.SortOrderInput | Prisma.SortOrder
+  legacyIdentityMigrationEligible?: Prisma.SortOrder
   status?: Prisma.SortOrder
   claimedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   leaseExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -311,6 +338,9 @@ export type AffiliateSourceMappingJobsWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeFilter<"AffiliateSourceMappingJobs"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"AffiliateSourceMappingJobs"> | Date | string
   intakeId?: Prisma.StringFilter<"AffiliateSourceMappingJobs"> | string
+  sourceId?: Prisma.StringNullableFilter<"AffiliateSourceMappingJobs"> | string | null
+  mappingId?: Prisma.StringNullableFilter<"AffiliateSourceMappingJobs"> | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolFilter<"AffiliateSourceMappingJobs"> | boolean
   status?: Prisma.StringFilter<"AffiliateSourceMappingJobs"> | string
   claimedAt?: Prisma.DateTimeNullableFilter<"AffiliateSourceMappingJobs"> | Date | string | null
   leaseExpiresAt?: Prisma.DateTimeNullableFilter<"AffiliateSourceMappingJobs"> | Date | string | null
@@ -328,6 +358,9 @@ export type AffiliateSourceMappingJobsOrderByWithAggregationInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   intakeId?: Prisma.SortOrder
+  sourceId?: Prisma.SortOrderInput | Prisma.SortOrder
+  mappingId?: Prisma.SortOrderInput | Prisma.SortOrder
+  legacyIdentityMigrationEligible?: Prisma.SortOrder
   status?: Prisma.SortOrder
   claimedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   leaseExpiresAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -353,6 +386,9 @@ export type AffiliateSourceMappingJobsScalarWhereWithAggregatesInput = {
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"AffiliateSourceMappingJobs"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"AffiliateSourceMappingJobs"> | Date | string
   intakeId?: Prisma.StringWithAggregatesFilter<"AffiliateSourceMappingJobs"> | string
+  sourceId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateSourceMappingJobs"> | string | null
+  mappingId?: Prisma.StringNullableWithAggregatesFilter<"AffiliateSourceMappingJobs"> | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolWithAggregatesFilter<"AffiliateSourceMappingJobs"> | boolean
   status?: Prisma.StringWithAggregatesFilter<"AffiliateSourceMappingJobs"> | string
   claimedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AffiliateSourceMappingJobs"> | Date | string | null
   leaseExpiresAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AffiliateSourceMappingJobs"> | Date | string | null
@@ -370,6 +406,9 @@ export type AffiliateSourceMappingJobsCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   intakeId: string
+  sourceId?: string | null
+  mappingId?: string | null
+  legacyIdentityMigrationEligible?: boolean
   status?: string
   claimedAt?: Date | string | null
   leaseExpiresAt?: Date | string | null
@@ -387,6 +426,9 @@ export type AffiliateSourceMappingJobsUncheckedCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   intakeId: string
+  sourceId?: string | null
+  mappingId?: string | null
+  legacyIdentityMigrationEligible?: boolean
   status?: string
   claimedAt?: Date | string | null
   leaseExpiresAt?: Date | string | null
@@ -404,6 +446,9 @@ export type AffiliateSourceMappingJobsUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   intakeId?: Prisma.StringFieldUpdateOperationsInput | string
+  sourceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  mappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolFieldUpdateOperationsInput | boolean
   status?: Prisma.StringFieldUpdateOperationsInput | string
   claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   leaseExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -421,6 +466,9 @@ export type AffiliateSourceMappingJobsUncheckedUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   intakeId?: Prisma.StringFieldUpdateOperationsInput | string
+  sourceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  mappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolFieldUpdateOperationsInput | boolean
   status?: Prisma.StringFieldUpdateOperationsInput | string
   claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   leaseExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -438,6 +486,9 @@ export type AffiliateSourceMappingJobsCreateManyInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   intakeId: string
+  sourceId?: string | null
+  mappingId?: string | null
+  legacyIdentityMigrationEligible?: boolean
   status?: string
   claimedAt?: Date | string | null
   leaseExpiresAt?: Date | string | null
@@ -455,6 +506,9 @@ export type AffiliateSourceMappingJobsUpdateManyMutationInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   intakeId?: Prisma.StringFieldUpdateOperationsInput | string
+  sourceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  mappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolFieldUpdateOperationsInput | boolean
   status?: Prisma.StringFieldUpdateOperationsInput | string
   claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   leaseExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -472,6 +526,9 @@ export type AffiliateSourceMappingJobsUncheckedUpdateManyInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   intakeId?: Prisma.StringFieldUpdateOperationsInput | string
+  sourceId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  mappingId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  legacyIdentityMigrationEligible?: Prisma.BoolFieldUpdateOperationsInput | boolean
   status?: Prisma.StringFieldUpdateOperationsInput | string
   claimedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   leaseExpiresAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -489,6 +546,9 @@ export type AffiliateSourceMappingJobsCountOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   intakeId?: Prisma.SortOrder
+  sourceId?: Prisma.SortOrder
+  mappingId?: Prisma.SortOrder
+  legacyIdentityMigrationEligible?: Prisma.SortOrder
   status?: Prisma.SortOrder
   claimedAt?: Prisma.SortOrder
   leaseExpiresAt?: Prisma.SortOrder
@@ -510,6 +570,9 @@ export type AffiliateSourceMappingJobsMaxOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   intakeId?: Prisma.SortOrder
+  sourceId?: Prisma.SortOrder
+  mappingId?: Prisma.SortOrder
+  legacyIdentityMigrationEligible?: Prisma.SortOrder
   status?: Prisma.SortOrder
   claimedAt?: Prisma.SortOrder
   leaseExpiresAt?: Prisma.SortOrder
@@ -526,6 +589,9 @@ export type AffiliateSourceMappingJobsMinOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   intakeId?: Prisma.SortOrder
+  sourceId?: Prisma.SortOrder
+  mappingId?: Prisma.SortOrder
+  legacyIdentityMigrationEligible?: Prisma.SortOrder
   status?: Prisma.SortOrder
   claimedAt?: Prisma.SortOrder
   leaseExpiresAt?: Prisma.SortOrder
@@ -548,6 +614,9 @@ export type AffiliateSourceMappingJobsSelect<ExtArgs extends runtime.Types.Exten
   createdAt?: boolean
   updatedAt?: boolean
   intakeId?: boolean
+  sourceId?: boolean
+  mappingId?: boolean
+  legacyIdentityMigrationEligible?: boolean
   status?: boolean
   claimedAt?: boolean
   leaseExpiresAt?: boolean
@@ -565,6 +634,9 @@ export type AffiliateSourceMappingJobsSelectCreateManyAndReturn<ExtArgs extends 
   createdAt?: boolean
   updatedAt?: boolean
   intakeId?: boolean
+  sourceId?: boolean
+  mappingId?: boolean
+  legacyIdentityMigrationEligible?: boolean
   status?: boolean
   claimedAt?: boolean
   leaseExpiresAt?: boolean
@@ -582,6 +654,9 @@ export type AffiliateSourceMappingJobsSelectUpdateManyAndReturn<ExtArgs extends 
   createdAt?: boolean
   updatedAt?: boolean
   intakeId?: boolean
+  sourceId?: boolean
+  mappingId?: boolean
+  legacyIdentityMigrationEligible?: boolean
   status?: boolean
   claimedAt?: boolean
   leaseExpiresAt?: boolean
@@ -599,6 +674,9 @@ export type AffiliateSourceMappingJobsSelectScalar = {
   createdAt?: boolean
   updatedAt?: boolean
   intakeId?: boolean
+  sourceId?: boolean
+  mappingId?: boolean
+  legacyIdentityMigrationEligible?: boolean
   status?: boolean
   claimedAt?: boolean
   leaseExpiresAt?: boolean
@@ -611,7 +689,7 @@ export type AffiliateSourceMappingJobsSelectScalar = {
   finishedAt?: boolean
 }
 
-export type AffiliateSourceMappingJobsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "intakeId" | "status" | "claimedAt" | "leaseExpiresAt" | "workerId" | "attemptCount" | "branch" | "commit" | "resultSummary" | "errorMessage" | "finishedAt", ExtArgs["result"]["affiliateSourceMappingJobs"]>
+export type AffiliateSourceMappingJobsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "intakeId" | "sourceId" | "mappingId" | "legacyIdentityMigrationEligible" | "status" | "claimedAt" | "leaseExpiresAt" | "workerId" | "attemptCount" | "branch" | "commit" | "resultSummary" | "errorMessage" | "finishedAt", ExtArgs["result"]["affiliateSourceMappingJobs"]>
 
 export type $AffiliateSourceMappingJobsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AffiliateSourceMappingJobs"
@@ -621,6 +699,9 @@ export type $AffiliateSourceMappingJobsPayload<ExtArgs extends runtime.Types.Ext
     createdAt: Date
     updatedAt: Date
     intakeId: string
+    sourceId: string | null
+    mappingId: string | null
+    legacyIdentityMigrationEligible: boolean
     status: string
     claimedAt: Date | null
     leaseExpiresAt: Date | null
@@ -1058,6 +1139,9 @@ export interface AffiliateSourceMappingJobsFieldRefs {
   readonly createdAt: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'DateTime'>
   readonly intakeId: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'String'>
+  readonly sourceId: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'String'>
+  readonly mappingId: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'String'>
+  readonly legacyIdentityMigrationEligible: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'Boolean'>
   readonly status: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'String'>
   readonly claimedAt: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'DateTime'>
   readonly leaseExpiresAt: Prisma.FieldRef<"AffiliateSourceMappingJobs", 'DateTime'>

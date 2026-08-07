@@ -23,4 +23,17 @@ describe('affiliate mapping job invariant migration', () => {
       migration.indexOf('CREATE UNIQUE INDEX "AffiliateSourceMappingJobs_one_active_per_intake"'),
     );
   });
+
+  it('marks pre-migration active and review jobs for the identity backfill exception', () => {
+    const migrationPath = path.resolve(
+      process.cwd(),
+      'prisma/migrations/20260806220000_add_affiliate_mapping_job_package_identity/migration.sql',
+    );
+    const migration = readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('"legacyIdentityMigrationEligible" BOOLEAN NOT NULL DEFAULT false');
+    expect(migration).toContain('"status" IN (\'QUEUED\', \'CLAIMED\', \'REVIEW_REQUIRED\')');
+    expect(migration).toContain('"sourceId" IS NULL');
+    expect(migration).toContain('"mappingId" IS NULL');
+  });
 });

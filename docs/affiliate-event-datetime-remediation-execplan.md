@@ -70,6 +70,16 @@ separate implementation or operator approval.
   durable non-claimable control state, guarded transactional enqueue,
   history preservation, approval deferral, idempotence, and the
   preview-by-default CLI.
+- [x] (2026-08-06) Reworked the cohort package boundary around approved mapping
+  jobs. Mapping jobs now persist source and mapping IDs, legacy jobs use a
+  conservative association resolver, duplicate approved jobs are reported as
+  superseded, and preview/apply share one package evaluator.
+- [x] (2026-08-06) Added a canonical inventory hash over mapping-job, intake,
+  source, mapping, approval, and evidence-run identity. Apply now requires the
+  preview hash as well as counts and eligible job IDs.
+- [x] (2026-08-06) Added a typed custom-extractor registry. It is empty until a
+  production custom extractor exists; arbitrary JSON metadata no longer creates
+  an event signal.
 - [x] Update the mapper and independent reviewer instructions.
 - [ ] Preview, approve, and arm the live cohort after current leases drain.
 - [ ] Complete and approve every eligible event mapping package.
@@ -1085,6 +1095,51 @@ mapping job, and latest selected-run candidates, so inactive historical
 mappings and failed historical extractor attempts cannot qualify the current
 package. No live queue, data, process, deployment, or mobile action was
 performed.
+
+Revision note, 2026-08-06: Rebased the cohort package on durable approved
+mapping-job identity. Added nullable source and mapping provenance fields to
+mapping jobs, populated them from disposable review evidence before completion,
+required them before approval completion, and persisted them during guarded live
+package application. Inventory now begins with approved jobs, resolves legacy rows only
+when the source and mapping association is defensible, marks duplicate approved
+packages as superseded, and uses one shared eligibility evaluator. Preview and
+apply now exchange a canonical inventory SHA-256 hash that includes the
+evidence run. Replaced arbitrary JSON custom-extractor detection with the typed
+registry in `customExtractorRegistry.ts`; the registry is empty until a real
+production extractor exists. No live queue, data, process, deployment, or
+mobile action was performed.
+
+Revision note, 2026-08-06: Corrected three package-identity boundaries. Legacy
+mapping-job association no longer uses job creation time to choose an older
+mapping when multiple mappings exist. Approval now lets the guarded live
+application callback populate missing identity fields on pre-migration review
+jobs, then requires the approved row to contain both fields. Producer completion
+cannot replace an existing source or mapping identity, and live application
+checks that persisted identity still matches the reviewed package. No live
+queue, data, process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06: Added the remaining Milestone 3 inventory guards.
+Inventory now reports active event mappings without an approved mapping job as
+explicit orphan gaps. The inventory hash includes the selected scrape run and
+a stable fingerprint of its current candidates. Aggregate candidate and mode
+counts use only the canonical latest approved job for each mapping. New review
+completions require source and mapping IDs; only rows marked by the migration
+may use the pre-migration identity backfill exception. No live queue, data,
+process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06: Corrected orphan coverage and approval guards.
+Orphan mappings now select the same current candidates and retained page
+evidence as approved packages, including missing-evidence reasons. Candidate
+fingerprints now include end time, timezone, schedule text, and row update
+time. Identity-less approval callbacks require the durable migration marker.
+No live queue, data, process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06: Closed the remaining legacy-association gaps. The
+identity migration marker now covers pre-migration queued, claimed, and review
+jobs. Orphan event signals inspect all matching intakes before reporting an
+ambiguous intake association. An explicit unresolved intake source ID no
+longer falls back to a source-key match. No live queue, data, process,
+deployment, or mobile action was performed.
 
 ## Interfaces and Dependencies
 
