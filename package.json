@@ -47,6 +47,7 @@
     "affiliate:mapping:claim": "tsx scripts/claim-affiliate-source-mapping.ts",
     "affiliate:mapping:complete": "tsx scripts/complete-affiliate-source-mapping.ts",
     "affiliate:mapping:queue-status": "tsx scripts/report-affiliate-mapping-queue.ts",
+    "affiliate:mapping:datetime-remediation-cohort": "tsx scripts/run-affiliate-event-datetime-remediation-cohort.ts",
     "affiliate:mapping:retry-rejected": "tsx scripts/retry-rejected-affiliate-mapping-packages.ts",
     "affiliate:mapping:requeue-approved-repairs": "tsx scripts/requeue-approved-affiliate-mapping-repairs.ts",
     "affiliate:mapping:baseline": "tsx scripts/audit-affiliate-mapping-agent-baseline.ts",

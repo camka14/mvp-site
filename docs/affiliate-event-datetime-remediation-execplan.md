@@ -65,7 +65,11 @@ separate implementation or operator approval.
 - [x] (2026-08-06) Updated the repository-backed producer/reviewer skills,
   completion references, rollout goal, CLI goals, and generated package tests
   with the Milestone 2 datetime requirements.
-- [ ] Implement and test the named producer-remediation cohort.
+- [x] (2026-08-06) Implemented and tested the local producer-remediation cohort
+  slice: event-producing inventory, stable exclusions, queue-drain guards,
+  durable non-claimable control state, guarded transactional enqueue,
+  history preservation, approval deferral, idempotence, and the
+  preview-by-default CLI.
 - [x] Update the mapper and independent reviewer instructions.
 - [ ] Preview, approve, and arm the live cohort after current leases drain.
 - [ ] Complete and approve every eligible event mapping package.
@@ -203,6 +207,46 @@ separate implementation or operator approval.
   not interrupt or duplicate work that a producer or reviewer already owns.
   Date/Author: 2026-08-06 / Codex
 
+- Decision: Identify event-producing packages from source, active mapping,
+  manual-candidate, intake-hint, and recent-candidate signals. Require an
+  exact intake, approved mapping job, approved mapping-package approval, and
+  stored evidence before enqueue.
+  Rationale: `AffiliateScrapeSources.targetKind` is not a complete historical
+  record of what a mapping can produce. Stable exclusion reasons make legacy
+  gaps visible without synthesizing jobs or evidence.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Store the cohort control row as a non-claimable approval subject and
+  make the cohort key idempotent.
+  Rationale: The existing approval queue can report and audit the control row
+  without offering it to a reviewer. A transaction rechecks counts, row state,
+  leases, and the control row before changing any selected package.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Bind apply to the sorted eligible mapping-job ID set captured by
+  preview, not only to eligible and excluded counts.
+  Rationale: Counts can remain equal while one package leaves and another
+  enters. The operator must approve the exact work set that the transaction
+  enqueues.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Accept intake evidence only from the selected `SUCCEEDED` or
+  `PARTIAL` run when that run retains a backing file for `PAGE_HTML` or
+  `PAGE_MARKDOWN`. Use the cited source-evidence run or the intake's selected
+  run; do not trust `lastRunId` by itself.
+  Rationale: Failed captures can still update `lastRunId`, and page rows and
+  policy-only artifacts do not contain the source content needed by a mapper.
+  Date/Author: 2026-08-06 / Codex
+
+- Decision: Count candidate modes and infer recent event production only from
+  the latest successful run of the selected mapping, with an active candidate
+  status. Inspect structured custom-extractor registry descriptors for an
+  explicit `EVENT` target as a separate event signal.
+  Rationale: Historical candidate rows can describe a prior mapping and make a
+  current club-only package look like an event package. Custom extractors are
+  an independent producer path and must remain visible to the cohort.
+  Date/Author: 2026-08-06 / Codex
+
 - Decision: Treat source time as a wall-clock value until the mapper resolves an
   IANA timezone. Convert it to a UTC instant only with that timezone.
   Rationale: JavaScript host timezone parsing caused the observed seven-hour
@@ -322,6 +366,18 @@ skills, completion references, and generated package tests describe the same
 classification, timezone, precision, end, duration, DST, UTC-host, and
 evergreen rules. No queue rows, live mappings, approvals, candidates, events,
 processes, deployments, or mobile files changed.
+
+Milestone 3 now has a local producer-remediation implementation. The cohort
+inventory selects event-capable packages from multiple historical signals,
+counts all four display modes from the current mapping run, excludes missing
+primary evidence and unsupported rows,
+waits for producer and reviewer queues to drain, and records a durable
+`MAPPING_PRODUCER_REMEDIATION_COHORT` control row. Apply mode reuses the
+approved mapping job, preserves bounded repair history, defers its existing
+approval, returns the intake to `READY_FOR_MAPPING`, and aborts on count or
+row-state or exact-job-set drift. The CLI remains preview-only unless an
+operator supplies all required `--live --apply` guards. No live queue, mapping,
+approval, candidate, event, process, deployment, or mobile file changed.
 
 When implementation finishes, record the final cohort count, every excluded
 source and reason, producer and reviewer outcomes, candidate and event repair
@@ -1007,6 +1063,19 @@ Added context-bound `dateTimeReview` validation at producer completion,
 `dateTimeQualityVerified` to mapping approval checks, explicit datetime repair
 codes, and synchronized producer/reviewer instructions and generated tests.
 No live queue, data, process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06: Implemented the local Milestone 3 producer cohort
+slice. Added the multi-signal inventory, stable exclusions, queue-drain and
+optimistic row-state guards, durable idempotent control row, transactional
+enqueue, preview-by-default CLI, redacted report output, and cohort tests.
+No live queue, data, process, deployment, or mobile action was performed.
+
+Revision note, 2026-08-06: Tightened the local Milestone 3 cohort after review.
+Apply now requires the sorted previewed mapping-job IDs. Inventory requires a
+selected successful run with retained HTML or Markdown, limits candidates to
+the latest successful selected-mapping run and active statuses, and recognizes
+event-capable custom-extractor registry descriptors. No live queue, data,
+process, deployment, or mobile action was performed.
 
 ## Interfaces and Dependencies
 
